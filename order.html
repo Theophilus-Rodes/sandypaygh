@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Order Status - Sandypay</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    input[type="tel"] {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    .search-button {
+      background-color: #0a0f5a;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      width: 100%;
+    }
+
+    .result-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    .result-table th,
+    .result-table td {
+      padding: 12px;
+      border: 1px solid #ccc;
+      text-align: center;
+    }
+
+    .result-table th {
+      background-color: #1e3a8a;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <header id="vendorName" style="font-weight: bold; font-size: 20px;">Loading...</header>
+
+  <nav>
+    <a href="data.html">Data</a>
+    <a href="afa.html">AFA</a>
+    <a href="order.html" class="active">Order Status</a>
+  </nav>
+
+  <main>
+    <div class="section-title">Order Status</div>
+    <p>
+      Check the status of the order you made purchase for. Delivered means vendor has sent it and it's with telco to credit your account.
+    </p>
+
+    <form onsubmit="checkOrderStatus(event)">
+      <label for="phoneInput">Phone Number</label>
+      <input type="tel" id="phoneInput" placeholder="0241234567" />
+      <button class="search-button" type="submit">Search</button>
+    </form>
+
+    <table class="result-table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Amount</th>
+          <th>Package</th>
+          <th>Number</th>
+        </tr>
+      </thead>
+      <tbody id="orderResults">
+        <!-- Results will show here -->
+      </tbody>
+    </table>
+  </main>
+
+  <script>
+    function checkOrderStatus(event) {
+      event.preventDefault();
+      const number = document.getElementById("phoneInput").value.trim();
+
+      if (!number) return alert("Enter a phone number.");
+
+      fetch("https://vendor.sandipay.co/api/check-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipient_number: number })
+      })
+      .then(res => res.json())
+      .then(data => {
+        const tbody = document.getElementById("orderResults");
+        tbody.innerHTML = "";
+
+        if (!data.length) {
+          tbody.innerHTML = `<tr><td colspan="4">No order found for this number</td></tr>`;
+          return;
+        }
+
+        data.forEach(order => {
+          const row = `
+            <tr>
+              <td>${order.status}</td>
+              <td>GHS ${order.amount}</td>
+              <td>${order.data_package}</td>
+              <td>${order.recipient_number}</td>
+            </tr>
+          `;
+          tbody.innerHTML += row;
+        });
+      })
+      .catch(err => {
+        console.error(err);
+        alert("Failed to fetch order status.");
+      });
+    }
+  </script>
+  <script>
+  // ✅ Get vendor_id from URL
+  const vendorId = new URLSearchParams(window.location.search).get("vendor_id");
+
+  // ✅ Update tab links to carry vendor_id across tabs
+  document.querySelector('a[href="data.html"]').href = `data.html?vendor_id=${vendorId}`;
+  document.querySelector('a[href="afa.html"]').href = `afa.html?vendor_id=${vendorId}`;
+  document.querySelector('a[href="order.html"]').href = `order.html?vendor_id=${vendorId}`;
+</script>
+
+  <script>
+window.onload = function () {
+  const vendorId = localStorage.getItem("userId");
+  console.log("Fetched vendorId from localStorage:", vendorId);
+
+  if (!vendorId) {
+    document.getElementById("vendorName").innerText = "Unknown Vendor";
+    return;
+  }
+
+  fetch("https://vendor.sandipay.co/api/fetch-vendor-name", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vendor_id: vendorId })
+  })
+  .then(res => res.json())
+  .then(data => {
+    console.log("Server returned:", data);
+    document.getElementById("vendorName").innerText = data.name || "Vendor";
+  })
+  .catch(err => {
+    console.error("Fetch error:", err);
+    document.getElementById("vendorName").innerText = "Vendor";
+  });
+};
+
+</script>
+
+
+
+</body>
+</html>

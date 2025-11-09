@@ -1,0 +1,107 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Set WhatsApp Community</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f9fafb;
+      color: #333;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: auto;
+      background: #fff;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+
+    h2 {
+      color: #1f2937;
+    }
+
+    p {
+      color: #6b7280;
+      line-height: 1.6;
+    }
+
+    label {
+      display: block;
+      margin-top: 20px;
+      font-weight: bold;
+      color: #374151;
+    }
+
+    input[type="url"] {
+      width: 100%;
+      padding: 12px;
+      margin-top: 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 16px;
+    }
+
+    button {
+      margin-top: 20px;
+      padding: 12px 20px;
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #1d4ed8;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Whatsapp Community</h2>
+    <p>
+      Allow your customers to join your Whatsapp Community to receive announcements and information you need to share.
+    </p>
+    <label for="link">Link</label>
+    <input type="url" id="link" placeholder="https://chat.whatsapp.com/your-group-link" />
+    <button onclick="saveLink()">Save</button>
+  </div>
+
+  <script>
+   function saveLink() {
+  const link = document.getElementById("link").value;
+  const vendor_id = localStorage.getItem("vendor_id"); // assumes you stored vendor_id on login
+
+  if (!link || !vendor_id) {
+    alert("Link or vendor ID missing");
+    return;
+  }
+
+  fetch("https://vendor.sandipay.co/api/save-whatsapp-link", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ vendor_id, link }),
+  })
+    .then(res => res.json())
+    .then(data => {
+      alert(data.message);
+    })
+    .catch(err => {
+      console.error("Error saving link:", err);
+      alert("Something went wrong");
+    });
+}
+
+  </script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telephone Numbers</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6fa;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h2 {
+      text-align: center;
+      color: #333;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+      margin-top: 20px;
+    }
+
+    th, td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+
+    th {
+      background: #007bff;
+      color: white;
+    }
+
+    tr:hover {
+      background-color: #f1f1f1;
+    }
+  </style>
+</head>
+<body>
+  <h2>All Telephone Numbers</h2>
+
+  <table id="numbersTable">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Phone Number</th>
+      <th>Status</th>
+      <th>Date Added</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+ <script>
+  async function loadNumbers() {
+    try {
+      const response = await fetch("http://localhost:3000/api/telephone-numbers");
+      const data = await response.json();
+      const tbody = document.querySelector("#numbersTable tbody");
+      tbody.innerHTML = "";
+
+      data.forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${row.id}</td>
+          <td>${row.phone_number}</td>
+          <td>
+            <button 
+              class="status-btn" 
+              data-id="${row.id}" 
+              data-status="${row.status}"
+              style="background:${row.status === 'allowed' ? '#28a745' : '#dc3545'};color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;">
+              ${row.status === 'allowed' ? 'Allowed' : 'Denied'}
+            </button>
+          </td>
+          <td>${new Date(row.created_at).toLocaleString()}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      // Add toggle click listener
+      document.querySelectorAll(".status-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const id = btn.getAttribute("data-id");
+          const current = btn.getAttribute("data-status");
+          const newStatus = current === "allowed" ? "denied" : "allowed";
+
+          const res = await fetch("http://localhost:3000/api/update-status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, status: newStatus })
+          });
+          const result = await res.json();
+          if (result.success) {
+            btn.setAttribute("data-status", newStatus);
+            btn.style.background = newStatus === "allowed" ? "#28a745" : "#dc3545";
+            btn.textContent = newStatus === "allowed" ? "Allowed" : "Denied";
+          }
+        });
+      });
+    } catch (error) {
+      console.error("Error loading numbers:", error);
+    }
+  }
+
+  window.onload = loadNumbers;
+</script>
+
+</body>
+</html>

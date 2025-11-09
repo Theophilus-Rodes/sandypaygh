@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Reset PIN</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h2 style="text-align: center;">Reset Your PIN</h2>
+  <div class="form-container">
+    <form id="resetForm">
+      <input type="text" id="username" placeholder="Username" required />
+      <input type="tel" id="phone" placeholder="Phone Number" required />
+      <input type="password" id="newPin" placeholder="New PIN" required />
+      <input type="password" id="confirmPin" placeholder="Confirm New PIN" required />
+      <button type="submit">Reset PIN</button>
+    </form>
+  </div>
+
+  <script>
+    document.getElementById("resetForm").addEventListener("submit", async function (e) {
+      e.preventDefault();
+
+      const username = document.getElementById("username").value.trim();
+      const phone = document.getElementById("phone").value.trim();
+      const newPin = document.getElementById("newPin").value.trim();
+      const confirmPin = document.getElementById("confirmPin").value.trim();
+
+      if (newPin !== confirmPin) {
+        alert("PINs do not match.");
+        return;
+      }
+
+      if (newPin === "0000") {
+        alert("PIN cannot be 0000.");
+        return;
+      }
+
+      try {
+        const response = await fetch("http://localhost:3000/api/reset-pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, phone, newPin })
+        });
+
+        const result = await response.text();
+        alert(result);
+        if (response.ok) {
+          window.location.href = "index.html"; // Redirect to login page
+        }
+      } catch (err) {
+        alert("An error occurred: " + err.message);
+      }
+    });
+  </script>
+</body>
+</html>

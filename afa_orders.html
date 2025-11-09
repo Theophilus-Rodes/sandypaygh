@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AFA Orders - Sandypay</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+
+    header {
+      background-color: #1e3a8a;
+      color: white;
+      padding: 15px;
+      font-size: 22px;
+      font-weight: bold;
+    }
+
+    .download-btn {
+      background-color: #0a0f5a;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 15px;
+      margin-bottom: 20px;
+    }
+
+    .package-block {
+      background: #eef1f7;
+      padding: 10px;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+    }
+
+    .package-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .toggle-btn, .action-btn {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 4px;
+      margin-left: 10px;
+      cursor: pointer;
+    }
+
+    .toggle-btn {
+      background-color: #1e3a8a;
+      color: white;
+    }
+
+    .action-btn {
+      background-color: green;
+      color: white;
+    }
+
+    table {
+      width: 100%;
+      margin-top: 10px;
+      border-collapse: collapse;
+      display: none;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: center;
+    }
+
+    th {
+      background-color: #0a0f5a;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <header>SandypayDataServices</header>
+
+  <main>
+    <h3 id="pendingCount" style="text-align:center; margin-bottom: 10px;">Pending Orders: ...</h3>
+    <button class="download-btn" onclick="downloadOrders()">Download Pending as Excel</button>
+     <button onclick="sendAfaOrders()" style="margin-left: 20px; background: #0a0f5a; color: white; padding: 10px; border-radius: 6px;">
+  Send Orders to Admin
+</button>
+    <div id="packagesContainer"></div>
+
+
+   
+  </main>
+
+  <script>
+    const vendorId = new URLSearchParams(window.location.search).get("vendor_id");
+
+    function downloadOrders() {
+      window.open(`https://vendor.sandipay.co/api/export-afa-orders?vendor_id=${vendorId}`, "_blank");
+
+
+      // delay then set status to processing
+      setTimeout(() => {
+        fetch("https://vendor.sandipay.co/api/set-afa-processing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vendor_id: vendorId })
+        })
+        .then(res => res.text())
+        .then(msg => {
+          console.log(msg);
+          fetchAfaOrders();
+        });
+      }, 2000);
+    }
+
+    function fetchAfaOrders() {
+      fetch("https://vendor.sandipay.co/api/afa-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendor_id: vendorId })
+      })
+      .then(async res => {
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text);
+        }
+        return res.json();
+      })
+      .then(data => {
+        const container = document.getElementById("packagesContainer");
+        container.innerHTML = "";
+
+        const grouped = {};
+        data.forEach(row => {
+          if (!row.package_id) return;
+          if (!grouped[row.package_id]) grouped[row.package_id] = [];
+          grouped[row.package_id].push(row);
+        });
+
+        Object.entries(grouped).forEach(([packageId, rows]) => {
+          const block = document.createElement("div");
+          block.className = "package-block";
+
+          const header = document.createElement("div");
+          header.className = "package-header";
+          header.innerHTML = `
+            <span><strong>Package:</strong> ${packageId}</span>
+            <div>
+              <button class="toggle-btn" onclick="toggleDetails('${packageId}')">View Package</button>
+              ${rows[0].status !== 'delivered'
+                ? `<button class="action-btn" onclick="markDelivered('${packageId}')">Mark Delivered</button>`
+                : `<span style="color: green; font-weight: bold;">Delivered</span>`}
+            </div>
+          `;
+
+          const table = document.createElement("table");
+          table.id = `details-${packageId}`;
+          table.innerHTML = `
+            <thead>
+              <tr>
+                <th>Full Name</th><th>ID Number</th><th>DOB</th><th>Phone</th>
+                <th>Location</th><th>Region</th><th>Occupation</th><th>Status</th>
+              </tr>
+            </thead> 
+            <tbody>
+              ${rows.map(r => `
+                <tr> 
+                  <td>${r.fullname}</td>
+                  <td>${r.id_number}</td>
+                  <td>${r.dob}</td>
+                  <td>${r.phone_number}</td>
+                  <td>${r.location}</td>
+                  <td>${r.region}</td>
+                  <td>${r.occupation}</td>
+                  <td>${r.status}</td>
+                </tr>`).join('')}
+            </tbody>
+          `;
+
+          block.appendChild(header);
+          block.appendChild(table);
+          container.appendChild(block);
+        });
+      })
+      .catch(err => {
+        console.error("Fetch AFA Orders Failed:", err.message);
+        alert("Error loading AFA orders: " + err.message);
+      });
+    }
+
+    function toggleDetails(packageId) {
+      const table = document.getElementById(`details-${packageId}`);
+      table.style.display = table.style.display === "none" ? "table" : "none";
+    }
+
+    function markDelivered(packageId) {
+      fetch("https://vendor.sandipay.co/api/mark-afa-delivered", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendor_id: vendorId, package_id: packageId })
+      })
+      .then(res => res.text())
+      .then(msg => {
+        alert(msg);
+        fetchAfaOrders(); // refresh to show updated status
+      });
+    }
+
+    
+  </script>
+
+<script>
+  async function fetchAfaPendingCount() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const vendorId = urlParams.get("vendor_id");
+
+    if (!vendorId) {
+      document.getElementById("pendingCount").innerText = "Vendor ID missing.";
+      return;
+    }
+
+    try {
+      const res = await fetch(`https://vendor.sandipay.co/api/afa-pending-count?vendor_id=${vendorId}`);
+      const data = await res.json();
+      document.getElementById("pendingCount").innerText = `Pending Orders: ${data.count}`;
+    } catch (err) {
+      console.error("❌ Failed to load AFA pending count:", err);
+      document.getElementById("pendingCount").innerText = "Pending Orders: Error";
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", fetchAfaPendingCount);
+
+
+
+
+function fetchGroupedAfaPackages() {
+  fetch("https://vendor.sandipay.co/api/afa-all-packages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vendor_id: vendorId })
+  })
+  .then(res => res.json())
+  .then(data => {
+    const container = document.getElementById("packagesContainer");
+    container.innerHTML = "";
+
+    const grouped = {};
+    data.forEach(row => {
+      if (!grouped[row.package_id]) grouped[row.package_id] = [];
+      grouped[row.package_id].push(row);
+    });
+
+    Object.entries(grouped).forEach(([packageId, rows]) => {
+      const block = document.createElement("div");
+      block.className = "package-block";
+
+      const header = document.createElement("div");
+      header.className = "package-header";
+      header.innerHTML = `
+        <span><strong>Package:</strong> ${packageId}</span>
+        ${
+          rows[0].status !== 'delivered'
+            ? `<button class="action-btn" onclick="markDelivered('${packageId}')">Mark Delivered</button>`
+            : `<span style="color: green; font-weight: bold;">Delivered</span>`
+        }
+      `;
+
+      const table = document.createElement("table");
+      table.style.display = "table";
+      table.innerHTML = `
+        <thead>
+          <tr>
+            <th>Full Name</th><th>ID Number</th><th>DOB</th><th>Phone</th>
+            <th>Location</th><th>Region</th><th>Occupation</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td>${r.fullname}</td>
+              <td>${r.id_number}</td>
+              <td>${r.dob}</td>
+              <td>${r.phone_number}</td>
+              <td>${r.location}</td>
+              <td>${r.region}</td>
+              <td>${r.occupation}</td>
+              <td>${r.status}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      `;
+
+      block.appendChild(header);
+      block.appendChild(table);
+      container.appendChild(block);
+    });
+  })
+  .catch(err => {
+    console.error("❌ Failed to load orders:", err);
+    alert("Error loading AFA packages");
+  });
+}
+
+// ✅ Call this on page load if you want to show processing packages
+window.onload = fetchGroupedAfaPackages;
+
+// ✅ markDelivered function is reused from earlier
+function markDelivered(packageId) {
+  fetch("https://vendor.sandipay.co/api/mark-afa-delivered", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vendor_id: vendorId, package_id: packageId })
+  })
+  .then(res => res.text())
+  .then(msg => {
+    alert(msg);
+    fetchGroupedAfaPackages();  });
+}
+
+
+
+
+</script>
+
+<script>
+  
+  function sendAfaOrders() {
+  const vendorId = new URLSearchParams(window.location.search).get("vendor_id");
+  if (!vendorId) return alert("Vendor ID missing in URL");
+
+  const confirmed = confirm("Are you sure you want to send AFA pending orders to the admin?");
+  if (!confirmed) return;
+
+  fetch("https://vendor.sandipay.co/api/send-afa-orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vendor_id: vendorId })
+  })
+  .then(res => res.text())
+  .then(msg => {
+    alert(msg);
+    location.reload(); // Optional: Refresh the page to update status
+  })
+  .catch(err => {
+    console.error("Send to admin error:", err);
+    alert("❌ Failed to send orders to admin");
+  });
+}
+
+</script>
+
+
+
+</body>
+</html>

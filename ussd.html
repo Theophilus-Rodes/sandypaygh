@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Vendor USSD Code</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f9f9f9;
+      text-align: center;
+      padding: 40px;
+    }
+
+    h1 {
+      color: #0a0f5a;
+      margin-bottom: 20px;
+    }
+
+    .ussd-code {
+      font-size: 24px;
+      font-weight: bold;
+      color: #1e3a8a;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      display: inline-block;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+  <h1>Your USSD Code</h1>
+  <div id="ussdDisplay" class="ussd-code">Loading...</div>
+
+  <script>
+    const vendorId = new URLSearchParams(window.location.search).get("vendor_id");
+
+    if (!vendorId) {
+      document.getElementById("ussdDisplay").innerText = "Vendor ID is missing in the URL.";
+    } else {
+      fetch("https://vendor.sandipay.co/api/get-ussd-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendor_id: vendorId })
+      })
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById("ussdDisplay").innerText = data.ussd_code || "USSD code not found.";
+      })
+      .catch(err => {
+        console.error(err);
+        document.getElementById("ussdDisplay").innerText = "❌ Failed to load USSD code.";
+      });
+    }
+  </script>
+</body>
+</html>

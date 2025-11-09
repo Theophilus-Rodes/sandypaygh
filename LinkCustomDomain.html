@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Link Custom Domain</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f5f7fa;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .box {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
+      max-width: 450px;
+      margin: auto;
+      margin-bottom: 30px;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 25px;
+    }
+
+    input, button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+
+    button {
+      background-color: #28a745;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #218838;
+    }
+
+    .msg {
+      margin-top: 15px;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .table-wrapper {
+      max-width: 100%;
+      overflow-x: auto;
+    }
+
+    table {
+      min-width: 700px;
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Allow only domain column to wrap if long */
+    td:nth-child(5), th:nth-child(5) {
+      white-space: normal;
+      max-width: 250px;
+      word-break: break-word;
+    }
+
+    /* Optional: Center narrow columns */
+    td:nth-child(1),
+    td:nth-child(4),
+    td:nth-child(6),
+    th:nth-child(1),
+    th:nth-child(4),
+    th:nth-child(6) {
+      text-align: center;
+    }
+
+    .reset-btn {
+      background-color: #dc3545;
+      color: white;
+      border: none;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .reset-btn:hover {
+      background-color: #b52a38;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="box">
+    <h2>Link User to Custom Domain</h2>
+    <input type="text" id="username" placeholder="Enter Username (e.g. joe)" />
+    <input type="text" id="domain" placeholder="e.g. www.alphabettaltd.com or alphabeta.sandipay.co" />
+    <button onclick="linkCustomDomain()">Link Domain</button>
+    <div class="msg" id="msgBox"></div>
+  </div>
+
+  <div class="box">
+    <h2>All Users & Linked Domains</h2>
+    <div class="table-wrapper">
+      <table id="userTable">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Username</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Domain</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    function linkCustomDomain() {
+      const username = document.getElementById("username").value.trim();
+      const domain = document.getElementById("domain").value.trim();
+      const msg = document.getElementById("msgBox");
+
+      if (!username || !domain) {
+        msg.textContent = "Please fill in both fields.";
+        msg.style.color = "red";
+        return;
+      }
+
+      fetch("/api/update-public-link-by-username", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ username, publicLink: domain })
+      })
+      .then(res => res.json())
+      .then(data => {
+        msg.textContent = data.message;
+        msg.style.color = data.success ? "green" : "red";
+        loadUsers(); // refresh list
+      })
+      .catch(() => {
+        msg.textContent = "Server error.";
+        msg.style.color = "red";
+      });
+    }
+
+    function loadUsers() {
+      fetch("/api/get-users-domains")
+        .then(res => res.json())
+        .then(users => {
+          const tbody = document.querySelector("#userTable tbody");
+          tbody.innerHTML = "";
+          users.forEach(user => {
+            const row = `
+              <tr>
+                <td>${user.id}</td>
+                <td>${user.username}</td>
+                <td>${user.role}</td>
+                <td>${user.status}</td>
+                <td>${user.public_link || "<i>Not linked</i>"}</td>
+                <td>
+                  ${user.public_link ? `<button class="reset-btn" onclick="clearDomain('${user.username}')">Reset</button>` : ""}
+                </td>
+              </tr>
+            `;
+            tbody.innerHTML += row;
+          });
+        });
+    }
+
+    function clearDomain(username) {
+      if (!confirm(`Are you sure you want to remove the domain for "${username}"?`)) return;
+
+      fetch("/api/reset-public-link", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ username })
+      })
+      .then(res => res.json())
+      .then(data => {
+        alert(data.message);
+        loadUsers();
+      });
+    }
+
+    window.onload = loadUsers;
+  </script>
+</body>
+</html>

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Completed Orders</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f7f7f7;
+      padding: 20px;
+    }
+    h2 {
+      text-align: center;
+    }
+    .buttons {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: 10px 20px;
+      background: #0a0f5a;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .group {
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 15px;
+    }
+    .group-title {
+      font-weight: bold;
+      color: #0a0f5a;
+      cursor: pointer;
+    }
+    .order-table {
+      display: none;
+      margin-top: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      margin-top: 10px;
+    }
+    th, td {
+      padding: 10px;
+      border: 1px solid #ddd;
+      font-size: 14px;
+      text-align: left;
+    }
+    th {
+      background: #0a0f5a;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ✅ Notification Logos with Badges -->
+<div style="display: flex; justify-content: space-around; margin: 15px 0;">
+  <div style="position: relative; text-align: center;">
+    <img src="MTN.png" alt="MTN" width="50" height="50" />
+    <div id="mtnBadge" style="position: absolute; top: -5px; right: -5px; background: red; color: white; font-size: 12px; padding: 3px 7px; border-radius: 50%;">0</div>
+  </div>
+  <div style="position: relative; text-align: center;">
+    <img src="TL.png" alt="Telecel" width="50" height="50" />
+    <div id="telecelBadge" style="position: absolute; top: -5px; right: -5px; background: red; color: white; font-size: 12px; padding: 3px 7px; border-radius: 50%;">0</div>
+  </div>
+  <div style="position: relative; text-align: center;">
+    <img src="AT.png" alt="AirtelTigo" width="50" height="50" />
+    <div id="atBadge" style="position: absolute; top: -5px; right: -5px; background: red; color: white; font-size: 12px; padding: 3px 7px; border-radius: 50%;">0</div>
+  </div>
+</div>
+
+<h2>Completed Orders</h2>
+
+<!-- ✅ Download Buttons -->
+<div class="buttons">
+  <button onclick="downloadOrders('mtn')">Download MTN Orders</button>
+  <button onclick="downloadOrders('airteltigo')">Download AirtelTigo Orders</button>
+  <button onclick="downloadOrders('telecel')">Download Telecel Orders</button>
+</div>
+
+<!-- ✅ Code Download -->
+<div style="text-align: center; margin-bottom: 20px;">
+  <label for="codeInput" style="display:block; margin-bottom: 5px;">Enter Code to Download Orders:</label>
+  <input type="text" id="codeInput" placeholder="e.g. MTN-X9AB32" style="padding: 10px; width: 250px;" />
+  <button onclick="downloadByCode()" style="padding: 10px 20px; background-color: #1e3a8a; color: white; border: none; border-radius: 6px; margin-left: 10px;">Download</button>
+</div>
+
+<!-- ✅ Output Container -->
+<div id="ordersContainer"></div>
+
+<script>
+const vendorId = localStorage.getItem("userId") || "47";
+let currentNetwork = "mtn";
+
+async function downloadOrders(network) {
+  currentNetwork = network;
+  const confirmed = confirm(`Download ${network.toUpperCase()} orders?`);
+  if (!confirmed) return;
+
+  const downloadUrl = `https://vendor.sandipay.co/api/admin-download-${network}?vendor_id=${vendorId}`;
+  window.open(downloadUrl, '_blank');
+
+  setTimeout(() => fetchGroups(network), 5000);
+}
+
+async function fetchGroups(network) {
+  const res = await fetch("https://vendor.sandipay.co/api/admin-packages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vendor_id: vendorId, network })
+  });
+
+  const data = await res.json();
+  console.log(`✅ Loaded ${network} packages:`, data);
+  renderGroupedPackages(data);
+}
+
+function fetchOrdersByCode(code) {
+  fetch("https://vendor.sandipay.co/api/admin-packages-by-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (!data.length) {
+      alert("No orders found for this code");
+      return;
+    }
+    renderGroupedPackages(data);
+  })
+  .catch(err => {
+    console.error("❌ Failed to fetch by code:", err);
+  });
+}
+
+function renderGroupedPackages(data) {
+  const container = document.getElementById("ordersContainer");
+
+  // Append instead of clearing so all groups show together
+  const grouped = {};
+  data.forEach(order => {
+    const key = order.package_id || "Unpackaged";
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(order);
+  });
+
+  Object.entries(grouped).forEach(([pkgId, orders]) => {
+    const groupDiv = document.createElement("div");
+    groupDiv.className = "group";
+    groupDiv.innerHTML = `
+      <div class="group-title" onclick="toggleTable('${pkgId}')">Package ID: ${pkgId}</div>
+      <div id="table-${pkgId}" class="order-table">
+        <table>
+          <thead>
+            <tr><th>Recipient</th><th>Package</th><th>Amount</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            ${orders.map(o => `
+              <tr>
+                <td>${o.recipient_number}</td>
+                <td>${o.data_package}</td>
+                <td>${o.amount}</td>
+                <td>${o.status}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <button onclick="markDelivered('${pkgId}')">Mark Delivered</button>
+      </div>
+    `;
+    container.appendChild(groupDiv);
+  });
+}
+
+function toggleTable(pkgId) {
+  const table = document.getElementById(`table-${pkgId}`);
+  if (table) table.style.display = table.style.display === "none" ? "block" : "none";
+}
+
+function markDelivered(pkgId) {
+  fetch("https://vendor.sandipay.co/api/admin-mark-delivered", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ package_id: pkgId })
+  })
+  .then(res => res.text())
+  .then(() => {
+    alert("✅ Package marked as delivered.");
+    fetchGroups(currentNetwork);
+  })
+  .catch(err => {
+    console.error("❌ Error marking delivered:", err);
+    alert("Failed to mark delivered.");
+  });
+}
+function downloadByCode() {
+  const code = document.getElementById("codeInput").value.trim();
+  if (!code) return alert("Please enter a code.");
+
+  const url = `https://vendor.sandipay.co/api/download-by-code?code=${encodeURIComponent(code)}`;
+  window.open(url, "_blank");
+
+  // Let the backend handle status update based on package match
+  setTimeout(() => {
+    fetchOrdersByCode(code);  // Just refresh the UI after a short delay
+  }, 3000);
+}
+
+
+// ✅ Update Badges
+async function updateOrderBadges() {
+  try {
+    const res = await fetch("https://vendor.sandipay.co/api/get-pending-counts");
+    const data = await res.json();
+    document.getElementById("mtnBadge").innerText = data.MTN || 0;
+    document.getElementById("telecelBadge").innerText = data.TELECEL || 0;
+    document.getElementById("atBadge").innerText = data.AT || 0;
+  } catch (err) {
+    console.error("❌ Failed to load badge counts:", err);
+  }
+}
+
+// ✅ On Page Load
+document.addEventListener("DOMContentLoaded", () => {
+  updateOrderBadges();
+  fetchGroups("mtn");
+  fetchGroups("airteltigo");
+  fetchGroups("telecel");
+
+  // ✅ If user already typed a code, fetch matching orders by code
+  const code = document.getElementById("codeInput").value.trim();
+  if (code) {
+    fetchOrdersByCode(code);
+  }
+});
+</script>
+
+</body>
+</html>

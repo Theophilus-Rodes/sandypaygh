@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vendor Transactions</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f8f9fa;
+      padding: 20px;
+    }
+
+    header {
+      font-size: 26px;
+      font-weight: bold;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .section {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      margin-bottom: 30px;
+      padding: 20px;
+    }
+
+    h2 {
+      font-size: 20px;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 6px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
+    }
+
+    th {
+      background-color: #0a0f5a;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <header>Vendor Transactions</header>
+
+  <div class="section" id="dataOrdersSection">
+    <h2>Data Orders</h2>
+    <table id="dataOrdersTable"></table>
+  </div>
+
+  <div class="section" id="afaOrdersSection">
+    <h2>AFA Orders</h2>
+    <table id="afaOrdersTable"></table>
+  </div>
+
+  <div class="section" id="walletLoadsSection">
+    <h2>Wallet Load History</h2>
+    <table id="walletLoadsTable"></table>
+  </div>
+
+  <div class="section" id="withdrawalsSection">
+    <h2>Withdrawals</h2>
+    <table id="withdrawalsTable"></table>
+  </div>
+
+ <script>
+  const vendorId = new URLSearchParams(window.location.search).get("vendor_id");
+
+  if (!vendorId) {
+    alert("❌ Vendor ID is missing in the URL.\nPlease open the correct link with ?vendor_id=...");
+    throw new Error("Vendor ID missing from URL");
+  }
+
+  function createTable(tableId, headers, rows) {
+    const table = document.getElementById(tableId);
+    table.innerHTML = `
+      <thead>
+        <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
+      </thead>
+      <tbody>
+        ${rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('')}
+      </tbody>`;
+  }
+
+  async function loadTransactions() {
+    try {
+      const res = await fetch("https://vendor.sandipay.co/api/vendor-transactions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ vendor_id: vendorId })  // ✅ Valid vendor_id used
+      });
+
+      const data = await res.json();
+
+      createTable("dataOrdersTable", ["Network", "Volume", "Recipient", "Status", "Payment", "Created At"],
+        data.data_orders.map(r => [r.network, r.data_package, r.recipient_number, r.status, r.payment, r.created_at])
+      );
+
+      createTable("afaOrdersTable", ["Full Name", "ID Number", "Phone", "Region", "Occupation", "Status", "Created At"],
+        data.afa_requests.map(r => [r.fullname, r.id_number, r.phone_number, r.region, r.occupation, r.status, r.created_at])
+      );
+
+      createTable("walletLoadsTable", ["Amount", "MoMo", "Date Loaded"],
+        data.wallet_loads.map(r => [r.amount, r.momo, r.date_loaded])
+      );
+
+      createTable("withdrawalsTable", ["Amount", "MoMo", "Status", "Requested At"],
+        data.withdrawals.map(r => [r.amount, r.momo_number, r.status, r.requested_at])
+      );
+
+    } catch (err) {
+      alert("❌ Failed to load transactions");
+      console.error(err);
+    }
+  }
+
+  window.onload = loadTransactions;
+</script>
+
+</body>
+</html>

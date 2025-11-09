@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buy Data - Sandypay</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .package-card {
+      background: #f9f9f9;
+      margin: 10px auto;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    .modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+
+    .modal-content {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      width: 90%;
+      max-width: 350px;
+      text-align: center;
+    }
+
+    .modal-content input {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    .modal-content button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 8px;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .modal-content .confirm-btn {
+      background-color: #0a0f5a;
+      color: white;
+    }
+
+    .modal-content .cancel-btn {
+      background-color: #ccc;
+    }
+
+    /* Coming Soon Modal Styles */
+    #comingSoonModal .modal-content h3 {
+      margin-bottom: 10px;
+      color: #0a0f5a;
+    }
+
+    #comingSoonModal .modal-content p {
+      font-size: 15px;
+      color: #555;
+    }
+
+    #comingSoonModal .modal-content button {
+      background-color: #2563eb;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <header id="vendorName" style="font-weight: bold; font-size: 20px;">Loading...</header>
+
+  <nav>
+    <a href="#" onclick="goToTab('data.html')" class="active">Data</a>
+    <a href="#" onclick="goToTab('afa.html')">AFA</a>
+    <a href="#" onclick="goToTab('order.html')">Order Status</a>
+  </nav>
+
+  <main>
+    <!-- ✅ Button updated to trigger modal -->
+    <button class="main-button" onclick="showComingSoon()">JOIN WHATSAPP GROUP</button>
+    <div class="section-title">Buy Data</div>
+
+    <div class="network-card">
+      <h3>MTN</h3>
+      <button onclick="fetchPackages('mtn')">BUY NOW</button>
+    </div>
+    <div class="network-card">
+      <h3>TELECEL</h3>
+      <button onclick="fetchPackages('telecel')">BUY NOW</button>
+    </div>
+    <div class="network-card">
+      <h3>AT NON EXPIRY</h3>
+      <button onclick="fetchPackages('airteltigo')">BUY NOW</button>
+    </div>
+
+    <div id="packagesContainer"></div>
+  </main>
+
+  <!-- ✅ Purchase Modal -->
+  <div id="purchaseModal" class="modal">
+    <div class="modal-content">
+      <h3 id="planTitle"></h3>
+      <input type="text" id="recipientInput" placeholder="Enter recipient number">
+      <input type="text" id="momoInput" placeholder="Enter your MoMo number">
+      <button class="confirm-btn" onclick="submitOrder()">Confirm</button>
+      <button class="cancel-btn" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+
+  
+
+
+  <script>
+    const vendorId = new URLSearchParams(window.location.search).get('vendor_id');
+    let selectedDataPlan = '';
+    let selectedAmount = 0;
+    let selectedNetwork = '';
+
+    function fetchPackages(network) {
+      selectedNetwork = network;
+      if (!vendorId) return alert("Vendor ID missing in URL");
+      fetch("https://vendor.sandipay.co/api/get-packages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendor_id: vendorId, network })
+      })
+      .then(res => res.json())
+      .then(data => {
+        const container = document.getElementById("packagesContainer");
+        container.innerHTML = "";
+        if (!data.length) return container.innerHTML = "<p>No packages found.</p>";
+        data.forEach(pkg => {
+          const card = document.createElement("div");
+          card.className = "package-card";
+          card.innerHTML = `
+            <strong>${pkg.data_package}</strong><br>
+            Price: GHS ${pkg.amount}<br><br>
+            <button onclick="showPurchaseForm('${pkg.data_package}', ${pkg.amount})">Select</button>
+          `;
+          container.appendChild(card);
+        });
+      })
+      .catch(err => {
+        console.error(err);
+        alert("Failed to fetch packages");
+      });
+    }
+
+    function showPurchaseForm(dataPlan, amount) {
+      selectedDataPlan = dataPlan;
+      selectedAmount = amount;
+      document.getElementById("planTitle").innerText = `Buy ${dataPlan} for GHS ${amount}`;
+      document.getElementById("recipientInput").value = '';
+      document.getElementById("momoInput").value = '';
+      document.getElementById("purchaseModal").style.display = "flex";
+    }
+
+    function closeModal() {
+      document.getElementById("purchaseModal").style.display = "none";
+    }
+
+   function submitOrder() {
+  const recipient = document.getElementById("recipientInput").value.trim();
+  const momo = document.getElementById("momoInput").value.trim();
+
+  if (!recipient || !momo) return alert("Fill all fields to proceed.");
+
+  // Show pending message first
+  alert("⏳ Payment Pending Approval... Please click OK and wait for approval.");
+
+  fetch("https://vendor.sandipay.co/api/place-order", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      vendor_id: vendorId,
+      network: selectedNetwork,
+      data_package: selectedDataPlan,
+      amount: selectedAmount,
+      recipient_number: recipient,
+      momo_number: momo
+    })
+  })
+  .then(res => res.text())
+  .then(message => {
+    // ✅ If payment was successful, display confirmation
+    if (message.toLowerCase().includes("success") || message.toLowerCase().includes("approved")) {
+      alert("✅ Payment made successfully");
+    }
+
+    // Start polling for approval anyway
+    checkPaymentStatus(recipient);
+    closeModal();
+  })
+  .catch(err => {
+    console.error(err);
+    alert("❌ Failed to place order.");
+  });
+}
+
+    function showComingSoon() {
+      document.getElementById("comingSoonModal").style.display = "flex";
+    }
+
+    function closeComingSoon() {
+      document.getElementById("comingSoonModal").style.display = "none";
+    }
+
+    function goToTab(page) {
+      const vendorId = new URLSearchParams(window.location.search).get("vendor_id");
+      if (!vendorId) {
+        alert("Vendor ID is missing. Please log in again.");
+        return;
+      }
+      window.location.href = `${page}?vendor_id=${vendorId}`;
+    }
+
+
+
+function showComingSoon() {
+  if (!vendorId) return alert("Vendor ID missing.");
+
+  fetch("https://vendor.sandipay.co/api/get-whatsapp-link", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vendor_id: vendorId })
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (!data.link) {
+        alert("❌ Link not set yet.");
+      } else {
+        window.open(data.link, "_blank"); // Open link in new tab
+      }
+    })
+    .catch(err => {
+      console.error("❌ Error fetching WhatsApp link:", err);
+      alert("Failed to open WhatsApp group.");
+    });
+}
+
+
+
+    function checkPaymentStatus(recipientNumber) {
+  const interval = setInterval(() => {
+    fetch("https://vendor.sandipay.co/api/check-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipient_number: recipientNumber })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.length && (data[0].status === "delivered" || data[0].status === "approved")) {
+        alert("✅ Payment Approved!");
+        clearInterval(interval);
+      }
+    })
+    .catch(err => {
+      console.error("Polling error:", err);
+    });
+  }, 4000); // Check every 4 seconds
+}
+
+  </script>
+
+
+  <script>
+window.onload = function () {
+  const vendorId = localStorage.getItem("userId");
+  console.log("Fetched vendorId from localStorage:", vendorId);
+
+  if (!vendorId) {
+    document.getElementById("vendorName").innerText = "Unknown Vendor";
+    return;
+  }
+
+  fetch("https://vendor.sandipay.co/api/fetch-vendor-name", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vendor_id: vendorId })
+  })
+  .then(res => res.json())
+  .then(data => {
+    console.log("Server returned:", data);
+    document.getElementById("vendorName").innerText = data.name || "Vendor";
+  })
+  .catch(err => {
+    console.error("Fetch error:", err);
+    document.getElementById("vendorName").innerText = "Vendor";
+  });
+};
+
+</script>
+
+
+
+
+</body>
+</html>

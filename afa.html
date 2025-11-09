@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AFA Registration - Sandypay</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background-color: rgba(0, 0, 0, 0.6);
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+    .modal-content {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      width: 90%;
+      max-width: 400px;
+      text-align: center;
+    }
+    .modal input, .modal select {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+    .modal button {
+      background: #0a0f5a;
+      color: white;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header id="vendorName" style="font-weight: bold; font-size: 20px;">Loading...</header>
+  <nav>
+    <a href="#" id="dataLink">Data</a>
+    <a href="#" class="active" id="afaLink">AFA</a>
+    <a href="#" id="orderLink">Order Status</a>
+  </nav>
+
+  <main>
+    <div class="section-title">Registration & Verification</div>
+    <p>AFA bundles are mainly for customers using MTN only. Customers pay GHS 10 cedis for registration.</p>
+
+    <form id="afaForm">
+      <label>Full name on Ghana Card</label>
+      <input type="text" id="fullname" placeholder="John Doe" required>
+
+      <label>ID number</label>
+      <input type="text" id="id_number" placeholder="GHA-XXXXXXX-X" required>
+
+      <label>Date of Birth</label>
+      <input type="date" id="dob" required>
+
+      <label>Phone Number</label>
+      <input type="tel" id="phone" required>
+
+      <label>Location</label>
+      <input type="text" id="location" required>
+
+      <label>Region</label>
+      <input type="text" id="region" required>
+
+      <label>Occupation</label>
+      <input type="text" id="occupation" placeholder="Eg. Farmer" required>
+
+      <button type="submit" class="main-button">Continue</button>
+    </form>
+  </main>
+
+  <div class="modal" id="priceDialog">
+    <div class="modal-content">
+      <h3>Registration Price</h3>
+      <p id="priceText">Loading...</p>
+      <button onclick="acceptPrice()">Yes, Proceed</button>
+    </div>
+  </div>
+
+  <div class="modal" id="paymentDialog">
+    <div class="modal-content">
+      <h3>Enter MoMo Details</h3>
+      <select id="network">
+        <option value="mtn">MTN</option>
+        <option value="airteltigo">AirtelTigo</option>
+        <option value="telecel">Telecel</option>
+      </select>
+      <input type="tel" id="momo" placeholder="Enter MoMo Number" required>
+      <button onclick="triggerAfaPayment()">Finish</button>
+    </div>
+  </div>
+
+  <script>
+    const vendorId = new URLSearchParams(window.location.search).get("vendor_id");
+    document.getElementById("dataLink").href = `data.html?vendor_id=${vendorId}`;
+    document.getElementById("afaLink").href = `afa.html?vendor_id=${vendorId}`;
+    document.getElementById("orderLink").href = `order.html?vendor_id=${vendorId}`;
+
+    function fetchAfaPriceAndShow() {
+      fetch(`https://vendor.sandipay.co/api/afa-price/${vendorId}`)
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById("priceText").innerText = `This service costs GHS ${data.price}. Do you want to proceed?`;
+          document.getElementById("priceDialog").style.display = "flex";
+        })
+        .catch(() => alert("Failed to fetch price."));
+    }
+
+    function acceptPrice() {
+      document.getElementById("priceDialog").style.display = "none";
+      document.getElementById("paymentDialog").style.display = "flex";
+    }
+
+    // AFTER user clicks Finish in the MoMo payment dialog
+function triggerAfaPayment() {
+  const network = document.getElementById("network").value;
+  const momo = document.getElementById("momo").value.trim();
+
+  const data = {
+    vendor_id: vendorId,
+    momo_number: momo,
+    network: network,
+    fullname: document.getElementById("fullname").value.trim(),
+    id_number: document.getElementById("id_number").value.trim(),
+    dob: document.getElementById("dob").value,
+    phone_number: document.getElementById("phone").value.trim(),
+    location: document.getElementById("location").value.trim(),
+    region: document.getElementById("region").value.trim(),
+    occupation: document.getElementById("occupation").value.trim()
+  };
+
+  fetch("https://vendor.sandipay.co/api/submit-afa-payment", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  })
+  .then(res => res.json())
+  .then(result => {
+    if (result.success) {
+      alert("✅ Registration successful!");
+      document.getElementById("paymentDialog").style.display = "none";
+      document.getElementById("afaForm").reset();
+    } else {
+      alert("❌ Payment failed: " + result.message);
+    }
+  })
+  .catch(err => {
+    console.error("❌ Network error:", err);
+    alert("❌ Could not complete payment.");
+  });
+}
+
+
+
+    function submitAfaForm() {
+      const data = {
+        vendor_id: vendorId,
+        fullname: document.getElementById("fullname").value.trim(),
+        id_number: document.getElementById("id_number").value.trim(),
+        dob: document.getElementById("dob").value,
+        phone_number: document.getElementById("phone").value.trim(),
+        location: document.getElementById("location").value.trim(),
+        region: document.getElementById("region").value.trim(),
+        occupation: document.getElementById("occupation").value.trim()
+      };
+
+      fetch("https://vendor.sandipay.co/api/submit-afa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      })
+      .then(res => res.text())
+      .then(alert)
+      .catch(err => {
+        console.error(err);
+        alert("Failed to submit AFA request.");
+      });
+    }
+
+    document.getElementById("afaForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      fetchAfaPriceAndShow();
+    });
+
+    window.onload = function () {
+      const vendorId = localStorage.getItem("userId");
+      if (!vendorId) {
+        document.getElementById("vendorName").innerText = "Unknown Vendor";
+        return;
+      }
+
+      fetch("https://vendor.sandipay.co/api/fetch-vendor-name", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendor_id: vendorId })
+      })
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById("vendorName").innerText = data.name || "Vendor";
+      })
+      .catch(() => {
+        document.getElementById("vendorName").innerText = "Vendor";
+      });
+    };
+  </script>
+</body>
+</html>

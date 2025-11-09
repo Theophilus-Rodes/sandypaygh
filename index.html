@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login | Sandypay Portal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    body {
+      background: linear-gradient(135deg, #0a0f5a, #3a7bd5);
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .login-container {
+      width: 380px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 40px 30px;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.2);
+      text-align: center;
+      color: #fff;
+      animation: fadeIn 0.8s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    h2 {
+      font-size: 22px;
+      margin-bottom: 25px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .input-group {
+      text-align: left;
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 5px;
+      color: #e4e4e4;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.2);
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+      transition: all 0.3s ease;
+    }
+
+    input::placeholder {
+      color: #ddd;
+    }
+
+    input:focus, select:focus {
+      background: rgba(255, 255, 255, 0.3);
+      border: 1px solid #fff;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #fff;
+      color: #0a0f5a;
+      font-weight: bold;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: 0.3s ease;
+    }
+
+    button:hover {
+      background: #3a7bd5;
+      color: #fff;
+    }
+
+    .forgot {
+      margin-top: 15px;
+      font-size: 13px;
+    }
+
+    .forgot a {
+      color: #fff;
+      text-decoration: underline;
+    }
+
+    /* Background watermark */
+    .background-label {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 90px;
+      color: rgba(255, 255, 255, 0.05);
+      font-weight: 700;
+      user-select: none;
+    }
+
+    /* Alert Modal */
+    .alert-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.4);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+
+    .alert-box {
+      background-color: #fff;
+      padding: 25px 30px;
+      border-radius: 12px;
+      text-align: center;
+      max-width: 320px;
+      color: #111;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+      animation: pop 0.3s ease;
+    }
+
+    @keyframes pop {
+      from { transform: scale(0.8); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .alert-box button {
+      margin-top: 15px;
+      background-color: #0a0f5a;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .alert-box button:hover {
+      background: #3a7bd5;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="login-container">
+    <h2>Login to Account</h2>
+    <form id="loginForm">
+      <div class="input-group">
+        <label>Username</label>
+        <input type="text" id="username" placeholder="Enter your username" required>
+      </div>
+
+      <div class="input-group">
+        <label>PIN</label>
+        <input type="password" id="pin" placeholder="Enter your PIN" required>
+      </div>
+
+      <div class="input-group">
+        <label>Login as</label>
+        <select id="role" required>
+          <option value="" disabled selected>Select Role</option>
+          <option value="admin">ADMIN</option>
+          <option value="vendor">VENDOR</option>
+        </select>
+      </div>
+
+      <button type="submit">LOGIN</button>
+      <p class="forgot">Forgot PIN? <a href="reset.html">Reset</a></p>
+    </form>
+  </div>
+
+  <div class="background-label">SANDYPAY</div>
+
+  <!-- Alert Modal -->
+  <div class="alert-modal" id="alertModal">
+    <div class="alert-box">
+      <p id="alertMessage">Login successful!</p>
+      <button onclick="closeAlert()">OK</button>
+    </div>
+  </div>
+
+  <script>
+    function showAlert(message, isSuccess = true, callback = null) {
+      const alertModal = document.getElementById("alertModal");
+      const alertMsg = document.getElementById("alertMessage");
+      alertMsg.innerText = message;
+      alertMsg.style.color = isSuccess ? "#111" : "#cc0000";
+      alertModal.style.display = "flex";
+      window._alertCallback = callback;
+    }
+
+    function closeAlert() {
+      document.getElementById("alertModal").style.display = "none";
+      if (typeof window._alertCallback === "function") {
+        window._alertCallback();
+        window._alertCallback = null;
+      }
+    }
+
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const username = document.getElementById("username").value.trim();
+      const pin = document.getElementById("pin").value.trim();
+      const role = document.getElementById("role").value;
+
+      try {
+        const response = await fetch("http://localhost:3000/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, pin, role })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          showAlert(errorText, false);
+          return;
+        }
+
+        const data = await response.json();
+        localStorage.setItem("username", data.username);
+        localStorage.setItem("userId", data.id);
+        localStorage.setItem("role", data.role);
+
+        showAlert("✅ Login successful", true, () => {
+          if (data.role === "admin") {
+            window.location.href = "admindashboard.html";
+          } else {
+            localStorage.setItem("vendor_id", data.id);
+            window.location.href = `VENDORDASHBOARD.html?id=${data.id}`;
+          }
+        });
+      } catch (err) {
+        showAlert("Login failed. Please try again.", false);
+      }
+    });
+  </script>
+</body>
+</html>

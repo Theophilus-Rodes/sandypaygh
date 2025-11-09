@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Orders</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f3f6fb;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 50px auto;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+
+    .header {
+      background: #0a0f5c;
+      color: white;
+      text-align: center;
+      padding: 20px;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    .tabs {
+      display: flex;
+      justify-content: space-around;
+      border-bottom: 2px solid #eee;
+      background: #f9f9f9;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .tab.active {
+      background: #ff9900;
+      color: white;
+    }
+
+    .order-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 15px;
+      padding: 20px;
+    }
+
+    .order-item {
+      background: #f9f9f9;
+      border: 1px solid #ddd;
+      padding: 15px;
+      border-radius: 8px;
+    }
+
+    .label {
+      display: inline-block;
+      min-width: 90px;
+      font-weight: bold;
+      color: #0a0f5c;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">ADMIN ORDER HISTORY</div>
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('mtn', this)">MTN</div>
+      <div class="tab" onclick="switchTab('telecel', this)">TELECEL</div>
+      <div class="tab" onclick="switchTab('airteltigo', this)">AIRTELTIGO</div>
+    </div>
+    <div class="order-list" id="orderList">
+      <div>Loading orders...</div>
+    </div>
+  </div>
+
+  <script>
+    let currentTab = 'mtn';
+
+    function switchTab(network, tabElement) {
+      currentTab = network;
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      tabElement.classList.add('active');
+      fetchAdminOrders(network);
+    }
+
+    async function fetchAdminOrders(network) {
+      try {
+        const res = await fetch(`https://vendor.sandipay.co/api/get-admin-orders?network=${network}`);
+        const data = await res.json();
+
+        const orderList = document.getElementById("orderList");
+        if (!data.length) {
+          orderList.innerHTML = '<div>No admin orders found for ' + network.toUpperCase() + '.</div>';
+          return;
+        }
+
+        orderList.innerHTML = data.map(order => `
+          <div class="order-item">
+            <div><span class="label">Package:</span> ${order.data_package}</div>
+            <div><span class="label">Price:</span> GHS ${parseFloat(order.amount).toFixed(2)}</div>
+          </div>
+        `).join('');
+      } catch (err) {
+        console.error("Error fetching orders:", err);
+        document.getElementById("orderList").innerHTML = '<div>Failed to load orders.</div>';
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => fetchAdminOrders(currentTab));
+  </script>
+</body>
+</html>

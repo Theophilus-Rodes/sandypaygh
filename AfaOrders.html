@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin AFA Orders</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+
+    header {
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 20px;
+    }
+
+    button {
+      background-color: #0a0f5a;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 20px;
+    }
+
+    .package-block {
+      background: #f2f2f2;
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: center;
+    }
+
+    th {
+      background-color: #0a0f5a;
+      color: white;
+    }
+
+    #badgeContainer {
+      position: relative;
+      display: inline-block;
+    }
+
+    #pendingBadge {
+      position: absolute;
+      top: -10px;
+      right: -10px;
+      background: red;
+      color: white;
+      border-radius: 50%;
+      padding: 4px 8px;
+      font-size: 12px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <header>Admin AFA Orders</header>
+
+  <div id="badgeContainer">
+    <span id="pendingBadge">0</span>
+    <button onclick="downloadAfaOrders()">📅 Download Pending as Excel</button>
+  </div>
+
+  <div id="packagesContainer">Loading...</div>
+
+  <script>
+    function fetchPendingCount() {
+      fetch("https://vendor.sandipay.co/api/afa-admin-pending-count")
+        .then(res => res.json())
+        .then(data => {
+          const badge = document.getElementById("pendingBadge");
+          if (data.count > 0) {
+            badge.textContent = data.count;
+            badge.style.display = "inline-block";
+          } else {
+            badge.style.display = "none";
+          }
+        })
+        .catch(err => {
+          console.error("Failed to fetch pending count", err);
+        });
+    }
+
+    function fetchProcessingOrders() {
+      fetch("https://vendor.sandipay.co/api/afa-admin-processing", {
+        method: "POST"
+      })
+      .then(res => res.json())
+      .then(data => {
+        const container = document.getElementById("packagesContainer");
+        container.innerHTML = "";
+
+        const grouped = {};
+        data.forEach(row => {
+          if (!grouped[row.package_id]) grouped[row.package_id] = [];
+          grouped[row.package_id].push(row);
+        });
+
+        Object.entries(grouped).forEach(([packageId, rows]) => {
+          const block = document.createElement("div");
+          block.className = "package-block";
+
+          const header = document.createElement("div");
+          header.innerHTML = `
+            <strong>Package:</strong> ${packageId}
+            <button onclick="markDelivered('${packageId}')">✅ Mark Delivered</button>
+          `;
+
+          const table = document.createElement("table");
+          table.innerHTML = `
+            <thead>
+              <tr>
+                <th>Full Name</th><th>ID Number</th><th>DOB</th><th>Phone</th>
+                <th>Location</th><th>Region</th><th>Occupation</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(row => `
+                <tr>
+                  <td>${row.fullname}</td>
+                  <td>${row.id_number}</td>
+                  <td>${row.dob}</td>
+                  <td>${row.phone_number}</td>
+                  <td>${row.location}</td>
+                  <td>${row.region}</td>
+                  <td>${row.occupation}</td>
+                  <td>${row.status}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          `;
+
+          block.appendChild(header);
+          block.appendChild(table);
+          container.appendChild(block);
+        });
+      })
+      .catch(err => {
+        console.error(err);
+        alert("❌ Failed to load processing orders");
+      });
+    }
+
+    function markDelivered(packageId) {
+      fetch("https://vendor.sandipay.co/api/afa-mark-delivered", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ package_id: packageId })
+      })
+      .then(res => res.text())
+      .then(msg => {
+        alert(msg);
+        fetchProcessingOrders();
+        fetchPendingCount();
+      })
+      .catch(() => alert("❌ Failed to mark delivered"));
+    }
+
+    function downloadAfaOrders() {
+      window.open("https://vendor.sandipay.co/api/admin-export-afa-orders", "_blank");
+      setTimeout(() => fetchPendingCount(), 2000);
+    }
+
+    window.onload = () => {
+      fetchProcessingOrders();
+      fetchPendingCount();
+    };
+  </script>
+</body>
+</html>

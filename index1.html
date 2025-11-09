@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vendor Services - Sandypay</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    header {
+      background-color: #1e3a8a;
+      color: white;
+      padding: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    .menu-icon {
+      font-size: 20px;
+      cursor: pointer;
+    }
+
+    .menu-dropdown {
+      position: absolute;
+      top: 55px;
+      left: 10px;
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+      display: none;
+      z-index: 100;
+      padding: 10px;
+      width: 160px;
+    }
+
+    .menu-dropdown a {
+      display: block;
+      padding: 8px 10px;
+      text-decoration: none;
+      color: #1e3a8a;
+      font-weight: 500;
+    }
+
+    .menu-dropdown a:hover {
+      background-color: #f0f4ff;
+    }
+
+    .service-card {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    }
+
+    .icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      margin-right: 15px;
+    }
+
+    .service-text a {
+      text-decoration: none;
+      color: #111827;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="menu-icon" onclick="toggleMenu()">&#8942;</div>
+     <header id="vendorName" style="font-weight: bold; font-size: 20px;">Loading...</header>
+    <div style="width: 24px;"></div>
+    <div id="menuDropdown" class="menu-dropdown">
+      <a href="#">Vendor Site Logins</a>
+    </div>
+  </header>
+
+  <main style="padding: 20px;">
+    <h2 style="color: #1e3a8a;">Services</h2>
+
+    <div class="service-card">
+      <div class="icon">📶</div>
+      <div class="service-text">
+        <a href="#" onclick="loadPackages('mtn')">BUY MTN DATA</a>
+      </div>
+    </div>
+
+    <div class="service-card">
+      <div class="icon">🛒</div>
+      <div class="service-text">
+        <a href="#" onclick="loadPackages('telecel')">BUY TELECEL DATA</a>
+      </div>
+    </div>
+
+    <div class="service-card">
+      <div class="icon">🏢</div>
+      <div class="service-text">
+        <a href="#" onclick="loadPackages('airteltigo')">BUY AT DATA</a>
+      </div>
+    </div>
+
+    <div style="margin-top: 30px; text-align: center;">
+      <a href="#" style="color: #1e40af; font-weight: 500; text-decoration: underline;">
+        Click to join Our WhatsApp Community
+      </a>
+    </div>
+  </main>
+
+  <script>
+    function toggleMenu() {
+      const menu = document.getElementById('menuDropdown');
+      menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    }
+
+    window.onclick = function(e) {
+      if (!e.target.matches('.menu-icon')) {
+        document.getElementById('menuDropdown').style.display = 'none';
+      }
+    };
+
+    function loadPackages(network) {
+      const params = new URLSearchParams(window.location.search);
+      const vendorId = params.get("id");
+
+      if (!vendorId) {
+        alert("Vendor ID missing in URL");
+        return;
+      }
+
+      // Redirect to vendor-specific package page
+      window.location.href = `data.html?vendor_id=${vendorId}&network=${network}`;
+    }
+  </script>
+
+
+    <script>
+window.onload = function () {
+  const vendorId = localStorage.getItem("userId");
+  console.log("Fetched vendorId from localStorage:", vendorId);
+
+  if (!vendorId) {
+    document.getElementById("vendorName").innerText = "Unknown Vendor";
+    return;
+  }
+
+  fetch("https://vendor.sandipay.co/api/fetch-vendor-name", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vendor_id: vendorId })
+  })
+  .then(res => res.json())
+  .then(data => {
+    console.log("Server returned:", data);
+    document.getElementById("vendorName").innerText = data.name || "Vendor";
+  })
+  .catch(err => {
+    console.error("Fetch error:", err);
+    document.getElementById("vendorName").innerText = "Vendor";
+  });
+};
+
+</script>
+
+
+</body>
+</html>

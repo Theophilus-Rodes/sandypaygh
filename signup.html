@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Create Account</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="nav-bar">
+      <span class="menu-icon">&#9776;</span>
+      <span class="power-icon">&#x23FB;</span>
+    </div>
+    <h1>CREATE ACCOUNT</h1>
+    <p class="subtitle">FOR USER AND ADMIN</p>
+  </header>
+
+  <div class="form-container">
+    <form id="signupForm">
+      <input type="text" id="username" placeholder="Business name" required />
+      <input type="email" id="email" placeholder="Email" required />
+      <input type="tel" id="phone" placeholder="Phone number" required />
+      <input type="password" id="password" placeholder="PIN" required />
+      <input type="password" id="confirmpin" placeholder="Confirm PIN" required />
+
+      <label for="accountType">Registering as:</label>
+      <select id="accountType" name="accountType" required>
+        <option value="" disabled selected>Select role</option>
+        <option value="vendor">Vendor</option>
+        <option value="admin">Admin</option>
+      </select>
+
+      <button type="submit">CREATE</button>
+    </form>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const form = document.getElementById("signupForm");
+
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+
+        const username = document.getElementById("username").value.trim();
+        const phone = document.getElementById("phone").value.trim();
+        const sender_id = document.getElementById("email").value.trim();
+        const password = document.getElementById("password").value.trim();
+        const confirmpin = document.getElementById("confirmpin").value.trim();
+        const role = document.getElementById("accountType").value;
+
+        // ✅ Check if PINs match
+        if (password !== confirmpin) {
+          alert("PINs do not match!");
+          return;
+        }
+
+        // ✅ Prevent use of '0000' as PIN
+        if (password === "0000") {
+          alert("You cannot use '0000' as your PIN. Please choose a different one.");
+          return;
+        }
+
+        try {
+          const response = await fetch("https://vendor.sandipay.co/api/register", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              username,
+              phone,
+              sender_id,
+              password,
+              role
+            })
+          });
+
+          const result = await response.text();
+          alert(result);
+          form.reset();
+        } catch (err) {
+          alert("Something went wrong: " + err.message);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

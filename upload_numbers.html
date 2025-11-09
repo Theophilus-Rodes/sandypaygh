@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Upload Telephone Numbers</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6fa;
+      margin: 0;
+      padding: 30px;
+    }
+    h2 {
+      text-align: center;
+      color: #333;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    input[type="file"], input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    .divider {
+      text-align: center;
+      margin: 20px 0;
+      font-weight: bold;
+      color: #777;
+    }
+    #message {
+      text-align: center;
+      margin-top: 20px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h2>Upload Telephone Numbers</h2>
+  <div class="container">
+    <!-- Upload Excel -->
+    <form id="excelForm">
+      <label>Select Excel File (.xlsx or .xls)</label>
+      <input type="file" id="excelFile" name="excelFile" accept=".xlsx,.xls" required />
+      <button type="submit">Upload File</button>
+    </form>
+
+    <div class="divider">OR</div>
+
+    <!-- Manual Input -->
+    <form id="manualForm">
+      <label>Enter Phone Number</label>
+      <input type="text" id="phone_number" placeholder="e.g. 0241234567" required />
+      <button type="submit">Add Number</button>
+    </form>
+
+    <div id="message"></div>
+  </div>
+
+  <script>
+    // 📁 Handle Excel Upload
+    document.getElementById("excelForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fileInput = document.getElementById("excelFile");
+      const formData = new FormData();
+      formData.append("excelFile", fileInput.files[0]);
+
+      const res = await fetch("http://localhost:3000/api/upload-numbers", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      document.getElementById("message").innerText = data.message || data.error;
+    });
+
+    // 🖊️ Handle Manual Add
+    document.getElementById("manualForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const phone = document.getElementById("phone_number").value.trim();
+
+      const res = await fetch("http://localhost:3000/api/add-number", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone_number: phone }),
+      });
+      const data = await res.json();
+      document.getElementById("message").innerText = data.message || data.error;
+      document.getElementById("phone_number").value = "";
+    });
+  </script>
+</body>
+</html>

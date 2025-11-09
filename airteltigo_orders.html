@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AirtelTigo Orders - Sandypay</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+
+    header {
+      background-color: #1e3a8a;
+      color: white;
+      padding: 12px 20px;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    h2 {
+      margin-top: 20px;
+      color: #1e3a8a;
+    }
+
+    .download-btn {
+      background-color: #0a0f5a;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      margin: 15px 0;
+      cursor: pointer;
+    }
+
+    .package-block {
+      background-color: #eef1f7;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 20px;
+    }
+
+    .package-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .package-label {
+      font-weight: bold;
+      color: #0a0f5a;
+    }
+
+    .toggle-btn, .action-btn {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-left: 8px;
+    }
+
+    .toggle-btn {
+      background-color: #1e3a8a;
+      color: white;
+    }
+
+    .action-btn {
+      background-color: green;
+      color: white;
+    }
+
+    .package-orders {
+      margin-top: 10px;
+      width: 100%;
+      border-collapse: collapse;
+      display: none;
+    }
+
+    .package-orders th, .package-orders td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+    }
+
+    .package-orders th {
+      background-color: #1e3a8a;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <header>SandypayDataServices</header>
+
+  <main>
+    <h2>AirtelTigo Orders</h2>
+    <button class="download-btn" onclick="downloadExcel()">Download Pending as Excel</button>
+
+    <div style="margin-top: 20px;">
+  <label for="generatedCode">Generated Code:</label><br>
+  <input type="text" id="generatedCode" readonly style="padding: 8px; width: 200px; margin-top: 5px;" />
+  <button onclick="generateAndSubmitAirtelCode()" style="padding: 8px 16px; background-color: #1e3a8a; color: white; border: none; border-radius: 5px; margin-left: 10px;">Generate Code</button>
+</div>
+    <div id="packagesContainer"></div>
+  </main>
+
+  <script>
+    const vendorId = new URLSearchParams(window.location.search).get("vendor_id");
+    if (!vendorId) alert("Vendor ID is missing in the URL.");
+
+    function loadOrders() {
+      fetch("https://vendor.sandipay.co/api/airteltigo-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendor_id: vendorId })
+      })
+      .then(res => res.json())
+      .then(data => {
+        const container = document.getElementById("packagesContainer");
+        container.innerHTML = "";
+
+        if (!data.length) {
+          container.innerHTML = "<p>No orders found.</p>";
+          return;
+        }
+
+        const grouped = {};
+        data.forEach(order => {
+          const key = order.package_id || "Unpackaged";
+          if (!grouped[key]) grouped[key] = [];
+          grouped[key].push(order);
+        });
+
+        Object.entries(grouped).forEach(([packageId, orders]) => {
+  if (packageId === "Unpackaged") return; //
+          const block = document.createElement("div");
+          block.className = "package-block";
+
+          const header = document.createElement("div");
+          header.className = "package-header";
+          header.innerHTML = `
+            <span class="package-label">Package: ${packageId === 'Unpackaged' ? 'Not Yet Downloaded' : packageId}</span>
+            <div>
+              <button class="toggle-btn" onclick="toggleDetails('${packageId}')">View Package</button>
+              ${orders[0].status !== 'delivered' ? 
+                `<button class="action-btn" onclick="markPackageDelivered('${packageId}')">Mark Delivered</button>` 
+                : '<span style="color: green; font-weight: bold;">Delivered</span>'
+              }
+            </div>
+          `;
+
+          const table = document.createElement("table");
+          table.className = "package-orders";
+          table.id = `details-${packageId}`;
+          table.innerHTML = `
+            <thead>
+              <tr><th>Date</th><th>Recipient</th><th>Package</th><th>Amount</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              ${orders.map(o => `
+                <tr>
+                  <td>${o.created_at}</td>
+                  <td>${o.recipient_number}</td>
+                  <td>${o.data_package}</td>
+                  <td>GHS ${o.amount}</td>
+                  <td>${o.status}</td>
+                </tr>`).join('')}
+            </tbody>
+          `;
+
+          block.appendChild(header);
+          block.appendChild(table);
+          container.appendChild(block);
+        });
+      })
+      .catch(err => {
+        console.error(err);
+        alert("Error loading orders: " + err.message);
+      });
+    }
+
+    function toggleDetails(packageId) {
+      const table = document.getElementById(`details-${packageId}`);
+      table.style.display = table.style.display === "none" ? "table" : "none";
+    }
+
+    function markPackageDelivered(packageId) {
+      fetch("https://vendor.sandipay.co/api/mark-package-delivered", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ package_id: packageId })
+      })
+      .then(res => res.text())
+      .then(msg => {
+        alert(msg);
+        loadOrders();
+      })
+      .catch(err => {
+        console.error("Failed to mark as delivered:", err);
+        alert("Failed to update package.");
+      });
+    }
+
+    function downloadExcel() {
+      window.open(`https://vendor.sandipay.co/api/export-airtel-orders?vendor_id=${vendorId}`, "_blank");
+
+      setTimeout(() => {
+        fetch("https://vendor.sandipay.co/api/set-processing-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vendor_id: vendorId, network: "airteltigo" })
+        })
+        .then(res => res.text())
+        .then(msg => {
+          console.log(msg);
+          loadOrders();
+        })
+        .catch(err => {
+          console.error("Failed to update status to processing:", err);
+        });
+      }, 2000);
+    }
+
+
+
+    function generateAndSubmitAirtelCode() {
+  const code = "ATL-" + Math.random().toString(36).substring(2, 8).toUpperCase(); // Example: ATL-R8D2K3
+  document.getElementById("generatedCode").value = code;
+
+  fetch("https://vendor.sandipay.co/api/insert-airteltigo-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vendor_id: vendorId, code })
+  })
+  .then(res => res.json())
+  .then(data => {
+    alert(data.message);
+    loadOrders(); // reload orders list
+  })
+  .catch(err => {
+    console.error(err);
+    alert("Error sending code to backend.");
+  });
+}
+
+
+    loadOrders();
+  </script>
+</body>
+</html>

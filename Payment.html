@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Withdrawal Requests</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f2f2f2;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h2 {
+      text-align: center;
+      color: #0a0f5a;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      margin-top: 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    th, td {
+      padding: 12px;
+      border: 1px solid #ddd;
+      text-align: center;
+      font-size: 15px;
+    }
+
+    th {
+      background: #0a0f5a;
+      color: white;
+    }
+
+    button {
+      padding: 6px 12px;
+      background: #27ae60;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .status-paid {
+      color: green;
+      font-weight: bold;
+    }
+
+    .status-pending {
+      color: red;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Withdrawal Requests</h2>
+
+  <table id="withdrawalTable">
+    <thead>
+      <tr>
+        <th>Vendor Name</th>
+        <th>MoMo Number</th>
+        <th>Network</th>
+        <th>Amount (GHS)</th>
+        <th>Status</th>
+        <th>Requested At</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- JS will populate rows here -->
+    </tbody>
+  </table>
+
+  <script>
+    function fetchWithdrawals() {
+      fetch("https://vendor.sandipay.co/api/withdrawal-requests")
+        .then(res => res.json())
+        .then(data => {
+          const tbody = document.querySelector("#withdrawalTable tbody");
+          tbody.innerHTML = "";
+
+          data.forEach(row => {
+            const tr = document.createElement("tr");
+
+            tr.innerHTML = `
+              <td>${row.vendor_name}</td>
+              <td>${row.momo_number}</td>
+              <td>${row.network.toUpperCase()}</td>
+              <td>${parseFloat(row.amount).toFixed(2)}</td>
+              <td class="${row.status === 'paid' ? 'status-paid' : 'status-pending'}">${row.status}</td>
+              <td>${row.requested_at}</td>
+              <td>
+                <button onclick="markAsPaid(${row.id}, this)" ${row.status === 'paid' ? "disabled" : ""}>PAID</button>
+              </td>
+            `;
+
+            tbody.appendChild(tr);
+          });
+        })
+        .catch(err => {
+          alert("Failed to load withdrawal requests.");
+          console.error(err);
+        });
+    }
+
+    function markAsPaid(id, btn) {
+      fetch("https://vendor.sandipay.co/api/mark-withdrawal-paid", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id })
+      })
+      .then(res => res.text())
+      .then(msg => {
+        alert(msg);
+        fetchWithdrawals(); // Refresh table
+      })
+      .catch(err => {
+        console.error("Error updating status:", err);
+        alert("Failed to mark as PAID.");
+      });
+    }
+
+    // Initial load
+    fetchWithdrawals();
+  </script>
+
+</body>
+</html>

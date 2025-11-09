@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Admin Dashboard • Sandypay</title>
+<style>
+  :root{
+    --bg:#f5f7fb; --card:#fff; --navy:#0a0f5a; --navy2:#0e1b64;
+    --ink:#0a0f5a; --muted:#6f7b95; --chip:#eef2ff; --shadow:0 8px 20px rgba(20,32,66,.08);
+    --radius:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,Arial,sans-serif;color:#22324d}
+
+  /* Shell */
+  .shell{display:grid;grid-template-columns:280px 1fr;min-height:100dvh}
+
+  /* Sidebar */
+  .sidebar{background:var(--navy);color:#eaf0ff;padding:24px 18px;position:sticky;top:0;height:100dvh}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;margin-bottom:22px}
+  .brand .dot{width:10px;height:10px;border-radius:999px;background:#4ad6ff}
+  .welcome{background:#0f1a4c;border:1px solid rgba(255,255,255,.06);padding:12px 14px;border-radius:12px;font-size:14px;margin-bottom:18px}
+  .nav{display:flex;flex-direction:column;gap:8px}
+  .nav button{all:unset;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer;color:#fff;font-weight:700}
+  .nav button:hover{background:rgba(255,255,255,.08)}
+  .logout{margin-top:auto;display:block;width:100%;border:1px solid rgba(255,255,255,.16);text-align:center;padding:10px 12px;border-radius:10px;cursor:pointer;color:#fff;font-weight:800}
+
+  /* Mobile sidebar */
+  .collapse{display:none;position:fixed;left:12px;top:12px;z-index:60;background:var(--navy);color:#fff;border:none;border-radius:12px;padding:10px 12px;cursor:pointer}
+  .sidebar.mobile{position:fixed;left:-310px;width:280px;transition:left .25s ease}
+  .sidebar.mobile.open{left:0}
+
+  /* Topbar */
+  .topbar{position:sticky;top:0;z-index:50;background:linear-gradient(90deg,var(--navy),var(--navy2));color:#fff;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;box-shadow:var(--shadow)}
+  .topbar h1{font-size:18px}
+  .tb-right{display:flex;gap:8px;align-items:center}
+  .chip{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.35);padding:8px 12px;border-radius:999px;font-weight:800;cursor:pointer}
+
+  /* Content */
+  .content{padding:18px;max-width:1200px;margin:0 auto;width:100%}
+
+  /* KPI row */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:16px 0 22px}
+  .kpi{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
+  .kpi .label{color:var(--muted);font-size:13px;font-weight:700}
+  .kpi .value{font-size:22px;font-weight:900;color:var(--ink);margin-top:6px}
+  .kpi .sub{font-size:12px;color:#7c8aa6;margin-top:2px}
+
+  /* Cards grid */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;display:flex;flex-direction:column;gap:10px}
+  .card h3{font-size:16px;color:var(--ink)}
+  .muted{color:var(--muted)}
+  .cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
+  .pill{border:0;border-radius:10px;padding:10px 12px;font-weight:900;cursor:pointer;background:#0c174f;color:#fff}
+  .pill.light{background:#eef2ff;color:#0c174f}
+  .foot{color:#8b98b8;font-size:12px;text-align:center;padding:18px 0}
+
+  /* Modals */
+  .modal{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55);align-items:center;justify-content:center;padding:16px}
+  .box{background:#fff;border-radius:16px;box-shadow:var(--shadow);width:min(420px,95vw);padding:22px;position:relative}
+  .box h3{margin:0 0 12px 0;color:var(--ink)}
+  .close-x{position:absolute;right:12px;top:8px;font-weight:900;cursor:pointer}
+  .btn-row{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+  .btn{border:0;border-radius:10px;padding:10px 14px;font-weight:800;cursor:pointer}
+  .btn.dark{background:var(--ink);color:#fff}
+  .btn.gray{background:#e7ecf7}
+  .btn.red{background:#dc3545;color:#fff}
+  .afa-input{width:100%;padding:12px;border:1px solid #cfd7ea;border-radius:10px;font-size:16px;margin-top:6px}
+
+  /* Responsive */
+  @media(max-width:1100px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:860px){
+    .shell{grid-template-columns:1fr}
+    .sidebar{position:fixed}
+    .sidebar.mobile{left:-310px}
+    .collapse{display:block}
+    .grid{grid-template-columns:1fr}
+  }
+</style>
+<script>
+  // Block back navigation (as in your original)
+  history.pushState(null,null,location.href);
+  window.onpopstate=function(){history.pushState(null,null,location.href);}
+</script>
+</head>
+<body>
+<button class="collapse" id="collapseBtn">☰</button>
+
+<div class="shell">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><span class="dot"></span> Sandypay Admin</div>
+    <div class="welcome">Welcome: <strong id="adminNameSide">Admin</strong></div>
+    <nav class="nav">
+      <button onclick="showComingSoon()">🛒 Sell</button>
+      <button onclick="goto('user.html')">👤 User</button>
+      <button onclick="goto('signup.html')">➕ Create Account</button>
+      <button onclick="goto('completed.html')">✅ Completed</button>
+      <button onclick="goto('Admindata.html')">📦 Data</button>
+      <button onclick="showAdminAfaDialog()">💳 Set AFA Price</button>
+      <button onclick="goto('AfaOrders.html')">🗂️ AFA Orders</button>
+      <button onclick="goto('Total_Amount.html')">💰 Total Amount</button>
+      <button onclick="goto('Payment.html')">💵 Payments</button>
+      <button onclick="goto('LinkCustomDomain.html')">🔗 Link Domain</button>
+      <button onclick="openAllow()">✅ Allow</button>
+    </nav>
+    
+
+    <button class="logout" onclick="openLogout()">⏻ Logout</button>
+  </aside>
+
+  <!-- Main -->
+  <main>
+    <header class="topbar">
+      <h1>Admin Dashboard</h1>
+      <div class="tb-right">
+        <div id="adminNameTop" class="chip">Welcome: Admin</div>
+        <button class="chip" onclick="goto('completed.html')">Completed</button>
+        <button class="chip" onclick="goto('Admindata.html')">Manage Data</button>
+        <button class="chip" onclick="openMenu()">Menu</button>
+      </div>
+    </header>
+
+    <section class="content">
+      <!-- KPI Row -->
+      <div class="kpis">
+        <div class="kpi">
+          <div class="label">Total Users</div>
+          <div class="value" id="kpiUsers">0</div>
+          <div class="sub">active</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Transactions</div>
+          <div class="value" id="kpiTx">0</div>
+          <div class="sub">lifetime</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Pending Orders</div>
+          <div class="value" id="kpiPending">0</div>
+          <div class="sub">all networks</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Revenue (GHS)</div>
+          <div class="value" id="kpiRevenue">0.00</div>
+          <div class="sub">today</div>
+        </div>
+      </div>
+
+      <!-- Action Cards -->
+      <div class="grid">
+        <div class="card">
+          <h3>Sell</h3>
+          <p class="muted">Create and process new sales.</p>
+          <div class="cta">
+            <button class="pill" onclick="showComingSoon()">Open Sell</button>
+            <button class="pill light" onclick="goto('Total_Amount.html')">Totals</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Users</h3>
+          <p class="muted">Manage user accounts and roles.</p>
+          <div class="cta">
+            <button class="pill" onclick="goto('user.html')">View Users</button>
+            <button class="pill light" onclick="goto('signup.html')">Create Account</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Orders</h3>
+          <p class="muted">Track completion and AFA requests.</p>
+          <div class="cta">
+            <button class="pill" onclick="goto('completed.html')">Completed</button>
+            <button class="pill light" onclick="goto('AfaOrders.html')">AFA Orders</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Data Packages</h3>
+          <p class="muted">Configure and price network bundles.</p>
+          <div class="cta">
+            <button class="pill" onclick="goto('Admindata.html')">Manage Data</button>
+            <button class="pill light" onclick="showAdminAfaDialog()">Set AFA Price</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Reports</h3>
+          <p class="muted">Export and analyze transactions.</p>
+          <div class="cta">
+            <button class="pill" onclick="goto('Total_Amount.html')">Total Amount</button>
+            <button class="pill light" onclick="goto('Payment.html')">Payments</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Shortcuts</h3>
+          <p class="muted">Your frequently used admin tools.</p>
+          <div class="cta">
+            <button class="pill light" onclick="showComingSoon()">Sell</button>
+            <button class="pill light" onclick="goto('user.html')">Users</button>
+            <button class="pill light" onclick="goto('completed.html')">Completed</button>
+            <button class="pill light" onclick="goto('LinkCustomDomain.html')">Link Domain</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+  <h3>Allow Controls</h3>
+  <p class="muted">Manage access and number lists.</p>
+  <div class="cta">
+    <button class="pill" onclick="openAllow()">Allow</button>
+    <button class="pill light" onclick="goto('signup.html')">Add New User</button>
+  </div>
+</div>
+
+
+      <div class="foot">© Sandypay Admin</div>
+    </section>
+  </main>
+</div>
+
+<!-- Logout Modal -->
+<div class="modal" id="logoutModal">
+  <div class="box">
+    <span class="close-x" onclick="closeLogout()">×</span>
+    <h3>Are you sure you want to logout?</h3>
+    <div class="btn-row">
+      <button class="btn red" onclick="logout()">Yes</button>
+      <button class="btn gray" onclick="closeLogout()">No</button>
+    </div>
+  </div>
+</div>
+
+<!-- Menu Modal -->
+<div class="modal" id="menuModal">
+  <div class="box">
+    <span class="close-x" onclick="closeMenu()">×</span>
+    <h3>Select Option</h3>
+    <div class="btn-row" style="justify-content:flex-start;gap:12px">
+      <button class="btn dark" onclick="goto('editaccount.html')">Edit Your Account</button>
+      <button class="btn dark" onclick="goto('adminpinchange.html')">Change PIN</button>
+    </div>
+  </div>
+</div>
+
+<!-- Coming Soon Modal -->
+<div class="modal" id="comingSoon">
+  <div class="box">
+    <span class="close-x" onclick="closeComingSoon()">×</span>
+    <h3>This feature will be available soon. Stay tuned!</h3>
+    <div class="btn-row"><button class="btn gray" onclick="closeComingSoon()">OK</button></div>
+  </div>
+</div>
+
+<!-- Set AFA Price Modal -->
+<div class="modal" id="adminAfaModal">
+  <div class="box">
+    <span class="close-x" onclick="closeAdminAfaDialog()">×</span>
+    <h3>Set AFA Price</h3>
+    <input type="number" id="adminAfaPriceInput" class="afa-input" placeholder="Enter price (GHS)"/>
+    <div class="btn-row"><button class="btn dark" onclick="submitAdminAfaPrice()">Save Price</button></div>
+  </div>
+</div>
+<!-- Allow Modal -->
+<div class="modal" id="allowModal">
+  <div class="box">
+    <span class="close-x" onclick="closeAllow()">×</span>
+    <h3>Allow Menu</h3>
+
+    <div class="btn-row" style="justify-content:flex-start; gap:12px; flex-wrap:wrap;">
+   <button class="btn dark" onclick="window.location.href='numbers.html'">All Numbers</button>
+
+<!-- Upload Numbers (CSV) -->
+<button class="btn dark" onclick="window.location.href='upload_numbers.html'">Upload Numbers</button>
+
+<button class="btn dark" onclick="window.location.href='upload_numbers.html'">Add New User</button>
+
+
+      <button class="btn dark" onclick="goto('signup.html')">Add New User</button>
+      <button class="btn" id="btnAllowAll">Allow For All</button>
+      <button class="btn danger" id="btnCloseLimited">Close Limited</button>
+    </div>
+
+    <!-- Optional note -->
+    <p class="muted" style="margin-top:12px;">
+      Tip: Upload a CSV with a single column of phone numbers (no headers).
+    </p>
+  </div>
+</div>
+
+<script>
+  async function allowForAll() {
+    try {
+      const r = await fetch("https://sandipay.co/api/access-mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "all" })
+      });
+      const j = await r.json();
+      alert(j.success ? "Access mode set to: Allow For All" : (j.error || "Failed"));
+    } catch (e) { alert("Failed to update mode"); }
+  }
+
+  async function closeLimited() {
+    try {
+      const r = await fetch("https://sandipay.co/api/access-mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "limited" })
+      });
+      const j = await r.json();
+      alert(j.success ? "Access mode set to: Close Limited" : (j.error || "Failed"));
+    } catch (e) { alert("Failed to update mode"); }
+  }
+</script>
+
+
+
+<script>
+  // Sidebar mobile behavior
+  const sidebar=document.getElementById('sidebar');
+  function setSidebarMode(){
+    if(window.innerWidth<=860){
+      sidebar.classList.add('mobile');
+      document.getElementById('collapseBtn').style.display='block';
+    }else{
+      sidebar.classList.remove('mobile');
+      document.getElementById('collapseBtn').style.display='none';
+    }
+  }
+  setSidebarMode(); window.addEventListener('resize',setSidebarMode);
+  document.getElementById('collapseBtn').addEventListener('click',()=>sidebar.classList.toggle('open'));
+
+  // Welcome name
+  (function initName(){
+    const name=localStorage.getItem('username')||'Admin';
+    document.getElementById('adminNameSide').textContent=name;
+    document.getElementById('adminNameTop').textContent='Welcome: '+name;
+  })();
+
+  // Nav helpers
+  function goto(url){ window.location.href=url; }
+
+  // Modals
+  function openLogout(){ document.getElementById('logoutModal').style.display='flex'; }
+  function closeLogout(){ document.getElementById('logoutModal').style.display='none'; }
+  function openMenu(){ document.getElementById('menuModal').style.display='flex'; }
+  function closeMenu(){ document.getElementById('menuModal').style.display='none'; }
+  function showComingSoon(){ document.getElementById('comingSoon').style.display='flex'; }
+  function closeComingSoon(){ document.getElementById('comingSoon').style.display='none'; }
+  function showAdminAfaDialog(){ document.getElementById('adminAfaModal').style.display='flex'; }
+  function closeAdminAfaDialog(){ document.getElementById('adminAfaModal').style.display='none'; }
+
+  // Logout
+  function logout(){ localStorage.clear(); window.location.href='index.html'; }
+
+  // AFA save
+  async function submitAdminAfaPrice(){
+    const price=document.getElementById('adminAfaPriceInput').value;
+    const user_id=localStorage.getItem('userId');
+    if(!price||!user_id){ alert('Please enter price and ensure you are logged in.'); return; }
+    try{
+      const res=await fetch('https://vendor.sandipay.co/api/afa-price/admin',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({user_id,price})
+      });
+      const data=await res.json();
+      alert(data.message||'Saved.');
+      closeAdminAfaDialog();
+    }catch(e){ alert('Failed to set AFA price.'); }
+  }
+
+  // KPI demo (replace with real endpoint)
+  ;(function loadKPIs(){
+    // Example—wire to your backend if available:
+    // fetch('https://vendor.sandipay.co/api/admin-kpis').then(r=>r.json()).then(k=>{
+    //   setKPIs(k.users,k.transactions,k.pending,k.revenue_today);
+    // });
+    setKPIs(128,4321,37,1540.75); // Demo; remove after wiring
+  })();
+  function setKPIs(users,tx,pending,rev){
+    document.getElementById('kpiUsers').textContent=(users||0).toLocaleString();
+    document.getElementById('kpiTx').textContent=(tx||0).toLocaleString();
+    document.getElementById('kpiPending').textContent=(pending||0).toLocaleString();
+    document.getElementById('kpiRevenue').textContent=Number(rev||0).toFixed(2);
+  }
+</script>
+<script>
+  // ===== ALLOW modal controls =====
+  function openAllow(){ document.getElementById('allowModal').style.display='flex'; }
+  function closeAllow(){ document.getElementById('allowModal').style.display='none'; }
+
+  // Show all numbers (navigate to a page or call API)
+  function viewAllNumbers(){
+    // If you have a page for this, navigate to it:
+    // goto('AllNumbers.html');
+    // Or fetch & render in a new page — placeholder:
+    alert('Opening "All Numbers". (Wire to your page or endpoint.)');
+  }
+
+  // Upload CSV of numbers
+  async function uploadNumbersCsv(fileList){
+    if(!fileList || !fileList.length){ return; }
+    const file = fileList[0];
+
+    try{
+      const text = await file.text();
+      // Basic parsing: split by newline/comma and keep digits only
+      const rows = text.split(/\r?\n/).map(r => r.trim()).filter(Boolean);
+      const numbers = rows.flatMap(r => r.split(',')).map(x => x.replace(/\D/g,'')).filter(Boolean);
+
+      if(numbers.length === 0){
+        alert('No numbers detected in the CSV.');
+        return;
+      }
+
+      // TODO: Replace with your real backend endpoint when ready
+      // Example POST payload:
+      // const res = await fetch('https://vendor.sandipay.co/api/allow/upload-numbers', {
+      //   method:'POST', headers:{'Content-Type':'application/json'},
+      //   body: JSON.stringify({ numbers })
+      // });
+      // const data = await res.json();
+      // alert(data.message || 'Numbers uploaded.');
+
+      alert(`Parsed ${numbers.length} numbers. (Wire this to your upload endpoint.)`);
+    }catch(e){
+      console.error(e);
+      alert('Failed to read the CSV file.');
+    }
+  }
+
+ 
+</script>
+
+<script>
+  // Point to your backend that runs ussd.js
+  const API_BASE = "http://localhost:5050";
+
+  async function setAccess(mode) {
+    try {
+      const res = await fetch(`${API_BASE}/api/set-access/${mode}`, { method: "GET" });
+      const text = await res.text();
+      alert(text); // you can replace with your custom toast
+      showCurrentMode(); // refresh label if you add one
+    } catch (e) {
+      alert("Failed to update access mode: " + e.message);
+    }
+  }
+
+  async function showCurrentMode() {
+    try {
+      const res = await fetch(`${API_BASE}/api/get-access`);
+      const data = await res.json();
+      // Optional: update a small label/badge in your UI
+      const el = document.getElementById("accessModeBadge");
+      if (el) el.textContent = data.mode === "limited" ? "LIMITED" : "ALL";
+    } catch {}
+  }
+
+  // Wire up buttons
+  document.getElementById("btnAllowAll")?.addEventListener("click", () => setAccess("all"));
+  document.getElementById("btnCloseLimited")?.addEventListener("click", () => setAccess("limited"));
+
+  // Optional: show current mode when modal opens / page loads
+  document.addEventListener("DOMContentLoaded", showCurrentMode);
+</script>
+
+
+</body>
+</html>

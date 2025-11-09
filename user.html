@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>User Management</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .user-box {
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      padding: 15px;
+      margin: 15px auto;
+      max-width: 600px;
+      background: #f8f8f8;
+      transition: opacity 0.6s ease, transform 0.4s ease;
+    }
+    .user-box.fade-out {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    .user-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+    }
+    .user-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: flex-end;
+    }
+    .user-actions button {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      min-width: 100px;
+    }
+    .deactivate {
+      background-color: #f44336;
+      color: white;
+    }
+    .reactivate {
+      background-color: #4CAF50;
+      color: white;
+    }
+    .delete {
+      background-color: #333;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <h2 style="text-align: center">User Management</h2>
+  <div id="userList"></div>
+
+  <script>
+    const userId = localStorage.getItem("userId");
+
+    async function fetchUsers() {
+      try {
+        const res = await fetch("https://vendor.sandipay.co/api/users");
+        const users = await res.json();
+
+        const container = document.getElementById("userList");
+        container.innerHTML = "";
+
+        users.forEach(user => {
+          const div = document.createElement("div");
+          div.className = "user-box";
+          div.id = `user-${user.id}`;
+
+          const isInactive = user.status === "inactive";
+
+          div.innerHTML = `
+            <div class="user-header">
+              <div>
+                <strong>${user.username}</strong><br/>
+                Role: ${user.role}<br/>
+                Phone: ${user.phone ?? "undefined"}<br/>
+                Sender ID: ${user.sender_id ?? "undefined"}
+              </div>
+              <div class="user-actions">
+                <button class="${isInactive ? 'reactivate' : 'deactivate'}"
+                        onclick="${isInactive ? `reactivate('${user.id}')` : `deactivate('${user.id}')`}">
+                  ${isInactive ? 'Reactivate' : 'Deactivate'}
+                </button>
+                <button class="delete" onclick="deleteUser('${user.id}')">Delete</button>
+              </div>
+            </div>
+          `;
+
+          container.appendChild(div);
+        });
+      } catch (err) {
+        alert("Failed to fetch users");
+        console.error(err);
+      }
+    }
+
+    async function deactivate(id) {
+      if (!confirm("Are you sure you want to deactivate this account?")) return;
+      try {
+        const res = await fetch("https://vendor.sandipay.co/api/deactivate-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: id })
+        });
+        const msg = await res.text();
+        alert(msg);
+        fetchUsers();
+      } catch (err) {
+        alert("Failed to deactivate user");
+      }
+    }
+
+    async function reactivate(id) {
+      const newPin = prompt("Enter new PIN to reactivate user:");
+      if (!newPin || newPin.length < 4) return alert("Invalid PIN");
+
+      try {
+        const res = await fetch("https://vendor.sandipay.co/api/reactivate-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: id, newPin })
+        });
+        const msg = await res.text();
+        alert(msg);
+        fetchUsers();
+      } catch (err) {
+        alert("Failed to reactivate user");
+      }
+    }
+
+    async function deleteUser(id) {
+      if (!confirm("Are you sure you want to permanently delete this user?")) return;
+      try {
+        const res = await fetch(`https://vendor.sandipay.co/api/delete-user/${id}`, {
+          method: "DELETE"
+        });
+        const msg = await res.text();
+        alert(msg);
+
+        const userDiv = document.getElementById(`user-${id}`);
+        if (userDiv) {
+          userDiv.classList.add("fade-out");
+          setTimeout(() => userDiv.remove(), 600);
+        }
+      } catch (err) {
+        alert("Failed to delete user");
+        console.error(err);
+      }
+    }
+
+    fetchUsers();
+  </script>
+</body>
+</html>
