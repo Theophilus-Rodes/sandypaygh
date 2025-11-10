@@ -51,31 +51,36 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// ✅ DATABASE CONNECTION
+
 
 
 // Create database connection
-const db = mysql.createConnection({
-  host: "db-mysql-fra1-23707-do-user-28779964-0.k.db.ondigitalocean.com",
-  port: 25060,
-  user: "doadmin",
-  password: "AWvS_v3r6U3EH0Lu4QHwJPiT",
-  database: "defaultdb",
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,             // e.g. db-mysql-...ondigitalocean.com
+  port: Number(process.env.DB_PORT || 25060),
+  user: process.env.DB_USER,             // doadmin
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,         // defaultdb (or yours)
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
   ssl: {
-    // ✅ Use DigitalOcean’s CA certificate file
-    ca: fs.readFileSync("/etc/ssl/certs/ca-certificates.crt")
+    // ✅ USE the CA you pasted into the App Platform env var
+    ca: process.env.DB_SSL_CA
   }
 });
 
-db.connect(err => {
+// Optional: quick health check
+pool.getConnection((err, conn) => {
   if (err) {
-    console.error("❌ Database connection failed:", err.message);
+    console.error('❌ DB connect error:', err.message);
   } else {
-    console.log("✅ Connected securely to DigitalOcean MySQL database!");
+    console.log('✅ DB connected (SSL with CA).');
+    conn.release();
   }
 });
 
-module.exports = db;
+module.exports = pool.promise();
 
 // ✅ SETUP NODEMAILER
 const transporter = nodemailer.createTransport({
