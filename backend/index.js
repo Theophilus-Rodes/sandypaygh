@@ -56,27 +56,25 @@ app.use(bodyParser.json());
 
 // Create database connection
 const db = mysql.createConnection({
-  host: "db-mysql-fra1-23707-do-user-28779964-0.k.db.ondigitalocean.com", 
-  port: 25060, 
-  user: "doadmin", 
-  password: "AWvS_v3r6U3EH0Lu4QHwJPiT", 
-  database: "defaultdb", 
+  host: "db-mysql-fra1-23707-do-user-28779964-0.k.db.ondigitalocean.com",
+  port: 25060,
+  user: "doadmin",
+  password: "AWvS_v3r6U3EH0Lu4QHwJPiT",
+  database: "defaultdb",
   ssl: {
-    // SSL is required by DigitalOcean for secure connection
-    rejectUnauthorized: true
+    // ✅ Use DigitalOcean’s CA certificate file
+    ca: fs.readFileSync("/etc/ssl/certs/ca-certificates.crt")
   }
 });
 
-// Connect to the database
 db.connect(err => {
   if (err) {
     console.error("❌ Database connection failed:", err.message);
   } else {
-    console.log("✅ Connected to DigitalOcean MySQL database successfully!");
+    console.log("✅ Connected securely to DigitalOcean MySQL database!");
   }
 });
 
-// Export connection
 module.exports = db;
 
 // ✅ SETUP NODEMAILER
