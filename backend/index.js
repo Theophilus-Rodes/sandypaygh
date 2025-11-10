@@ -52,7 +52,7 @@ app.use(cors());
 app.use(bodyParser.json());
 
 
-// ✅ Create database connection (SECURE + fail-safe)
+// ✅ Create database connection (SECURE + supports CA text or path)
 const required = ["DB_HOST", "DB_PORT", "DB_USER", "DB_NAME"];
 const missing = required.filter(k => !process.env[k] || String(process.env[k]).trim() === "");
 if (missing.length) {
@@ -61,21 +61,36 @@ if (missing.length) {
 
 const DB_PASSWORD = process.env.DB_PASSWORD || process.env.DB_PASS || "";
 
+let caContent = null;
+try {
+  const caEnv = process.env.DB_SSL_CA;
+  if (caEnv && caEnv.trim().startsWith("-----BEGIN")) {
+    // CA provided as PEM text in the env var
+    caContent = caEnv;
+  } else {
+    // CA provided as a filesystem path OR fall back to system bundle
+    const caPath = caEnv && caEnv.trim() !== "" ? caEnv : "/etc/ssl/certs/ca-certificates.crt";
+    caContent = fs.readFileSync(caPath, "utf8");
+  }
+} catch (e) {
+  console.error("⚠️ Could not load CA certificate:", e.message);
+}
+
 const dbConfig = {
   host: process.env.DB_HOST,
   port: Number(process.env.DB_PORT || 3306),
   user: String(process.env.DB_USER || "").trim(),
   password: DB_PASSWORD,
   database: process.env.DB_NAME,
-  ssl: {
-    ca: fs.readFileSync(process.env.DB_SSL_CA || "/etc/ssl/certs/ca-certificates.crt"),
-  },
+  ssl: caContent
+    ? { ca: caContent, rejectUnauthorized: true, minVersion: "TLSv1.2" }
+    : { rejectUnauthorized: false }, // last-resort fallback (not recommended long-term)
 };
 
 if (!dbConfig.user) {
-  throw new Error("DB_USER is empty — set DB_USER in App Platform → Settings → Environment Variables.");
+  throw new Error("DB_USER is empty — set DB_USER in App Platform → Environment Variables.");
 }
-if (!dbConfig.password) {
+if (!DB_PASSWORD) {
   throw new Error("DB_PASSWORD is empty — set DB_PASSWORD (or DB_PASS).");
 }
 
