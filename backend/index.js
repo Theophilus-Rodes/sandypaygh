@@ -54,14 +54,12 @@ app.use(bodyParser.json());
 
 // ✅ Create database connection (SSL temporarily disabled)
 const db = mysql.createConnection({
-  host: "db-mysql-fra1-23707-do-user-28779964-0.k.db.ondigitalocean.com",
-  port: 25060,
-  user: "doadmin",
-  password: "AWvS_v3r6U3EH0Lu4QHwJPiT",
-  database: "defaultdb",
-  ssl: {
-    rejectUnauthorized: false 
-  }
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  ssl: { rejectUnauthorized: false }
 });
 
 db.connect(err => {
