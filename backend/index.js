@@ -52,21 +52,40 @@ app.use(cors());
 app.use(bodyParser.json());
 
 
-// ✅ Create database connection (SSL temporarily disabled)
-const db = mysql.createConnection({
+// ✅ Create database connection (SECURE + fail-safe)
+const required = ["DB_HOST", "DB_PORT", "DB_USER", "DB_NAME"];
+const missing = required.filter(k => !process.env[k] || String(process.env[k]).trim() === "");
+if (missing.length) {
+  console.error("❌ Missing environment variables:", missing.join(", "));
+}
+
+const DB_PASSWORD = process.env.DB_PASSWORD || process.env.DB_PASS || "";
+
+const dbConfig = {
   host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASS,
+  port: Number(process.env.DB_PORT || 3306),
+  user: String(process.env.DB_USER || "").trim(),
+  password: DB_PASSWORD,
   database: process.env.DB_NAME,
-  ssl: { rejectUnauthorized: false }
-});
+  ssl: {
+    ca: fs.readFileSync(process.env.DB_SSL_CA || "/etc/ssl/certs/ca-certificates.crt"),
+  },
+};
+
+if (!dbConfig.user) {
+  throw new Error("DB_USER is empty — set DB_USER in App Platform → Settings → Environment Variables.");
+}
+if (!dbConfig.password) {
+  throw new Error("DB_PASSWORD is empty — set DB_PASSWORD (or DB_PASS).");
+}
+
+const db = mysql.createConnection(dbConfig);
 
 db.connect(err => {
   if (err) {
     console.error("❌ Database connection failed:", err.message);
   } else {
-    console.log("✅ Connected to MySQL (SSL disabled for testing)");
+    console.log("✅ Connected securely to DigitalOcean MySQL database!");
   }
 });
 
