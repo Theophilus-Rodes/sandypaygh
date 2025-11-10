@@ -52,15 +52,13 @@ app.use(cors());
 app.use(bodyParser.json());
 
 
-
-
 // Create database connection
 const pool = mysql.createPool({
-  host: process.env.DB_HOST,             // e.g. db-mysql-...ondigitalocean.com
-  port: Number(process.env.DB_PORT || 25060),
-  user: process.env.DB_USER,             // doadmin
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME,         // defaultdb (or yours)
+   host: "db-mysql-fra1-23707-do-user-28779964-0.k.db.ondigitalocean.com",
+  port: 25060,
+  user: "doadmin",
+  password: "AWvS_v3r6U3EH0Lu4QHwJPiT",
+  database: "defaultdb",     
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
