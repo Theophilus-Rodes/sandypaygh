@@ -3,7 +3,7 @@ const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
 const bodyParser = require("body-parser");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const nodemailer = require("nodemailer");
 const ExcelJS = require("exceljs"); // ✅ NEW
 const multer = require("multer");
@@ -13,7 +13,6 @@ const fs = require("fs");
 
 // near the top with other imports
 const moolreRouter = require("./shortcode/ussd");
-
 
 // Ensure uploads folder exists
 const uploadDir = path.join(__dirname, "uploads");
@@ -54,30 +53,64 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-
-
-
 // after your global app.use(express.json()) / urlencoded() etc.
 app.use("/api/moolre", moolreRouter);
 
 
-// ✅ DATABASE CONNECTION
-const db = mysql.createConnection({
-  host: "localhost",        // MySQL server is on the same droplet
-  user: "sandypay_user",    // The user you created earlier
-  password: "VeryStrongPassword!123", // Your actual password
-  database: "vendor_portal" // The imported database
-});
+// ✅ Create database connection (SECURE + supports CA text or path)
+const required = ["DB_HOST", "DB_PORT", "DB_USER", "DB_NAME"];
+const missing = required.filter(k => !process.env[k] || String(process.env[k]).trim() === "");
+if (missing.length) {
+  console.error("❌ Missing environment variables:", missing.join(", "));
+}
+
+const DB_PASSWORD = process.env.DB_PASSWORD || process.env.DB_PASS || "";
+
+let caContent = null;
+try {
+  const caEnv = process.env.DB_SSL_CA;
+  if (caEnv && caEnv.trim().startsWith("-----BEGIN")) {
+    // CA provided as PEM text in the env var
+    caContent = caEnv;
+  } else {
+    // CA provided as a filesystem path OR fall back to system bundle
+    const caPath = caEnv && caEnv.trim() !== "" ? caEnv : "/etc/ssl/certs/ca-certificates.crt";
+    caContent = fs.readFileSync(caPath, "utf8");
+  }
+} catch (e) {
+  console.error("⚠️ Could not load CA certificate:", e.message);
+}
+
+const dbConfig = {
+  host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT || 3306),
+  user: String(process.env.DB_USER || "").trim(),
+  password: DB_PASSWORD,
+  database: process.env.DB_NAME,
+  ssl: caContent
+    ? { ca: caContent, rejectUnauthorized: true, minVersion: "TLSv1.2" }
+    : { rejectUnauthorized: false }, // last-resort fallback (not recommended long-term)
+};
+
+if (!dbConfig.user) {
+  throw new Error("DB_USER is empty — set DB_USER in App Platform → Environment Variables.");
+}
+if (!DB_PASSWORD) {
+  throw new Error("DB_PASSWORD is empty — set DB_PASSWORD (or DB_PASS).");
+}
+
+const db = mysql.createConnection(dbConfig);
 
 db.connect(err => {
   if (err) {
     console.error("❌ Database connection failed:", err.message);
   } else {
-    console.log("✅ Connected to MySQL database: vendor_portal");
+    console.log("✅ Connected securely to DigitalOcean MySQL database!");
   }
 });
 
-export default db;
+module.exports = db;
+
 
 // ✅ SETUP NODEMAILER
 const transporter = nodemailer.createTransport({
@@ -189,8 +222,8 @@ app.post("/api/register", async (req, res) => {
             if (insertErr) return res.status(500).send("Registration failed.");
 
             const userId = result.insertId;
-           const ussdCode = generateUssdCode("*203*717#", userId);
-           const publicLink = `https://sandipay.co/index1.html?id=${userId}`;
+           const ussdCode = generateUssdCode("*203*555#", userId);
+           const publicLink = `https://vendor.sandipay.co/index1.html?id=${userId}`;
 
 
             db.query("UPDATE users SET ussd_code = ?, public_link = ? WHERE id = ?", [ussdCode, publicLink, userId], (updateErr) => {
@@ -3372,14 +3405,29 @@ app.get("/api/access-mode", (req, res) => {
 
 
 
-// ✅ FALLBACK
+// ✅ BASIC HEALTH ENDPOINTS FOR DEPLOYMENT
+app.get("/", (req, res) => {
+  res.status(200).send("OK");
+});
+
+app.get("/healthz", (req, res) => {
+  res.status(200).json({ status: "healthy" });
+});
+
+// ✅ ENABLE CORS FOR FRONTEND REQUESTS
+
+app.use(cors({ origin: "*" }));
+
+// ✅ FALLBACK (MUST STAY LAST)
 app.use((req, res) => {
   res.status(404).send("Endpoint not found");
 });
 
-
-// ✅ START SERVER
+// ✅ START SERVER (DigitalOcean Compatible)
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
+
+
+
