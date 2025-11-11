@@ -193,7 +193,7 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
 </script>
 </head>
 <body>
-<button id="collapseBtn" class="collapse-btn" aria-label="Menu">☰</button>
+
 
 <div class="shell">
   <!-- Sidebar -->
@@ -221,6 +221,7 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
   <!-- Main -->
   <main>
     <header class="topbar">
+<button id="collapseBtn" class="collapse-btn" aria-label="Menu">☰</button>
       <h1>Admin Dashboard</h1>
       <div class="tb-right">
         <div id="adminNameTop" class="chip">Welcome: Admin</div>
@@ -570,40 +571,30 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
   const btn = document.getElementById('collapseBtn');
   const mask = document.getElementById('drawerMask');
 
-  function setSidebarMode(){
+  function setSidebarMode() {
     if (window.innerWidth <= 860) {
       sidebar.classList.add('mobile');
       btn.style.display = 'block';
-      mask?.classList.remove('show');
-      sidebar.classList.remove('open');   // start closed on phones
+      sidebar.classList.remove('open');
+      mask.classList.remove('show');
     } else {
       sidebar.classList.remove('mobile', 'open');
       btn.style.display = 'none';
-      mask?.classList.remove('show');
+      mask.classList.remove('show');
     }
+  }
 
-    function setSidebarMode() {
-  if (window.innerWidth <= 860) {
-    sidebar.classList.add('mobile');
-    document.getElementById('collapseBtn').style.display = 'block';
-  } else {
-    sidebar.classList.remove('mobile');
-    document.getElementById('collapseBtn').style.display = 'none';
-  }
-}
-  }
   setSidebarMode();
   window.addEventListener('resize', setSidebarMode);
-  document.getElementById('collapseBtn').addEventListener('click', () => sidebar.classList.toggle('open'));
 
-  btn?.addEventListener('click', () => {
+  btn.addEventListener('click', () => {
     sidebar.classList.toggle('open');
     if (window.innerWidth <= 860) {
-      mask?.classList.toggle('show', sidebar.classList.contains('open'));
+      mask.classList.toggle('show', sidebar.classList.contains('open'));
     }
   });
 
-  mask?.addEventListener('click', () => {
+  mask.addEventListener('click', () => {
     sidebar.classList.remove('open');
     mask.classList.remove('show');
   });
