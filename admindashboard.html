@@ -191,14 +191,13 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
 </script>
 </head>
 <body>
-<button class="collapse" id="collapseBtn">☰</button>
+<button id="collapseBtn" class="collapse-btn" aria-label="Menu">☰</button>
 
 <div class="shell">
   <!-- Sidebar -->
   <aside class="sidebar" id="sidebar">
     <div class="brand"><span class="dot"></span> Sandypay Admin</div>
     <div class="welcome">Welcome: <strong id="adminNameSide">Admin</strong></div>
-    <button id="collapseBtn" class="collapse-btn" aria-label="Menu">☰</button>
     <nav class="nav">
       <button onclick="showComingSoon()">🛒 Sell</button>
       <button onclick="goto('user.html')">👤 User</button>
