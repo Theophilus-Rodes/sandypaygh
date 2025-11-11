@@ -148,6 +148,30 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
   [style*="width:"], [style*="min-width:"], [style*="max-width:"] { max-width: 100% !important; }
 }
 
+/* --- Hamburger button styling --- */
+.collapse-btn {
+  display: none;
+  cursor: pointer;
+  font-size: 26px;
+  background: none;
+  border: none;
+  color: white;
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+.collapse-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Show only on phones */
+@media (max-width: 860px) {
+  .collapse-btn {
+    display: inline-block;
+  }
+}
+
+
 /* Optional: dimmed backdrop when drawer open (no extra JS needed if you add the element) */
 .drawer-mask {
   position: fixed; inset: 0;
@@ -174,6 +198,7 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
   <aside class="sidebar" id="sidebar">
     <div class="brand"><span class="dot"></span> Sandypay Admin</div>
     <div class="welcome">Welcome: <strong id="adminNameSide">Admin</strong></div>
+    <button id="collapseBtn" class="collapse-btn" aria-label="Menu">☰</button>
     <nav class="nav">
       <button onclick="showComingSoon()">🛒 Sell</button>
       <button onclick="goto('user.html')">👤 User</button>
