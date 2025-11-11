@@ -456,7 +456,7 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
     // fetch('https://vendor.sandipay.co/api/admin-kpis').then(r=>r.json()).then(k=>{
     //   setKPIs(k.users,k.transactions,k.pending,k.revenue_today);
     // });
-    setKPIs(128,4321,37,1540.75); // Demo; remove after wiring
+    setKPIs(0,0,0,0.00); // Demo; remove after wiring
   })();
   function setKPIs(users,tx,pending,rev){
     document.getElementById('kpiUsers').textContent=(users||0).toLocaleString();
