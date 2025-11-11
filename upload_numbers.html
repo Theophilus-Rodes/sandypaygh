@@ -87,7 +87,7 @@
       const formData = new FormData();
       formData.append("excelFile", fileInput.files[0]);
 
-      const res = await fetch("http://localhost:3000/api/upload-numbers", {
+      const res = await fetch("https://sandipay.co/api/upload-numbers", {
         method: "POST",
         body: formData,
       });
@@ -100,7 +100,7 @@
       e.preventDefault();
       const phone = document.getElementById("phone_number").value.trim();
 
-      const res = await fetch("http://localhost:3000/api/add-number", {
+      const res = await fetch("https://sandipay.co/api/add-number", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone_number: phone }),

@@ -84,7 +84,7 @@
 
   <script>
     function fetchWithdrawals() {
-      fetch("https://vendor.sandipay.co/api/withdrawal-requests")
+      fetch("https://sandipay.co/api/withdrawal-requests")
         .then(res => res.json())
         .then(data => {
           const tbody = document.querySelector("#withdrawalTable tbody");
@@ -115,7 +115,7 @@
     }
 
     function markAsPaid(id, btn) {
-      fetch("https://vendor.sandipay.co/api/mark-withdrawal-paid", {
+      fetch("https://sandipay.co/api/mark-withdrawal-paid", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id })

@@ -81,7 +81,7 @@
 
   <script>
     function fetchPendingCount() {
-      fetch("https://vendor.sandipay.co/api/afa-admin-pending-count")
+      fetch("https://sandipay.co/api/afa-admin-pending-count")
         .then(res => res.json())
         .then(data => {
           const badge = document.getElementById("pendingBadge");
@@ -98,7 +98,7 @@
     }
 
     function fetchProcessingOrders() {
-      fetch("https://vendor.sandipay.co/api/afa-admin-processing", {
+      fetch("https://sandipay.co/api/afa-admin-processing", {
         method: "POST"
       })
       .then(res => res.json())
@@ -158,7 +158,7 @@
     }
 
     function markDelivered(packageId) {
-      fetch("https://vendor.sandipay.co/api/afa-mark-delivered", {
+      fetch("https://sandipay.co/api/afa-mark-delivered", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ package_id: packageId })
@@ -173,7 +173,7 @@
     }
 
     function downloadAfaOrders() {
-      window.open("https://vendor.sandipay.co/api/admin-export-afa-orders", "_blank");
+      window.open("https://sandipay.co/api/admin-export-afa-orders", "_blank");
       setTimeout(() => fetchPendingCount(), 2000);
     }
 

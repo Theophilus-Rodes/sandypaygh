@@ -98,7 +98,7 @@
 
     async function fetchAdminOrders(network) {
       try {
-        const res = await fetch(`https://vendor.sandipay.co/api/get-admin-orders?network=${network}`);
+        const res = await fetch(`https://sandipay.co/api/get-admin-orders?network=${network}`);
         const data = await res.json();
 
         const orderList = document.getElementById("orderList");

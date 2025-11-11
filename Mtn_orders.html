@@ -113,7 +113,7 @@
     if (!vendorId) alert("Vendor ID is missing in the URL.");
 
     function loadOrders() {
-      fetch("https://vendor.sandipay.co/api/mtn-orders", {
+      fetch("https://sandipay.co/api/mtn-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vendor_id: vendorId })
@@ -188,7 +188,7 @@
     }
 
     function markPackageDelivered(packageId) {
-      fetch("https://vendor.sandipay.co/api/mark-package-delivered", {
+      fetch("https://sandipay.co/api/mark-package-delivered", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ package_id: packageId })
@@ -206,11 +206,11 @@
 
     function downloadExcel() {
   // Download the file
-  window.open(`https://vendor.sandipay.co/api/export-mtn-orders?vendor_id=${vendorId}`, "_blank");
+  window.open(`https://sandipay.co/api/export-mtn-orders?vendor_id=${vendorId}`, "_blank");
 
   // Then change status to processing after delay
   setTimeout(() => {
-    fetch("https://vendor.sandipay.co/api/set-processing-status", {
+    fetch("https://sandipay.co/api/set-processing-status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ vendor_id: vendorId, network: "mtn" }) // ✅ make sure this is "mtn"
@@ -230,7 +230,7 @@ function generateAndSubmitCode() {
   const code = "MTN-" + Math.random().toString(36).substring(2, 8).toUpperCase(); // Example: MTN-X9Z4B
   document.getElementById("generatedCode").value = code;
 
-  fetch("https://vendor.sandipay.co/api/insert-mtn-code", {
+  fetch("https://sandipay.co/api/insert-mtn-code", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId, code })

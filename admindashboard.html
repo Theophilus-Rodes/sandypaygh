@@ -78,46 +78,64 @@
     .sidebar.mobile{left:-310px}
     .collapse{display:block}
     .grid{grid-template-columns:1fr}
+  }
 
-
-/* --- Global guards --- */
+  /* ===== Global guards (always on) ===== */
 html, body { max-width: 100%; overflow-x: hidden; }
-*,
-*::before,
-*::after { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
 img, video, svg { max-width: 100%; height: auto; display: block; }
 
-/* --- Phone layout hard rules --- */
+/* Backdrop (default hidden) */
+.drawer-mask {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.28);
+  z-index: 1000;
+  display: none;
+}
+.drawer-mask.show { display: block; }
+
+/* Hamburger base (hidden by default; shown on phones) */
+.collapse-btn {
+  display: none;
+  cursor: pointer;
+  font-size: 26px;
+  background: none;
+  border: none;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: background .2s;
+}
+.collapse-btn:hover { background: rgba(255,255,255,.15); }
+
+/* ===== PHONE (<=860px) ===== */
 @media (max-width: 860px) {
-  /* 1) Sidebar becomes an off-canvas drawer */
+  /* Show hamburger */
+  .collapse-btn { display: inline-block; }
+
+  /* Sidebar as overlay drawer */
   #sidebar {
     position: fixed !important;
     top: 0; left: 0;
     height: 100vh;
-    width: 78vw;                 /* comfy width on phones */
-    max-width: 320px;
-    z-index: 1001;
+    width: 78vw; max-width: 320px;
+    background: #0b1957;
+    color: #fff;
+    z-index: 1100;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    background: inherit;         /* keeps your theme */
-    border-right: 1px solid rgba(0,0,0,.06);
+    box-shadow: 2px 0 14px rgba(0,0,0,.35);
     transition: transform .25s ease;
+    transform: translateX(-100%); /* hidden by default */
   }
-  /* hidden by default when .mobile is present (your JS adds it) */
-  #sidebar.mobile { transform: translateX(-100%); }
-  /* visible when you toggle .open (your JS toggles it) */
   #sidebar.mobile.open { transform: translateX(0); }
+  #sidebar * { color: #fff !important; }
 
-  /* 2) Page content uses full width, no push */
-  .shell { display: grid; grid-template-columns: 1fr !important; gap: 12px; }
-  .content, .main-content, .container, .page, .dashboard {
-    margin: 0 !important;
-    padding: 12px !important;
-    width: 100% !important;
-    max-width: 100% !important;
-  }
+  /* Page uses full width */
+  .shell { grid-template-columns: 1fr !important; }
+  .content { margin: 0 !important; padding: 12px !important; width: 100% !important; }
 
-  /* 3) Any grids/KPIs → 1 column so nothing squishes */
+  /* Stack all grids/KPIs */
   .kpis, .kpi-row, .metrics, .grid, .cards,
   [class*="grid"], [class*="row"], [class*="cols"] {
     display: grid !important;
@@ -131,106 +149,20 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
     overflow: hidden;
   }
 
-  /* 4) Topbar stays visible; hamburger shows */
-  .topbar, .navbar { position: sticky; top: 0; z-index: 1002; padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
-  #collapseBtn { display: inline-flex !important; align-items: center; gap: 6px; }
+  /* Topbar sits beneath drawer */
+  .topbar, .navbar { position: sticky; top: 0; z-index: 900; padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
 
-  /* 5) Buttons/text scale nicely */
+  /* Comfortable text/buttons */
   body { font-size: clamp(13px, 3.5vw, 15px); line-height: 1.35; }
   .btn, button { padding: 10px 14px !important; min-height: 40px; white-space: normal; }
-  h1{font-size:20px} h2{font-size:18px} h3{font-size:16px}
-
-  /* 6) Tables scroll inside (no page overflow) */
-  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  table { width: 100%; border-collapse: collapse; }
-
-  /* 7) Kill any inline fixed widths that cause overflow */
-  [style*="width:"], [style*="min-width:"], [style*="max-width:"] { max-width: 100% !important; }
 }
 
-
-
-/* Optional: dimmed backdrop when drawer open (no extra JS needed if you add the element) */
-.drawer-mask {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,.25);
-  z-index: 1000;
-  display: none;
+/* ===== DESKTOP (>=861px) — keep your original layout intact ===== */
+@media (min-width: 861px) {
+  #sidebar { position: sticky; left: 0; top: 0; width: 280px; height: 100dvh; transform: none !important; z-index: 10; }
+  .main-content { margin-left: 0 !important; } /* you use grid columns, not margin, on desktop */
+  #collapseBtn, #drawerMask { display: none !important; }
 }
-.drawer-mask.show { display: block; }
-
-/* --- Hamburger button styling --- */
-.collapse-btn {
-  display: none;
-  cursor: pointer;
-  font-size: 26px;
-  background: none;
-  border: none;
-  color: white;
-  padding: 6px 10px;
-  border-radius: 8px;
-  transition: background 0.2s;
-}
-.collapse-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-/* Show only on phones */
-@media (max-width: 860px) {
-  .collapse-btn {
-    display: inline-block;
-  }
-}
-
-
-
-/* --- Fix: drawer on top + visible content --- */
-@media (max-width: 860px) {
-  /* Sidebar as overlay drawer */
-  #sidebar {
-    position: fixed !important;
-    top: 0; left: 0;
-    height: 100vh;
-    width: 78vw;               /* comfy width */
-    max-width: 320px;
-    background: #0b1957;       /* solid dark bg (not inherit) */
-    color: #fff;
-    z-index: 1100;             /* ABOVE header & mask */
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    transition: transform .25s ease;
-    transform: translateX(-100%);
-    box-shadow: 2px 0 14px rgba(0,0,0,.35);
-  }
-  /* open state (your JS toggles .open) */
-  #sidebar.mobile.open { transform: translateX(0); }
-
-  /* Sidebar content always readable */
-  #sidebar * { color: #fff !important; }
-  #sidebar nav { display: grid; gap: 10px; padding: 12px; }
-  #sidebar a { text-decoration: none; padding: 10px 12px; border-radius: 10px; }
-  #sidebar a:hover { background: rgba(255,255,255,.12); }
-
-  /* Header stays below drawer */
-  .topbar, .navbar { z-index: 900 !important; }
-
-  /* Dim page when drawer open */
-  .drawer-mask {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,.28);
-    z-index: 1000;
-    display: none;
-  }
-  .drawer-mask.show { display: block; }
-
-  /* Prevent background scroll when open */
-  body.drawer-open { overflow: hidden; }
-}
-
-
-
-
-  }
 </style>
 <script>
   // Block back navigation (as in your original)
@@ -508,7 +440,7 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
     const user_id=localStorage.getItem('userId');
     if(!price||!user_id){ alert('Please enter price and ensure you are logged in.'); return; }
     try{
-      const res=await fetch('https://vendor.sandipay.co/api/afa-price/admin',{
+      const res=await fetch('https://sandipay.co/api/afa-price/admin',{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({user_id,price})
       });

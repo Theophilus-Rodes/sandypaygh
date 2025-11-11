@@ -135,7 +135,7 @@
     function fetchPackages(network) {
       selectedNetwork = network;
       if (!vendorId) return alert("Vendor ID missing in URL");
-      fetch("https://vendor.sandipay.co/api/get-packages", {
+      fetch("https://sandipay.co/api/get-packages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vendor_id: vendorId, network })
@@ -184,7 +184,7 @@
   // Show pending message first
   alert("⏳ Payment Pending Approval... Please click OK and wait for approval.");
 
-  fetch("https://vendor.sandipay.co/api/place-order", {
+  fetch("https://sandipay.co/api/place-order", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -235,7 +235,7 @@
 function showComingSoon() {
   if (!vendorId) return alert("Vendor ID missing.");
 
-  fetch("https://vendor.sandipay.co/api/get-whatsapp-link", {
+  fetch("https://sandipay.co/api/get-whatsapp-link", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId })
@@ -258,7 +258,7 @@ function showComingSoon() {
 
     function checkPaymentStatus(recipientNumber) {
   const interval = setInterval(() => {
-    fetch("https://vendor.sandipay.co/api/check-order", {
+    fetch("https://sandipay.co/api/check-order", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ recipient_number: recipientNumber })
@@ -289,7 +289,7 @@ window.onload = function () {
     return;
   }
 
-  fetch("https://vendor.sandipay.co/api/fetch-vendor-name", {
+  fetch("https://sandipay.co/api/fetch-vendor-name", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId })

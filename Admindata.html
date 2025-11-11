@@ -174,7 +174,7 @@
       };
 
       try {
-        const res = await fetch('https://vendor.sandipay.co/api/admin/add-package', {
+        const res = await fetch('https://sandipay.co/api/admin/add-package', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -197,7 +197,7 @@
       if (!confirm("Are you sure you want to delete this package?")) return;
 
       try {
-        const res = await fetch("https://vendor.sandipay.co/api/delete-admin-package", {
+        const res = await fetch("https://sandipay.co/api/delete-admin-package", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id })
@@ -213,7 +213,7 @@
 
     async function loadPackages(network) {
       try {
-        const res = await fetch(`https://vendor.sandipay.co/api/admin/packages?network=${network}`);
+        const res = await fetch(`https://sandipay.co/api/admin/packages?network=${network}`);
         const data = await res.json();
         const list = document.getElementById("packageList");
 
@@ -241,7 +241,7 @@
     }
 
     function updateStatus(id, status) {
-      fetch('https://vendor.sandipay.co/api/admin/update-status', {
+      fetch('https://sandipay.co/api/admin/update-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, status })

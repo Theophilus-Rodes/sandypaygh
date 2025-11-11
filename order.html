@@ -88,7 +88,7 @@
 
       if (!number) return alert("Enter a phone number.");
 
-      fetch("https://vendor.sandipay.co/api/check-order", {
+      fetch("https://sandipay.co/api/check-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ recipient_number: number })
@@ -141,7 +141,7 @@ window.onload = function () {
     return;
   }
 
-  fetch("https://vendor.sandipay.co/api/fetch-vendor-name", {
+  fetch("https://sandipay.co/api/fetch-vendor-name", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId })

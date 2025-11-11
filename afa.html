@@ -107,7 +107,7 @@
     document.getElementById("orderLink").href = `order.html?vendor_id=${vendorId}`;
 
     function fetchAfaPriceAndShow() {
-      fetch(`https://vendor.sandipay.co/api/afa-price/${vendorId}`)
+      fetch(`https://sandipay.co/api/afa-price/${vendorId}`)
         .then(res => res.json())
         .then(data => {
           document.getElementById("priceText").innerText = `This service costs GHS ${data.price}. Do you want to proceed?`;
@@ -139,7 +139,7 @@ function triggerAfaPayment() {
     occupation: document.getElementById("occupation").value.trim()
   };
 
-  fetch("https://vendor.sandipay.co/api/submit-afa-payment", {
+  fetch("https://sandipay.co/api/submit-afa-payment", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data)
@@ -174,7 +174,7 @@ function triggerAfaPayment() {
         occupation: document.getElementById("occupation").value.trim()
       };
 
-      fetch("https://vendor.sandipay.co/api/submit-afa", {
+      fetch("https://sandipay.co/api/submit-afa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
@@ -199,7 +199,7 @@ function triggerAfaPayment() {
         return;
       }
 
-      fetch("https://vendor.sandipay.co/api/fetch-vendor-name", {
+      fetch("https://sandipay.co/api/fetch-vendor-name", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vendor_id: vendorId })

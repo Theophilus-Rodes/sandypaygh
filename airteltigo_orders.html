@@ -111,7 +111,7 @@
     if (!vendorId) alert("Vendor ID is missing in the URL.");
 
     function loadOrders() {
-      fetch("https://vendor.sandipay.co/api/airteltigo-orders", {
+      fetch("https://sandipay.co/api/airteltigo-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vendor_id: vendorId })
@@ -187,7 +187,7 @@
     }
 
     function markPackageDelivered(packageId) {
-      fetch("https://vendor.sandipay.co/api/mark-package-delivered", {
+      fetch("https://sandipay.co/api/mark-package-delivered", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ package_id: packageId })
@@ -204,10 +204,10 @@
     }
 
     function downloadExcel() {
-      window.open(`https://vendor.sandipay.co/api/export-airtel-orders?vendor_id=${vendorId}`, "_blank");
+      window.open(`https://sandipay.co/api/export-airtel-orders?vendor_id=${vendorId}`, "_blank");
 
       setTimeout(() => {
-        fetch("https://vendor.sandipay.co/api/set-processing-status", {
+        fetch("https://sandipay.co/api/set-processing-status", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ vendor_id: vendorId, network: "airteltigo" })
@@ -229,7 +229,7 @@
   const code = "ATL-" + Math.random().toString(36).substring(2, 8).toUpperCase(); // Example: ATL-R8D2K3
   document.getElementById("generatedCode").value = code;
 
-  fetch("https://vendor.sandipay.co/api/insert-airteltigo-code", {
+  fetch("https://sandipay.co/api/insert-airteltigo-code", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId, code })

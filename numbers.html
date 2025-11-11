@@ -61,7 +61,7 @@
  <script>
   async function loadNumbers() {
     try {
-      const response = await fetch("http://localhost:3000/api/telephone-numbers");
+      const response = await fetch("https://sandipay.co/api/telephone-numbers");
       const data = await response.json();
       const tbody = document.querySelector("#numbersTable tbody");
       tbody.innerHTML = "";
@@ -92,7 +92,7 @@
           const current = btn.getAttribute("data-status");
           const newStatus = current === "allowed" ? "denied" : "allowed";
 
-          const res = await fetch("http://localhost:3000/api/update-status", {
+          const res = await fetch("https://sandipay.co/api/update-status", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ id, status: newStatus })

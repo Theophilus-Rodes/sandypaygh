@@ -108,14 +108,14 @@ async function downloadOrders(network) {
   const confirmed = confirm(`Download ${network.toUpperCase()} orders?`);
   if (!confirmed) return;
 
-  const downloadUrl = `https://vendor.sandipay.co/api/admin-download-${network}?vendor_id=${vendorId}`;
+  const downloadUrl = `https://sandipay.co/api/admin-download-${network}?vendor_id=${vendorId}`;
   window.open(downloadUrl, '_blank');
 
   setTimeout(() => fetchGroups(network), 5000);
 }
 
 async function fetchGroups(network) {
-  const res = await fetch("https://vendor.sandipay.co/api/admin-packages", {
+  const res = await fetch("https://sandipay.co/api/admin-packages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId, network })
@@ -127,7 +127,7 @@ async function fetchGroups(network) {
 }
 
 function fetchOrdersByCode(code) {
-  fetch("https://vendor.sandipay.co/api/admin-packages-by-code", {
+  fetch("https://sandipay.co/api/admin-packages-by-code", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code })
@@ -190,7 +190,7 @@ function toggleTable(pkgId) {
 }
 
 function markDelivered(pkgId) {
-  fetch("https://vendor.sandipay.co/api/admin-mark-delivered", {
+  fetch("https://sandipay.co/api/admin-mark-delivered", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ package_id: pkgId })
@@ -209,7 +209,7 @@ function downloadByCode() {
   const code = document.getElementById("codeInput").value.trim();
   if (!code) return alert("Please enter a code.");
 
-  const url = `https://vendor.sandipay.co/api/download-by-code?code=${encodeURIComponent(code)}`;
+  const url = `https://sandipay.co/api/download-by-code?code=${encodeURIComponent(code)}`;
   window.open(url, "_blank");
 
   // Let the backend handle status update based on package match
@@ -222,7 +222,7 @@ function downloadByCode() {
 // ✅ Update Badges
 async function updateOrderBadges() {
   try {
-    const res = await fetch("https://vendor.sandipay.co/api/get-pending-counts");
+    const res = await fetch("https://sandipay.co/api/get-pending-counts");
     const data = await res.json();
     document.getElementById("mtnBadge").innerText = data.MTN || 0;
     document.getElementById("telecelBadge").innerText = data.TELECEL || 0;

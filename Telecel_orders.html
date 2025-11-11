@@ -111,7 +111,7 @@
     if (!vendorId) alert("Vendor ID is missing in the URL.");
 
     function loadOrders() {
-      fetch("https://vendor.sandipay.co/api/telecel-orders", {
+      fetch("https://sandipay.co/api/telecel-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vendor_id: vendorId })
@@ -186,7 +186,7 @@
     }
 
     function markPackageDelivered(packageId) {
-      fetch("https://vendor.sandipay.co/api/mark-package-delivered", {
+      fetch("https://sandipay.co/api/mark-package-delivered", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ package_id: packageId })
@@ -204,11 +204,11 @@
 
   function downloadExcel() {
   // Step 1: Trigger Excel file download
-  window.open(`https://vendor.sandipay.co/api/export-telecel-orders?vendor_id=${vendorId}`, "_blank");
+  window.open(`https://sandipay.co/api/export-telecel-orders?vendor_id=${vendorId}`, "_blank");
 
   // Step 2: Delay a bit, then set status to "processing"
   setTimeout(() => {
-    fetch("https://vendor.sandipay.co/api/set-processing-status", {
+    fetch("https://sandipay.co/api/set-processing-status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ vendor_id: vendorId, network: "telecel" }) 
@@ -230,7 +230,7 @@ function generateAndSubmitTelecelCode() {
   const code = "TCL-" + Math.random().toString(36).substring(2, 8).toUpperCase(); // Example: TCL-KF83ZB
   document.getElementById("generatedCode").value = code;
 
-  fetch("https://vendor.sandipay.co/api/insert-telecel-code", {
+  fetch("https://sandipay.co/api/insert-telecel-code", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId, code })

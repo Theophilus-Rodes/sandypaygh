@@ -222,7 +222,7 @@
       const value = document.getElementById('value').value;
       const amount = document.getElementById('amount').value;
       if (value && amount) {
-        fetch("https://vendor.sandipay.co/api/add-package", {
+        fetch("https://sandipay.co/api/add-package", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ network: currentNetwork, value, amount, status: "available", vendor_id: currentUserId })
@@ -239,7 +239,7 @@
     }
 
     function fetchPackages() {
-     fetch("https://vendor.sandipay.co/api/get-all-packages", {
+     fetch("https://sandipay.co/api/get-all-packages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vendor_id: currentUserId, network: currentNetwork })
@@ -296,7 +296,7 @@ item.innerHTML = `
 function deletePackage(id) {
   if (!confirm("Are you sure you want to delete this package?")) return;
 
-  fetch("https://vendor.sandipay.co/api/delete-package", {
+  fetch("https://sandipay.co/api/delete-package", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id })
@@ -316,7 +316,7 @@ function deletePackage(id) {
 
     function updateStatus(id, status) {
       if (!status) return;
-      fetch("https://vendor.sandipay.co/api/update-status", {
+      fetch("https://sandipay.co/api/update-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, status })

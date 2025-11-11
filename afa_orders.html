@@ -101,12 +101,12 @@
     const vendorId = new URLSearchParams(window.location.search).get("vendor_id");
 
     function downloadOrders() {
-      window.open(`https://vendor.sandipay.co/api/export-afa-orders?vendor_id=${vendorId}`, "_blank");
+      window.open(`https://sandipay.co/api/export-afa-orders?vendor_id=${vendorId}`, "_blank");
 
 
       // delay then set status to processing
       setTimeout(() => {
-        fetch("https://vendor.sandipay.co/api/set-afa-processing", {
+        fetch("https://sandipay.co/api/set-afa-processing", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ vendor_id: vendorId })
@@ -120,7 +120,7 @@
     }
 
     function fetchAfaOrders() {
-      fetch("https://vendor.sandipay.co/api/afa-orders", {
+      fetch("https://sandipay.co/api/afa-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vendor_id: vendorId })
@@ -200,7 +200,7 @@
     }
 
     function markDelivered(packageId) {
-      fetch("https://vendor.sandipay.co/api/mark-afa-delivered", {
+      fetch("https://sandipay.co/api/mark-afa-delivered", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vendor_id: vendorId, package_id: packageId })
@@ -226,7 +226,7 @@
     }
 
     try {
-      const res = await fetch(`https://vendor.sandipay.co/api/afa-pending-count?vendor_id=${vendorId}`);
+      const res = await fetch(`https://sandipay.co/api/afa-pending-count?vendor_id=${vendorId}`);
       const data = await res.json();
       document.getElementById("pendingCount").innerText = `Pending Orders: ${data.count}`;
     } catch (err) {
@@ -241,7 +241,7 @@
 
 
 function fetchGroupedAfaPackages() {
-  fetch("https://vendor.sandipay.co/api/afa-all-packages", {
+  fetch("https://sandipay.co/api/afa-all-packages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId })
@@ -313,7 +313,7 @@ window.onload = fetchGroupedAfaPackages;
 
 // ✅ markDelivered function is reused from earlier
 function markDelivered(packageId) {
-  fetch("https://vendor.sandipay.co/api/mark-afa-delivered", {
+  fetch("https://sandipay.co/api/mark-afa-delivered", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId, package_id: packageId })
@@ -338,7 +338,7 @@ function markDelivered(packageId) {
   const confirmed = confirm("Are you sure you want to send AFA pending orders to the admin?");
   if (!confirmed) return;
 
-  fetch("https://vendor.sandipay.co/api/send-afa-orders", {
+  fetch("https://sandipay.co/api/send-afa-orders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId })

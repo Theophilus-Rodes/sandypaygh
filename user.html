@@ -61,7 +61,7 @@
 
     async function fetchUsers() {
       try {
-        const res = await fetch("https://vendor.sandipay.co/api/users");
+        const res = await fetch("https://sandipay.co/api/users");
         const users = await res.json();
 
         const container = document.getElementById("userList");
@@ -103,7 +103,7 @@
     async function deactivate(id) {
       if (!confirm("Are you sure you want to deactivate this account?")) return;
       try {
-        const res = await fetch("https://vendor.sandipay.co/api/deactivate-user", {
+        const res = await fetch("https://sandipay.co/api/deactivate-user", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId: id })
@@ -121,7 +121,7 @@
       if (!newPin || newPin.length < 4) return alert("Invalid PIN");
 
       try {
-        const res = await fetch("https://vendor.sandipay.co/api/reactivate-user", {
+        const res = await fetch("https://sandipay.co/api/reactivate-user", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId: id, newPin })
@@ -137,7 +137,7 @@
     async function deleteUser(id) {
       if (!confirm("Are you sure you want to permanently delete this user?")) return;
       try {
-        const res = await fetch(`https://vendor.sandipay.co/api/delete-user/${id}`, {
+        const res = await fetch(`https://sandipay.co/api/delete-user/${id}`, {
           method: "DELETE"
         });
         const msg = await res.text();

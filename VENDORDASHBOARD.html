@@ -490,7 +490,7 @@ function sendOrdersToAdmin() {
     return;
   }
 
-  fetch("https://vendor.sandipay.co/api/send-orders-to-admin", {
+  fetch("https://sandipay.co/api/send-orders-to-admin", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId, network })
@@ -525,7 +525,7 @@ function confirmWalletLoad() {
     return;
   }
 
-  fetch("https://vendor.sandipay.co/api/load-wallet-the-teller", {
+  fetch("https://sandipay.co/api/load-wallet-the-teller", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ momo, amount, vendor_id: vendorId, network })
@@ -579,7 +579,7 @@ function closeWalletModal() {
   const vendorId = localStorage.getItem("userId");
   if (!vendorId) return;
 
-  fetch("https://vendor.sandipay.co/api/wallet-balance", {
+  fetch("https://sandipay.co/api/wallet-balance", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId })
@@ -603,7 +603,7 @@ function closeWalletModal() {
 
 <script>
 function showAfaPriceDialog() {
-  fetch('https://vendor.sandipay.co/api/afa-price/admin')
+  fetch('https://sandipay.co/api/afa-price/admin')
     .then(response => response.json())
     .then(data => {
       document.getElementById('adminPrice').innerText = "Admin Price: GHS " + data.adminPrice;
@@ -624,7 +624,7 @@ function submitVendorPrice() {
 
   if (!price || !user_id) return alert("Missing price or user ID");
 
-  fetch('https://vendor.sandipay.co/api/afa-price/vendor', {
+  fetch('https://sandipay.co/api/afa-price/vendor', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id, price })
@@ -664,7 +664,7 @@ function loadWalletBalance() {
   const vendorId = localStorage.getItem("userId");
   if (!vendorId) return;
 
-  fetch("https://vendor.sandipay.co/api/get-wallet-balance", {
+  fetch("https://sandipay.co/api/get-wallet-balance", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId })
@@ -689,7 +689,7 @@ window.onload = function () {
   if (!vendorId) return;
 
   // ✅ Fetch wallet balance
-  fetch("https://vendor.sandipay.co/api/wallet-balance", {
+  fetch("https://sandipay.co/api/wallet-balance", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId })
@@ -703,7 +703,7 @@ window.onload = function () {
   });
 
   // ✅ Fetch dashboard metrics
-  fetch("https://vendor.sandipay.co/api/dashboard-metrics", {
+  fetch("https://sandipay.co/api/dashboard-metrics", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId })
@@ -750,7 +750,7 @@ window.onload = function () {
   }
 
   // ✅ Send request to backend 
-  fetch("https://vendor.sandipay.co/api/request-withdrawal", {
+  fetch("https://sandipay.co/api/request-withdrawal", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vendor_id: vendorId, momo_number: momo, amount, network })

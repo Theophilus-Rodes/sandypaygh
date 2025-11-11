@@ -39,7 +39,7 @@
     if (!vendorId) {
       document.getElementById("ussdDisplay").innerText = "Vendor ID is missing in the URL.";
     } else {
-      fetch("https://vendor.sandipay.co/api/get-ussd-code", {
+      fetch("https://sandipay.co/api/get-ussd-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vendor_id: vendorId })
