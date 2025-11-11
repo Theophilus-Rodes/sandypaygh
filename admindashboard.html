@@ -78,6 +78,58 @@
     .sidebar.mobile{left:-310px}
     .collapse{display:block}
     .grid{grid-template-columns:1fr}
+
+
+
+/* ==== Mobile polish & fixes ==== */
+body { overflow-x: hidden; }
+
+/* Smooth off-canvas sidebar + stacked layout */
+@media (max-width: 860px) {
+  .topbar, .navbar { position: sticky; top: 0; z-index: 50; }
+
+  .sidebar {
+    width: 260px;
+    left: 0;
+    transition: left .25s ease;
+  }
+  /* hidden by default on phones; toggled via JS */
+  .sidebar.mobile { left: -260px; }
+
+  .shell { grid-template-columns: 1fr; }      /* main layout */
+  .content, .main-content { margin-left: 0 !important; padding: 12px; }
+
+  .kpis, .grid { grid-template-columns: 1fr !important; gap: 12px; }
+  .card, .box { width: 100%; padding: 12px; border-radius: 14px; }
+
+  .btn { padding: 10px 14px; font-size: 14px; }
+  .section-title, .welcome { font-size: 16px; }
+}
+
+/* Very small phones */
+@media (max-width: 480px) {
+  .btn { padding: 9px 12px; font-size: 13px; }
+  .top-actions > * { margin: 4px 0; }
+  /* Optional: show icons only in sidebar for tighter fit */
+  .sidebar .label { display: none; }
+  .sidebar .icon { margin-right: 0; }
+}
+
+/* Make the hamburger visible on mobile */
+.collapse {
+  display: none;               /* already in your CSS at desktop */
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  padding: 8px 10px;
+}
+@media (max-width: 860px) {
+  .collapse { display: inline-flex; align-items: center; }
+}
+
+
   }
 </style>
 <script>
