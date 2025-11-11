@@ -184,6 +184,52 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
 
 
 
+/* --- Fix: drawer on top + visible content --- */
+@media (max-width: 860px) {
+  /* Sidebar as overlay drawer */
+  #sidebar {
+    position: fixed !important;
+    top: 0; left: 0;
+    height: 100vh;
+    width: 78vw;               /* comfy width */
+    max-width: 320px;
+    background: #0b1957;       /* solid dark bg (not inherit) */
+    color: #fff;
+    z-index: 1100;             /* ABOVE header & mask */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    transition: transform .25s ease;
+    transform: translateX(-100%);
+    box-shadow: 2px 0 14px rgba(0,0,0,.35);
+  }
+  /* open state (your JS toggles .open) */
+  #sidebar.mobile.open { transform: translateX(0); }
+
+  /* Sidebar content always readable */
+  #sidebar * { color: #fff !important; }
+  #sidebar nav { display: grid; gap: 10px; padding: 12px; }
+  #sidebar a { text-decoration: none; padding: 10px 12px; border-radius: 10px; }
+  #sidebar a:hover { background: rgba(255,255,255,.12); }
+
+  /* Header stays below drawer */
+  .topbar, .navbar { z-index: 900 !important; }
+
+  /* Dim page when drawer open */
+  .drawer-mask {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.28);
+    z-index: 1000;
+    display: none;
+  }
+  .drawer-mask.show { display: block; }
+
+  /* Prevent background scroll when open */
+  body.drawer-open { overflow: hidden; }
+}
+
+
+
+
   }
 </style>
 <script>
@@ -217,6 +263,8 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
 
     <button class="logout" onclick="openLogout()">⏻ Logout</button>
   </aside>
+
+  <div id="drawerMask" class="drawer-mask"></div>
 
   <!-- Main -->
   <main>
@@ -428,7 +476,7 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
 
 
 <script>
-  // Sidebar mobile behavior
+
  
 
   // Welcome name
@@ -567,38 +615,42 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
 </script>
 
 <script>
-  const sidebar = document.getElementById('sidebar');
-  const btn = document.getElementById('collapseBtn');
-  const mask = document.getElementById('drawerMask');
+  const sidebar  = document.getElementById('sidebar');
+  const btn      = document.getElementById('collapseBtn');
+  const mask     = document.getElementById('drawerMask');
 
   function setSidebarMode() {
     if (window.innerWidth <= 860) {
       sidebar.classList.add('mobile');
       btn.style.display = 'block';
       sidebar.classList.remove('open');
-      mask.classList.remove('show');
+      mask?.classList.remove('show');
+      document.body.classList.remove('drawer-open');
     } else {
-      sidebar.classList.remove('mobile', 'open');
+      sidebar.classList.remove('mobile','open');
       btn.style.display = 'none';
-      mask.classList.remove('show');
+      mask?.classList.remove('show');
+      document.body.classList.remove('drawer-open');
     }
   }
-
   setSidebarMode();
   window.addEventListener('resize', setSidebarMode);
 
-  btn.addEventListener('click', () => {
-    sidebar.classList.toggle('open');
+  btn?.addEventListener('click', () => {
+    const isOpen = sidebar.classList.toggle('open');
     if (window.innerWidth <= 860) {
-      mask.classList.toggle('show', sidebar.classList.contains('open'));
+      mask?.classList.toggle('show', isOpen);
+      document.body.classList.toggle('drawer-open', isOpen);
     }
   });
 
-  mask.addEventListener('click', () => {
+  mask?.addEventListener('click', () => {
     sidebar.classList.remove('open');
     mask.classList.remove('show');
+    document.body.classList.remove('drawer-open');
   });
 </script>
+
 
 
 
