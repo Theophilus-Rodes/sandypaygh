@@ -4,16 +4,27 @@ const mysql = require("mysql2");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const axios = require("axios");
+const fs = require("fs");
 
 const router = express.Router();
 
-// ====== CONFIG ======
-const db = mysql.createConnection({
-  host: "localhost",        // MySQL server is on the same droplet
-  user: "sandypay_user",    // The user you created earlier
-  password: "VeryStrongPassword!123", // Your actual password
-  database: "vendor_portal" // The imported database
-});
+let caContent = null;
+try {
+  caContent = fs.readFileSync(process.env.DB_CA_PATH || "/etc/ssl/certs/ca-certificates.crt", "utf8");
+} catch (_) {
+  console.warn("⚠️ No CA file found — using non-SSL mode (fine for localhost)");
+}
+
+const dbConfig = {
+  host: process.env.DB_HOST || "127.0.0.1",
+  port: Number(process.env.DB_PORT || 3306),
+  user: (process.env.DB_USER || "root").trim(),
+  password: process.env.DB_PASSWORD || "",
+  database: process.env.DB_NAME || "vendor_portal",
+  ssl: caContent
+    ? { ca: caContent, rejectUnauthorized: true, minVersion: "TLSv1.2" }
+    : { rejectUnauthorized: false }, // fallback (local)
+};
 
 // Your short code extension (from Moolre)
 const EXTENSION_EXPECTED = "717";
@@ -35,11 +46,12 @@ router.use(cors());
 
 // ====== DATABASE ======
 
-db.connect((err) => {
-  if (err) console.error("❌ Database connection failed:", err);
-  else console.log("✅ Connected to MySQL database (USSD Router).");
-});
+const db = require("mysql2").createConnection(dbConfig);
 
+db.connect((err) => {
+  if (err) console.error("❌ USSD DB connection failed:", err.message);
+  else console.log("✅ USSD connected securely to DigitalOcean MySQL!");
+});
 // ====== SESSION STATE ======
 const sessions = {};
 
