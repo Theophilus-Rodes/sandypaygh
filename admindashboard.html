@@ -148,6 +148,17 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
   [style*="width:"], [style*="min-width:"], [style*="max-width:"] { max-width: 100% !important; }
 }
 
+
+
+/* Optional: dimmed backdrop when drawer open (no extra JS needed if you add the element) */
+.drawer-mask {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.25);
+  z-index: 1000;
+  display: none;
+}
+.drawer-mask.show { display: block; }
+
 /* --- Hamburger button styling --- */
 .collapse-btn {
   display: none;
@@ -171,15 +182,6 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
   }
 }
 
-
-/* Optional: dimmed backdrop when drawer open (no extra JS needed if you add the element) */
-.drawer-mask {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,.25);
-  z-index: 1000;
-  display: none;
-}
-.drawer-mask.show { display: block; }
 
 
   }
@@ -579,9 +581,20 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
       btn.style.display = 'none';
       mask?.classList.remove('show');
     }
+
+    function setSidebarMode() {
+  if (window.innerWidth <= 860) {
+    sidebar.classList.add('mobile');
+    document.getElementById('collapseBtn').style.display = 'block';
+  } else {
+    sidebar.classList.remove('mobile');
+    document.getElementById('collapseBtn').style.display = 'none';
+  }
+}
   }
   setSidebarMode();
   window.addEventListener('resize', setSidebarMode);
+  document.getElementById('collapseBtn').addEventListener('click', () => sidebar.classList.toggle('open'));
 
   btn?.addEventListener('click', () => {
     sidebar.classList.toggle('open');
