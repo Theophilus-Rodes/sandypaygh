@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Admin Dashboard • Sandypay</title>
 <style>
   :root{
@@ -80,54 +80,82 @@
     .grid{grid-template-columns:1fr}
 
 
+/* --- Global guards --- */
+html, body { max-width: 100%; overflow-x: hidden; }
+*,
+*::before,
+*::after { box-sizing: border-box; }
+img, video, svg { max-width: 100%; height: auto; display: block; }
 
-/* ==== Mobile polish & fixes ==== */
-body { overflow-x: hidden; }
-
-/* Smooth off-canvas sidebar + stacked layout */
+/* --- Phone layout hard rules --- */
 @media (max-width: 860px) {
-  .topbar, .navbar { position: sticky; top: 0; z-index: 50; }
-
-  .sidebar {
-    width: 260px;
-    left: 0;
-    transition: left .25s ease;
+  /* 1) Sidebar becomes an off-canvas drawer */
+  #sidebar {
+    position: fixed !important;
+    top: 0; left: 0;
+    height: 100vh;
+    width: 78vw;                 /* comfy width on phones */
+    max-width: 320px;
+    z-index: 1001;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    background: inherit;         /* keeps your theme */
+    border-right: 1px solid rgba(0,0,0,.06);
+    transition: transform .25s ease;
   }
-  /* hidden by default on phones; toggled via JS */
-  .sidebar.mobile { left: -260px; }
+  /* hidden by default when .mobile is present (your JS adds it) */
+  #sidebar.mobile { transform: translateX(-100%); }
+  /* visible when you toggle .open (your JS toggles it) */
+  #sidebar.mobile.open { transform: translateX(0); }
 
-  .shell { grid-template-columns: 1fr; }      /* main layout */
-  .content, .main-content { margin-left: 0 !important; padding: 12px; }
+  /* 2) Page content uses full width, no push */
+  .shell { display: grid; grid-template-columns: 1fr !important; gap: 12px; }
+  .content, .main-content, .container, .page, .dashboard {
+    margin: 0 !important;
+    padding: 12px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
 
-  .kpis, .grid { grid-template-columns: 1fr !important; gap: 12px; }
-  .card, .box { width: 100%; padding: 12px; border-radius: 14px; }
+  /* 3) Any grids/KPIs → 1 column so nothing squishes */
+  .kpis, .kpi-row, .metrics, .grid, .cards,
+  [class*="grid"], [class*="row"], [class*="cols"] {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .card, .box, .panel, .widget, .metric, .kpi {
+    width: 100% !important;
+    padding: 12px !important;
+    border-radius: 14px !important;
+    overflow: hidden;
+  }
 
-  .btn { padding: 10px 14px; font-size: 14px; }
-  .section-title, .welcome { font-size: 16px; }
+  /* 4) Topbar stays visible; hamburger shows */
+  .topbar, .navbar { position: sticky; top: 0; z-index: 1002; padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
+  #collapseBtn { display: inline-flex !important; align-items: center; gap: 6px; }
+
+  /* 5) Buttons/text scale nicely */
+  body { font-size: clamp(13px, 3.5vw, 15px); line-height: 1.35; }
+  .btn, button { padding: 10px 14px !important; min-height: 40px; white-space: normal; }
+  h1{font-size:20px} h2{font-size:18px} h3{font-size:16px}
+
+  /* 6) Tables scroll inside (no page overflow) */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { width: 100%; border-collapse: collapse; }
+
+  /* 7) Kill any inline fixed widths that cause overflow */
+  [style*="width:"], [style*="min-width:"], [style*="max-width:"] { max-width: 100% !important; }
 }
 
-/* Very small phones */
-@media (max-width: 480px) {
-  .btn { padding: 9px 12px; font-size: 13px; }
-  .top-actions > * { margin: 4px 0; }
-  /* Optional: show icons only in sidebar for tighter fit */
-  .sidebar .label { display: none; }
-  .sidebar .icon { margin-right: 0; }
+/* Optional: dimmed backdrop when drawer open (no extra JS needed if you add the element) */
+.drawer-mask {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.25);
+  z-index: 1000;
+  display: none;
 }
-
-/* Make the hamburger visible on mobile */
-.collapse {
-  display: none;               /* already in your CSS at desktop */
-  cursor: pointer;
-  border: 0;
-  background: transparent;
-  font-size: 22px;
-  line-height: 1;
-  padding: 8px 10px;
-}
-@media (max-width: 860px) {
-  .collapse { display: inline-flex; align-items: center; }
-}
+.drawer-mask.show { display: block; }
 
 
   }
@@ -374,18 +402,7 @@ body { overflow-x: hidden; }
 
 <script>
   // Sidebar mobile behavior
-  const sidebar=document.getElementById('sidebar');
-  function setSidebarMode(){
-    if(window.innerWidth<=860){
-      sidebar.classList.add('mobile');
-      document.getElementById('collapseBtn').style.display='block';
-    }else{
-      sidebar.classList.remove('mobile');
-      document.getElementById('collapseBtn').style.display='none';
-    }
-  }
-  setSidebarMode(); window.addEventListener('resize',setSidebarMode);
-  document.getElementById('collapseBtn').addEventListener('click',()=>sidebar.classList.toggle('open'));
+ 
 
   // Welcome name
   (function initName(){
@@ -521,6 +538,40 @@ body { overflow-x: hidden; }
   // Optional: show current mode when modal opens / page loads
   document.addEventListener("DOMContentLoaded", showCurrentMode);
 </script>
+
+<script>
+  const sidebar = document.getElementById('sidebar');
+  const btn = document.getElementById('collapseBtn');
+  const mask = document.getElementById('drawerMask');
+
+  function setSidebarMode(){
+    if (window.innerWidth <= 860) {
+      sidebar.classList.add('mobile');
+      btn.style.display = 'block';
+      mask?.classList.remove('show');
+      sidebar.classList.remove('open');   // start closed on phones
+    } else {
+      sidebar.classList.remove('mobile', 'open');
+      btn.style.display = 'none';
+      mask?.classList.remove('show');
+    }
+  }
+  setSidebarMode();
+  window.addEventListener('resize', setSidebarMode);
+
+  btn?.addEventListener('click', () => {
+    sidebar.classList.toggle('open');
+    if (window.innerWidth <= 860) {
+      mask?.classList.toggle('show', sidebar.classList.contains('open'));
+    }
+  });
+
+  mask?.addEventListener('click', () => {
+    sidebar.classList.remove('open');
+    mask.classList.remove('show');
+  });
+</script>
+
 
 
 </body>
