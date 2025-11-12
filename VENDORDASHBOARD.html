@@ -304,6 +304,7 @@
     <a href="set_community.html">Set Community</a>
     <a href="#" onclick="goToSettings()">Settings</a>
     <a href="AdminOrdersDisplay.html">Admin Packages</a>
+   <a id="purchaseSessionsLink" href="sessionboard.html">Purchase Sessions</a>
     <a href="#" onclick="handleLogout()">Logout</a>
   </div>
 
@@ -874,6 +875,16 @@ window.onload = function () {
     </div>
   </div>
 </div>
+
+<script>
+  // Pass vendor id through to the new page
+  (function () {
+    const params = new URLSearchParams(location.search);
+    const vendorId = params.get("id");
+    const link = document.getElementById("purchaseSessionsLink");
+    if (link && vendorId) link.href = `sessionboard.html?id=${encodeURIComponent(vendorId)}`;
+  })();
+</script>
 
 </body>
 </html>

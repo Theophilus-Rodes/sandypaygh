@@ -187,7 +187,6 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
       <button onclick="showAdminAfaDialog()">💳 Set AFA Price</button>
       <button onclick="goto('Total_Amount.html')">💰 Total Amount</button>
       <button onclick="goto('Payment.html')">💵 Payments</button>
-       <a id="purchaseSessionsLink" href="sessionboard.html">Purchase Sessions</a>
       <button onclick="goto('LinkCustomDomain.html')">🔗 Link Domain</button>
       <button onclick="openAllow()">✅ Allow</button>
     </nav>
@@ -583,15 +582,7 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
   });
 </script>
 
-<script>
-  // Pass vendor id through to the new page
-  (function () {
-    const params = new URLSearchParams(location.search);
-    const vendorId = params.get("id");
-    const link = document.getElementById("purchaseSessionsLink");
-    if (link && vendorId) link.href = `sessionboard.html?id=${encodeURIComponent(vendorId)}`;
-  })();
-</script>
+
 
 
 
