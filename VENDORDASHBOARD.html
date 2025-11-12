@@ -896,21 +896,23 @@ window.onload = function () {
 </script>
 
 <script>
-  // Get vendor id from URL (you likely already have this)
+  // ✅ 1. Always declare API_BASE first
+  const API_BASE = "/api"; // or "https://sandipay.co/api" if remote
+
+  // ✅ 2. Get vendor ID from the URL
   const params = new URLSearchParams(location.search);
   const vendorId = params.get("id");
 
-  // Reuse your API base; if you don’t have one set, use "/api"
-  const API_BASE = typeof API_BASE !== "undefined" ? API_BASE : "/api";
-
+  // ✅ 3. Target the element where we show sessions
   const ussdSessionsText = document.getElementById("ussdSessionsText");
 
-  // Optional: zero-pad to 4 (change width if you like)
+  // ✅ 4. Small helper to pad numbers like s: 0005
   function pad(n, width = 4) {
     const s = String(n);
     return s.length >= width ? s : "0".repeat(width - s.length) + s;
   }
 
+  // ✅ 5. Function to fetch total hits from backend
   async function loadUssdHits() {
     if (!vendorId) return;
     try {
@@ -920,21 +922,23 @@ window.onload = function () {
         const hits = Number(data.total_hits || 0);
         if (ussdSessionsText) ussdSessionsText.textContent = `s: ${pad(hits)}`;
       } else {
-        if (ussdSessionsText) ussdSessionsText.textContent = "s: 0000";
         console.warn("sessions/hits error:", data.error);
+        if (ussdSessionsText) ussdSessionsText.textContent = "s: 0000";
       }
     } catch (e) {
-      if (ussdSessionsText) ussdSessionsText.textContent = "s: 0000";
       console.error("sessions/hits fetch error:", e);
+      if (ussdSessionsText) ussdSessionsText.textContent = "s: 0000";
     }
   }
 
-  // Call on load
+  // ✅ 6. Run immediately when page loads
   loadUssdHits();
 
-  // If you have a Refresh button, hook it:
-  // document.getElementById("refreshBtn")?.addEventListener("click", loadUssdHits);
+  // ✅ 7. Optional: refresh button listener
+  const refreshBtn = document.getElementById("refreshBtn");
+  if (refreshBtn) refreshBtn.addEventListener("click", loadUssdHits);
 </script>
+
 
 
 </body>
