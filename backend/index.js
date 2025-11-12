@@ -327,10 +327,20 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
       teller: tt,
       verify: verifyPayload || null
     });
-  } catch (e) {
-    console.error("sessions/purchase-momo error:", e.response?.data || e.message);
-    return res.status(500).json({ error: "Payment error", details: e.response?.data || e.message });
+  } catch (err) {
+  if (err.response) {
+    console.error("sessions/purchase-momo error:",
+      err.response.status,
+      err.response.headers["content-type"],
+      typeof err.response.data === "string" ? err.response.data.slice(0,300) : err.response.data
+    );
+  } else {
+    console.error("sessions/purchase-momo network error:", err.message);
   }
+  return res.status(500).json({ error: "Payment error", details: err.response?.status || err.message });
+}
+
+  
 });
 
 
