@@ -138,20 +138,25 @@ transporter.verify((error, success) => {
 // NOTE: per your instruction this only INSERTS a record.
 app.post("/api/sessions/purchase", async (req, res) => {
   try {
-    const { vendor_id, amount } = req.body;
+    const { vendor_id, amount, computed_hits } = req.body;
     if (!vendor_id || !amount || Number(amount) <= 0) {
       return res.status(400).json({ error: "vendor_id and valid amount are required" });
     }
 
-    const reference = newRef("SW"); // Session Wallet
+    const HIT_COST = 0.02;
+    const hits = Number.isFinite(Number(computed_hits))
+      ? Math.max(0, Math.floor(Number(computed_hits)))
+      : Math.floor(Number(amount) / HIT_COST);
+
+    const reference = newRef("SW");
     const [result] = await db
       .promise()
       .query(
-        "INSERT INTO session_purchases (vendor_id, source, amount, reference, status) VALUES (?,?,?,?,?)",
-        [vendor_id, "wallet", amount, reference, "completed"]
+        "INSERT INTO session_purchases (vendor_id, source, amount, hits, reference, status, meta_json) VALUES (?,?,?,?,?,?, JSON_OBJECT('computed_hits', ?))",
+        [vendor_id, "wallet", amount, hits, reference, "completed", hits]
       );
 
-    return res.json({ id: result.insertId, reference });
+    return res.json({ id: result.insertId, reference, hits });
   } catch (e) {
     console.error("sessions/purchase error:", e.message);
     return res.status(500).json({ error: "Server error" });
@@ -161,90 +166,109 @@ app.post("/api/sessions/purchase", async (req, res) => {
 
 
 // ✅ Start a MoMo payment and record a session purchase
+// --- helper: make short unique refs ---
+function newRef(prefix = "SM") {
+  return `${prefix}${Date.now()}${Math.floor(Math.random() * 1000)}`.slice(0, 30);
+}
+
+// --- helper: map network -> r-switch (matches your snippet) ---
+function getSwitchCode(network) {
+  switch (String(network || "").toLowerCase()) {
+    case "mtn":        return "MTN";
+    case "vodafone":
+    case "telecel":    return "VDF";
+    case "airteltigo":
+    case "airtel":     return "ATL";
+    case "tigo":       return "TGO";
+    default:           return null;
+  }
+}
+
+// ✅ Start a MoMo payment and record a session purchase (TheTeller)
 app.post("/api/sessions/purchase-momo", async (req, res) => {
   try {
-    const { vendor_id, amount, momo_number, network } = req.body;
+    const { vendor_id, amount, momo_number, network, computed_hits } = req.body;
     if (!vendor_id || !amount || Number(amount) <= 0 || !momo_number || !network) {
       return res.status(400).json({ error: "vendor_id, amount, momo_number, network are required" });
     }
 
-    // Build TheTeller payload (reuse your working pattern)
-    const reference = newRef("SM"); // Session MoMo
-    const transactionId = reference; // you can reuse as transaction id
-    const amountFormatted = String(Math.round(Number(amount) * 100)).padStart(12, "0");
+    // --- compute hits (server-side trustworthy) ---
+    const HIT_COST = 0.02; // GHS per hit
+    const hits = Number.isFinite(Number(computed_hits))
+      ? Math.max(0, Math.floor(Number(computed_hits)))
+      : Math.floor(Number(amount) / HIT_COST);
 
-    // Map your network names to TheTeller r-switch codes (reuse your helper if you have one)
-    function getSwitchCode(nw) {
-      switch (String(nw).toLowerCase()) {
-        case "mtn": return "MTN";
-        case "airteltigo":
-        case "airtel":
-        case "tigo": return "ATL";
-        case "telecel":
-        case "vodafone": return "VDF";
-        default: return null;
-      }
-    }
-    const rSwitch = getSwitchCode(network);
-    if (!rSwitch) return res.status(400).json({ error: "Unsupported network" });
+    // --- build transaction basics ---
+    const reference       = newRef("SM"); // also used as transaction_id
+    const amountFormatted = String(Math.round(Number(amount) * 100)).padStart(12, "0"); // pesewas, 12 digits
+    const formattedMoMo   = String(momo_number).replace(/^0/, "233"); // 0XXXXXXXXX -> 233XXXXXXXXX
+    const rSwitch         = getSwitchCode(network);
+    if (!rSwitch) return res.status(400).send("❌ Invalid or unsupported network selected.");
 
-    const formattedMoMo = momo_number.replace(/^0/, "233");
+    // --- insert pending row WITH hits ---
+    await db.promise().query(
+      "INSERT INTO session_purchases (vendor_id, source, amount, hits, reference, status, meta_json) VALUES (?,?,?,?,?, 'pending', JSON_OBJECT('network', ?, 'momo', ?, 'computed_hits', ?))",
+      [vendor_id, "momo", amount, hits, reference, network, momo_number, hits]
+    );
 
+    // --- build TheTeller payload (matches your working shape; note 'r-switch') ---
     const payload = {
       amount: amountFormatted,
       processing_code: "000200",
-      transaction_id: transactionId,
-      desc: `Purchase USSD sessions (GHS ${amount})`,
-      merchant_id: process.env.TT_MERCHANT_ID,  // set in env
+      transaction_id: reference,
+      desc: `Purchase of USSD sessions (GHS ${amount})`,
+      merchant_id: "TTM-00010694",
       subscriber_number: formattedMoMo,
-      r_switch: rSwitch
+      "r-switch": rSwitch,
+      redirect_url: "https://example.com/callback"
     };
 
-    // Build Basic Auth (same as your working code)
-    const basic = Buffer.from(`${process.env.TT_USERNAME}:${process.env.TT_PASSWORD}`).toString("base64");
+    // --- build Basic token exactly like your snippet ---
+    // username: sandipay6821f47c4bfc0
+    // password: ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ=
+    const token = Buffer
+      .from("sandipay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ=")
+      .toString("base64");
 
-    // Insert a pending row first (so we have a trail)
-    await db.promise().query(
-      "INSERT INTO session_purchases (vendor_id, source, amount, reference, status, meta_json) VALUES (?,?,?,?,?,JSON_OBJECT('network',?, 'momo',?))",
-      [vendor_id, "momo", amount, reference, "pending", network, momo_number]
-    );
-
-    // Hit TheTeller
-    const axios = require("axios");
+    // --- call TheTeller ---
     const ttRes = await axios.post(
       "https://prod.theteller.net/v1.1/transaction/process",
       payload,
-      { headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/json" }, timeout: 20000 }
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Basic ${token}`,
+          "Cache-Control": "no-cache"
+        },
+        timeout: 20000
+      }
     );
 
-    // Interpret TheTeller response according to what you already use (adjust if your field names differ)
-    const approved = String(ttRes?.data?.code || ttRes?.data?.status).startsWith("0") || String(ttRes?.data?.status).toLowerCase()==="approved";
+    const tt = ttRes.data || {};
 
-    // Update status accordingly
+    // TheTeller approval check (be lenient to common shapes)
+    const approved =
+      String(tt.code || tt.status || "").startsWith("0") ||
+      String(tt.status || "").toLowerCase() === "approved";
+
+    // --- update status ---
     await db.promise().query(
       "UPDATE session_purchases SET status=? WHERE reference=?",
       [approved ? "completed" : "failed", reference]
     );
 
     if (!approved) {
-      return res.status(400).json({ error: "Payment not approved", details: ttRes.data, reference });
+      return res.status(400).json({ error: "Payment not approved", details: tt, reference, hits });
     }
 
-    return res.json({ reference, status: "initiated", teller: ttRes.data });
+    // success response
+    return res.json({ reference, status: "initiated", hits, teller: tt });
   } catch (e) {
     console.error("sessions/purchase-momo error:", e.response?.data || e.message);
-    try {
-      // mark failed if we had already inserted pending with that ref
-      if (e.reference) {
-        await db.promise().query(
-          "UPDATE session_purchases SET status='failed' WHERE reference=?",
-          [e.reference]
-        );
-      }
-    } catch (_) {}
     return res.status(500).json({ error: "Payment error", details: e.response?.data || e.message });
   }
 });
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
