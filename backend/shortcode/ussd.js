@@ -296,8 +296,8 @@ function handleSession(sessionId, input, msisdn, res) {
 
           const ins = `
             INSERT INTO admin_orders
-              (vendor_id, data_package, amount, recipient_number, data_package, amount, network, status, sent_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?,? 'pending', NOW())
+              (vendor_id, recipient_number, data_package, amount, network, status, sent_at)
+            VALUES (?, ?, ?, ?, ?, 'pending', NOW())
           `;
           db.query(ins, [vendor_id, data_package, amount, recipient_number, momo_number, network, package_id], (err) => {
             if (err) return console.error("❌ Failed to log order:", err);
