@@ -11,8 +11,6 @@ const xlsx = require("xlsx");
 const path = require("path");
 const fs = require("fs");
 
-// near the top with other imports
-const moolreRouter = require("./shortcode/ussd");
 
 // Ensure uploads folder exists
 const uploadDir = path.join(__dirname, "uploads");
@@ -52,9 +50,6 @@ const setAccessMode = (mode, cb) => {
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
-
-// after your global app.use(express.json()) / urlencoded() etc.
-app.use("/api/moolre", moolreRouter);
 
 
 // ✅ Create database connection (SECURE + supports CA text or path)
