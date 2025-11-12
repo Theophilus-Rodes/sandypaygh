@@ -291,32 +291,38 @@ function handleSession(sessionId, input, msisdn, res) {
           console.log("✅ TheTeller response:", response.data);
 
           // After payment request fires, log to DB (pending)
-          const vendorAmount = parseFloat((amount * 0.98).toFixed(2));
-          const revenueAmount = parseFloat((amount * 0.02).toFixed(2));
+         // After payment request fires, log to DB (pending)
+const vendorAmount = parseFloat((amount * 0.98).toFixed(2));
+const revenueAmount = parseFloat((amount * 0.02).toFixed(2));
 
-          const ins = `
-            INSERT INTO admin_orders
-              (vendor_id, recipient_number, data_package, amount, network, status, sent_at)
-            VALUES (?, ?, ?, ?, ?, 'pending', NOW())
-          `;
-          db.query(ins, [vendor_id, data_package, amount, recipient_number, momo_number, network, package_id], (err) => {
-            if (err) return console.error("❌ Failed to log order:", err);
-            console.log("✅ Order logged.");
+const ins = `
+  INSERT INTO admin_orders
+    (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+  VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)
+`;
+db.query(
+  ins,
+  [vendor_id, recipient_number, data_package, amount, network, package_id],
+  (err) => {
+    if (err) return console.error("❌ Failed to log admin order:", err);
+    console.log("✅ Admin order logged.");
 
-            db.query(
-              `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
-               VALUES (?, ?, ?, NOW())`,
-              [vendor_id, momo_number, vendorAmount],
-              (e) => e ? console.error("❌ Wallet load insert:", e) : console.log("✅ Wallet 98% logged.")
-            );
+    db.query(
+      `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
+       VALUES (?, ?, ?, NOW())`,
+      [vendor_id, momo_number, vendorAmount],
+      (e) => e ? console.error("❌ Wallet load insert:", e) : console.log("✅ Wallet 98% logged.")
+    );
 
-            db.query(
-              `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-               VALUES (?, ?, ?, NOW())`,
-              [vendor_id, `2% from ${network} payment`, revenueAmount],
-              (e) => e ? console.error("❌ Revenue insert:", e) : console.log("✅ 2% revenue logged.")
-            );
-          });
+    db.query(
+      `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+       VALUES (?, ?, ?, NOW())`,
+      [vendor_id, `2% from ${network} payment`, revenueAmount],
+      (e) => e ? console.error("❌ Revenue insert:", e) : console.log("✅ 2% revenue logged.")
+    );
+  }
+);
+
         })
         .catch((err) => {
           console.error("❌ TheTeller error:", err.response?.data || err.message);
