@@ -39,6 +39,8 @@
       <div id="walletForm" class="">
         <label>Amount (GHS)</label>
         <input type="number" id="walletAmount" min="1" step="1" placeholder="e.g. 50" />
+        <label>Hits (auto)</label>
+        <input type="text" id="walletHits" readonly placeholder="0 hits" />
         <button id="walletBtn">Purchase from Main Account</button>
         <div id="walletMsg" class="msg"></div>
       </div>
@@ -48,6 +50,8 @@
         <label>Amount (GHS)</label>
         <input type="number" id="momoAmount" min="1" step="1" placeholder="e.g. 50" />
         <label>MoMo Number</label>
+        <label>Hits (auto)</label>
+        <input type="text" id="momoHits" readonly placeholder="0 hits" />
         <input type="tel" id="momoNumber" placeholder="e.g. 024XXXXXXX" />
         <label>Network</label>
         <select id="momoNetwork">
@@ -63,11 +67,27 @@
   </div>
 
 <script>
+  // --- URL params ---
   const params = new URLSearchParams(location.search);
   const vendorId = params.get("id");
 
+  // --- Elements ---
   const walletForm = document.getElementById("walletForm");
-  const momoForm = document.getElementById("momoForm");
+  const momoForm   = document.getElementById("momoForm");
+
+  const walletAmtEl  = document.getElementById("walletAmount");
+  const walletHitsEl = document.getElementById("walletHits");   // read-only field
+  const walletBtn    = document.getElementById("walletBtn");
+  const walletMsg    = document.getElementById("walletMsg");
+
+  const momoAmtEl    = document.getElementById("momoAmount");
+  const momoHitsEl   = document.getElementById("momoHits");     // read-only field
+  const momoNumberEl = document.getElementById("momoNumber");
+  const momoNetEl    = document.getElementById("momoNetwork");
+  const momoBtn      = document.getElementById("momoBtn");
+  const momoMsg      = document.getElementById("momoMsg");
+
+  // --- Toggle source (Main Account vs MoMo) ---
   document.querySelectorAll('input[name="source"]').forEach(r => {
     r.addEventListener("change", () => {
       const val = document.querySelector('input[name="source"]:checked').value;
@@ -76,69 +96,111 @@
     });
   });
 
-  // Adjust this to your live backend base URL if needed
+  // --- API base ---
   const API_BASE = "/api";
 
-  // Wallet purchase
-  document.getElementById("walletBtn").addEventListener("click", async () => {
-    const amount = Number(document.getElementById("walletAmount").value);
-    const msg = document.getElementById("walletMsg");
-    msg.textContent = "";
-    if (!vendorId) return msg.innerHTML = '<span class="err">Missing vendor id.</span>';
-    if (!amount || amount < 1) return msg.innerHTML = '<span class="err">Enter a valid amount.</span>';
+  // --- Hits calculator ---
+  const HIT_COST = 0.02; // GHS per hit -> 1 GHS = 50 hits
+
+  function calcHitsFromAmount(amt) {
+    const a = Number(amt);
+    if (!a || a <= 0) return 0;
+    // whole hits only
+    return Math.floor(a / HIT_COST); // e.g., 10 / 0.02 = 500
+  }
+
+  function formatHits(n) {
+    return `${n} / hits`; // change to `${n} hits` if you prefer
+  }
+
+  function updateWalletHits() {
+    if (!walletHitsEl) return;
+    const hits = calcHitsFromAmount(walletAmtEl.value);
+    walletHitsEl.value = formatHits(hits);
+  }
+
+  function updateMomoHits() {
+    if (!momoHitsEl) return;
+    const hits = calcHitsFromAmount(momoAmtEl.value);
+    momoHitsEl.value = formatHits(hits);
+  }
+
+  // Bind live updates
+  if (walletAmtEl) walletAmtEl.addEventListener("input", updateWalletHits);
+  if (momoAmtEl)   momoAmtEl.addEventListener("input", updateMomoHits);
+
+  // Initialize on load
+  updateWalletHits();
+  updateMomoHits();
+
+  // --- Wallet purchase (Main Account) ---
+  walletBtn?.addEventListener("click", async () => {
+    const amount = Number(walletAmtEl.value);
+    walletMsg.textContent = "";
+
+    if (!vendorId) return walletMsg.innerHTML = '<span class="err">Missing vendor id.</span>';
+    if (!amount || amount < 1) return walletMsg.innerHTML = '<span class="err">Enter a valid amount.</span>';
+
+    const computed_hits = calcHitsFromAmount(amount);
 
     try {
-      document.getElementById("walletBtn").disabled = true;
+      walletBtn.disabled = true;
       const res = await fetch(`${API_BASE}/sessions/purchase`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ vendor_id: vendorId, amount })
+        body: JSON.stringify({ vendor_id: vendorId, amount, computed_hits })
       });
       const data = await res.json();
       if (res.ok) {
-        msg.innerHTML = `<span class="ok">Saved! Ref: ${data.reference || data.id}</span>`;
+        walletMsg.innerHTML = `<span class="ok">Saved! Ref: ${data.reference || data.id}. Credited: ${computed_hits} hits.</span>`;
       } else {
-        msg.innerHTML = `<span class="err">${data.error || "Could not save."}</span>`;
+        walletMsg.innerHTML = `<span class="err">${data.error || "Could not save."}</span>`;
       }
     } catch (e) {
-      msg.innerHTML = `<span class="err">${e.message}</span>`;
+      walletMsg.innerHTML = `<span class="err">${e.message}</span>`;
     } finally {
-      document.getElementById("walletBtn").disabled = false;
+      walletBtn.disabled = false;
     }
   });
 
-  // MoMo purchase (TheTeller)
-  document.getElementById("momoBtn").addEventListener("click", async () => {
-    const amount = Number(document.getElementById("momoAmount").value);
-    const momo_number = document.getElementById("momoNumber").value.trim();
-    const network = document.getElementById("momoNetwork").value;
-    const msg = document.getElementById("momoMsg");
-    msg.textContent = "";
-    if (!vendorId) return msg.innerHTML = '<span class="err">Missing vendor id.</span>';
-    if (!amount || amount < 1) return msg.innerHTML = '<span class="err">Enter a valid amount.</span>';
-    if (!momo_number) return msg.innerHTML = '<span class="err">Enter a MoMo number.</span>';
-    if (!network) return msg.innerHTML = '<span class="err">Select a network.</span>';
+  // --- MoMo purchase (TheTeller) ---
+  momoBtn?.addEventListener("click", async () => {
+    const amount      = Number(momoAmtEl.value);
+    const momo_number = momoNumberEl.value.trim();
+    const network     = momoNetEl.value;
+
+    momoMsg.textContent = "";
+
+    if (!vendorId)  return momoMsg.innerHTML = '<span class="err">Missing vendor id.</span>';
+    if (!amount || amount < 1) return momoMsg.innerHTML = '<span class="err">Enter a valid amount.</span>';
+    if (!momo_number) return momoMsg.innerHTML = '<span class="err">Enter a MoMo number.</span>';
+    if (!network)     return momoMsg.innerHTML = '<span class="err">Select a network.</span>';
+
+    const computed_hits = calcHitsFromAmount(amount);
 
     try {
-      document.getElementById("momoBtn").disabled = true;
-      msg.innerHTML = 'Please wait while you approve the payment on your phone…';
+      momoBtn.disabled = true;
+      momoMsg.innerHTML = 'Please wait while you approve the payment on your phone…';
+
       const res = await fetch(`${API_BASE}/sessions/purchase-momo`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ vendor_id: vendorId, amount, momo_number, network })
+        body: JSON.stringify({ vendor_id: vendorId, amount, momo_number, network, computed_hits })
       });
       const data = await res.json();
+
       if (res.ok) {
-        msg.innerHTML = `<span class="ok">Payment initiated. Ref: ${data.reference}. You’ll get a prompt on your phone.</span>`;
+        momoMsg.innerHTML = `<span class="ok">Payment initiated. Ref: ${data.reference}. Expected credit: ${computed_hits} hits.</span>`;
       } else {
-        msg.innerHTML = `<span class="err">${data.error || "Payment failed to start."}</span>`;
+        momoMsg.innerHTML = `<span class="err">${data.error || "Payment failed to start."}</span>`;
       }
     } catch (e) {
-      msg.innerHTML = `<span class="err">${e.message}</span>`;
+      momoMsg.innerHTML = `<span class="err">${e.message}</span>`;
     } finally {
-      document.getElementById("momoBtn").disabled = false;
+      momoBtn.disabled = false;
     }
   });
 </script>
+
 </body>
 </html>
