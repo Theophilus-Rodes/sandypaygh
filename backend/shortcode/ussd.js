@@ -32,7 +32,16 @@ try {
   console.error("⚠️ Could not load CA certificate:", e.message);
 }
 
-
+const dbConfig = {
+  host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT || 3306),
+  user: String(process.env.DB_USER || "").trim(),
+  password: DB_PASSWORD,
+  database: process.env.DB_NAME,
+  ssl: caContent
+    ? { ca: caContent, rejectUnauthorized: true, minVersion: "TLSv1.2" }
+    : { rejectUnauthorized: false }, // last-resort fallback (not recommended long-term)
+};
 
 if (!dbConfig.user) {
   throw new Error("DB_USER is empty — set DB_USER in App Platform → Environment Variables.");
