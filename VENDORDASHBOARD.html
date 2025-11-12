@@ -343,11 +343,11 @@
         <span id="ussdHits">0</span> hits
         <small>
           
-          <div class="metric">
-  <div class="label">USSD Sessions</div>
-  <div class="value">
-    <span id="ussdSessionsText">s: 0000</span>
-  </div>
+      <!-- USSD Sessions card -->
+<div class="metric-card">
+  <div class="metric-title">USSD Sessions</div>
+  <div class="metric-value"><span id="ussdHits">0 hits</span></div>
+  <div class="metric-sub"><span id="ussdRemain">s: 0000</span></div>
 </div>
 
         </small>
@@ -896,47 +896,24 @@ window.onload = function () {
 </script>
 
 <script>
-  // ✅ 1. Always declare API_BASE first
-  const API_BASE = "/api"; // or "https://sandipay.co/api" if remote
+(async function loadUssdStats(){
+  try {
+    const params = new URLSearchParams(location.search);
+    const vendor_id = params.get("id"); // your dashboard already uses ?id=5
+    if (!vendor_id) return;
 
-  // ✅ 2. Get vendor ID from the URL
-  const params = new URLSearchParams(location.search);
-  const vendorId = params.get("id");
+    const res = await fetch(`/api/vendor/ussd-stats?vendor_id=${encodeURIComponent(vendor_id)}`);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const { used_hits = 0, remaining_hits = 0 } = await res.json();
 
-  // ✅ 3. Target the element where we show sessions
-  const ussdSessionsText = document.getElementById("ussdSessionsText");
-
-  // ✅ 4. Small helper to pad numbers like s: 0005
-  function pad(n, width = 4) {
-    const s = String(n);
-    return s.length >= width ? s : "0".repeat(width - s.length) + s;
+    const hitsEl = document.getElementById("ussdHits");
+    const remEl  = document.getElementById("ussdRemain");
+    if (hitsEl) hitsEl.textContent = `${used_hits} hits`;
+    if (remEl)  remEl.textContent  = `s: ${remaining_hits}`;
+  } catch (e) {
+    console.warn("Failed to load USSD stats:", e.message);
   }
-
-  // ✅ 5. Function to fetch total hits from backend
-  async function loadUssdHits() {
-    if (!vendorId) return;
-    try {
-      const res = await fetch(`${API_BASE}/sessions/hits?vendor_id=${encodeURIComponent(vendorId)}`);
-      const data = await res.json();
-      if (res.ok) {
-        const hits = Number(data.total_hits || 0);
-        if (ussdSessionsText) ussdSessionsText.textContent = `s: ${pad(hits)}`;
-      } else {
-        console.warn("sessions/hits error:", data.error);
-        if (ussdSessionsText) ussdSessionsText.textContent = "s: 0000";
-      }
-    } catch (e) {
-      console.error("sessions/hits fetch error:", e);
-      if (ussdSessionsText) ussdSessionsText.textContent = "s: 0000";
-    }
-  }
-
-  // ✅ 6. Run immediately when page loads
-  loadUssdHits();
-
-  // ✅ 7. Optional: refresh button listener
-  const refreshBtn = document.getElementById("refreshBtn");
-  if (refreshBtn) refreshBtn.addEventListener("click", loadUssdHits);
+})();
 </script>
 
 
