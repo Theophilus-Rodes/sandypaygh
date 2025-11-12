@@ -10,6 +10,8 @@ const multer = require("multer");
 const xlsx = require("xlsx");
 const path = require("path");
 const fs = require("fs");
+//calling ussd 
+const moolreRouter = require("./shortcode/ussd");
 
 
 // Ensure uploads folder exists
@@ -50,6 +52,8 @@ const setAccessMode = (mode, cb) => {
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
+//Continue ussd
+app.use("/api/moolre", moolreRouter);
 
 
 // ✅ Create database connection (SECURE + supports CA text or path)
