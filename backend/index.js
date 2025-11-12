@@ -167,11 +167,10 @@ app.post("/api/sessions/purchase", async (req, res) => {
 
 // ✅ Start a MoMo payment and record a session purchase
 // --- helper: make short unique refs ---
+// --- helpers ---
 function newRef(prefix = "SM") {
   return `${prefix}${Date.now()}${Math.floor(Math.random() * 1000)}`.slice(0, 30);
 }
-
-// --- helper: map network -> r-switch (matches your snippet) ---
 function getSwitchCode(network) {
   switch (String(network || "").toLowerCase()) {
     case "mtn":        return "MTN";
@@ -183,8 +182,30 @@ function getSwitchCode(network) {
     default:           return null;
   }
 }
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// ✅ Start a MoMo payment and record a session purchase (TheTeller)
+// TheTeller verify helper: returns { approved: boolean, raw: any }
+async function verifyTeller(merchantId, transactionId, basicToken) {
+  try {
+    const url = `https://prod.theteller.net/v1.1/transaction/verify/${merchantId}/${transactionId}`;
+    const v = await axios.get(url, {
+      headers: {
+        Authorization: `Basic ${basicToken}`,
+        "Cache-Control": "no-cache"
+      },
+      timeout: 15000
+    });
+    const data = v.data || {};
+    const approved =
+      String(data.code || data.status || "").startsWith("0") ||
+      String(data.status || "").toLowerCase() === "approved";
+    return { approved, raw: data };
+  } catch (e) {
+    return { approved: false, raw: e.response?.data || e.message };
+  }
+}
+
+// ✅ Purchase sessions via MoMo (insert ONLY after payment approved)
 app.post("/api/sessions/purchase-momo", async (req, res) => {
   try {
     const { vendor_id, amount, momo_number, network, computed_hits } = req.body;
@@ -192,26 +213,20 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
       return res.status(400).json({ error: "vendor_id, amount, momo_number, network are required" });
     }
 
-    // --- compute hits (server-side trustworthy) ---
-    const HIT_COST = 0.02; // GHS per hit
+    // compute hits server-side
+    const HIT_COST = 0.02;
     const hits = Number.isFinite(Number(computed_hits))
       ? Math.max(0, Math.floor(Number(computed_hits)))
       : Math.floor(Number(amount) / HIT_COST);
 
-    // --- build transaction basics ---
+    // build transaction details
     const reference       = newRef("SM"); // also used as transaction_id
-    const amountFormatted = String(Math.round(Number(amount) * 100)).padStart(12, "0"); // pesewas, 12 digits
-    const formattedMoMo   = String(momo_number).replace(/^0/, "233"); // 0XXXXXXXXX -> 233XXXXXXXXX
+    const amountFormatted = String(Math.round(Number(amount) * 100)).padStart(12, "0");
+    const formattedMoMo   = String(momo_number).replace(/^0/, "233");
     const rSwitch         = getSwitchCode(network);
     if (!rSwitch) return res.status(400).send("❌ Invalid or unsupported network selected.");
 
-    // --- insert pending row WITH hits ---
-    await db.promise().query(
-      "INSERT INTO session_purchases (vendor_id, source, amount, hits, reference, status, meta_json) VALUES (?,?,?,?,?, 'pending', JSON_OBJECT('network', ?, 'momo', ?, 'computed_hits', ?))",
-      [vendor_id, "momo", amount, hits, reference, network, momo_number, hits]
-    );
-
-    // --- build TheTeller payload (matches your working shape; note 'r-switch') ---
+    // TheTeller payload
     const payload = {
       amount: amountFormatted,
       processing_code: "000200",
@@ -223,21 +238,19 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
       redirect_url: "https://example.com/callback"
     };
 
-    // --- build Basic token exactly like your snippet ---
-    // username: sandipay6821f47c4bfc0
-    // password: ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ=
-    const token = Buffer
+    // Basic token exactly like your working pattern
+    const basicToken = Buffer
       .from("sandipay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ=")
       .toString("base64");
 
-    // --- call TheTeller ---
+    // 1) Call process
     const ttRes = await axios.post(
       "https://prod.theteller.net/v1.1/transaction/process",
       payload,
       {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Basic ${token}`,
+          Authorization: `Basic ${basicToken}`,
           "Cache-Control": "no-cache"
         },
         timeout: 20000
@@ -245,24 +258,47 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
     );
 
     const tt = ttRes.data || {};
-
-    // TheTeller approval check (be lenient to common shapes)
-    const approved =
+    const immediateApproved =
       String(tt.code || tt.status || "").startsWith("0") ||
       String(tt.status || "").toLowerCase() === "approved";
 
-    // --- update status ---
-    await db.promise().query(
-      "UPDATE session_purchases SET status=? WHERE reference=?",
-      [approved ? "completed" : "failed", reference]
-    );
+    let approved = immediateApproved;
+    let verifyPayload = null;
 
+    // 2) If not clearly approved, verify a few times (user might still be entering PIN)
     if (!approved) {
-      return res.status(400).json({ error: "Payment not approved", details: tt, reference, hits });
+      for (let i = 0; i < 3 && !approved; i++) {
+        await sleep(3000); // wait 3s between checks
+        const v = await verifyTeller("TTM-00010694", reference, basicToken);
+        verifyPayload = v.raw;
+        approved = v.approved;
+      }
     }
 
-    // success response
-    return res.json({ reference, status: "initiated", hits, teller: tt });
+    // 3) Only insert WHEN approved
+    if (!approved) {
+      return res.status(400).json({
+        error: "Payment not approved/cancelled",
+        reference,
+        teller: tt,
+        verify: verifyPayload || null
+      });
+    }
+
+    // 4) Insert COMPLETED row now (no row existed before this point)
+    const [result] = await db.promise().query(
+      "INSERT INTO session_purchases (vendor_id, source, amount, hits, reference, status, meta_json) VALUES (?,?,?,?,?, 'completed', JSON_OBJECT('network', ?, 'momo', ?, 'verified', ?, 'computed_hits', ?))",
+      [vendor_id, "momo", amount, hits, reference, network, momo_number, true, hits]
+    );
+
+    return res.json({
+      id: result.insertId,
+      reference,
+      status: "completed",
+      hits,
+      teller: tt,
+      verify: verifyPayload || null
+    });
   } catch (e) {
     console.error("sessions/purchase-momo error:", e.response?.data || e.message);
     return res.status(500).json({ error: "Payment error", details: e.response?.data || e.message });
@@ -370,8 +406,8 @@ app.post("/api/register", async (req, res) => {
             if (insertErr) return res.status(500).send("Registration failed.");
 
             const userId = result.insertId;
-           const ussdCode = generateUssdCode("*203*555#", userId);
-           const publicLink = `https://vendor.sandipay.co/index1.html?id=${userId}`;
+           const ussdCode = generateUssdCode("*203*717#", userId);
+           const publicLink = `https://sandipay.co/index1.html?id=${userId}`;
 
 
             db.query("UPDATE users SET ussd_code = ?, public_link = ? WHERE id = ?", [ussdCode, publicLink, userId], (updateErr) => {
