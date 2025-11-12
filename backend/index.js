@@ -337,6 +337,29 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
+// GET /api/sessions/hits?vendor_id=5
+app.get("/api/sessions/hits", async (req, res) => {
+  try {
+    const vendor_id = req.query.vendor_id;
+    if (!vendor_id) return res.status(400).json({ error: "vendor_id is required" });
+
+    const [rows] = await db.promise().query(
+  `SELECT COALESCE(SUM(hits), 0) AS total_hits
+   FROM session_purchases
+   WHERE vendor_id = ?`,
+  [vendor_id]
+);
+
+    const total_hits = Number(rows?.[0]?.total_hits || 0);
+    res.json({ total_hits });
+  } catch (e) {
+    console.error("sessions/hits error:", e.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
+
 
 // ✅ DOWNLOAD COMPLETED ORDERS & RECORD
 app.get("/api/download-orders", async (req, res) => {
