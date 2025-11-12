@@ -7,7 +7,7 @@ const axios = require("axios");
 const fs = require("fs");
 
 const router = express.Router();
-
+///////////////////////////////////////////////////////////////////////////
 // ✅ Create database connection (SECURE + supports CA text or path)
 const required = ["DB_HOST", "DB_PORT", "DB_USER", "DB_NAME"];
 const missing = required.filter(k => !process.env[k] || String(process.env[k]).trim() === "");
@@ -40,7 +40,7 @@ if (!dbConfig.user) {
 if (!DB_PASSWORD) {
   throw new Error("DB_PASSWORD is empty — set DB_PASSWORD (or DB_PASS).");
 }
-
+//////////////////////////////////////////////////////////////
 // Your short code extension (from Moolre)
 const EXTENSION_EXPECTED = "717";
 
@@ -60,13 +60,14 @@ router.use(bodyParser.text({ type: "*/*" }));            // Moolre sometimes sen
 router.use(cors());
 
 // ====== DATABASE ======
-
-const db = require("mysql2").createConnection(dbConfig);
+/////////////////////////////////////////////////////////
+const db = mysql.createConnection(dbConfig);
 
 db.connect((err) => {
   if (err) console.error("❌ USSD DB connection failed:", err.message);
   else console.log("✅ USSD connected securely to DigitalOcean MySQL!");
 });
+////////////////////////////////////////////////////////////
 // ====== SESSION STATE ======
 const sessions = {};
 
