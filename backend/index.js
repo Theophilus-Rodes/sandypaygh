@@ -346,6 +346,37 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// GET /api/vendor/ussd-stats?vendor_id=5
+app.get("/api/vendor/ussd-stats", async (req, res) => {
+  const vendor_id = Number(req.query.vendor_id || 0);
+  if (!vendor_id) return res.status(400).json({ error: "vendor_id required" });
+
+  try {
+    const [used] = await db.promise().query(
+      `SELECT COALESCE(hits_used,0) AS used_hits
+         FROM ussd_session_counters
+        WHERE vendor_id = ?`,
+      [vendor_id]
+    );
+
+    const [remain] = await db.promise().query(
+      `SELECT COALESCE(SUM(CASE WHEN status='completed' THEN hits ELSE 0 END),0) AS remaining_hits
+         FROM session_purchases
+        WHERE vendor_id = ?`,
+      [vendor_id]
+    );
+
+    res.json({
+      used_hits: Number(used?.[0]?.used_hits || 0),
+      remaining_hits: Number(remain?.[0]?.remaining_hits || 0),
+    });
+  } catch (e) {
+    console.error("ussd-stats error:", e.message);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+
 
 // GET /api/sessions/hits?vendor_id=5
 app.get("/api/sessions/hits", async (req, res) => {
