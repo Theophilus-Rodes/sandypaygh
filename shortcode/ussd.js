@@ -1,19 +1,26 @@
-// shortcode/ussd.js  (ROUTER VERSION)
+// ussd.js
+// -----------------------
+// SandyPay USSD (Moolre) with TheTeller payment + ACCESS CONTROL
+// - Blocks base *203*717# -> "END APPLICATION UNKNOWN"
+// - Extracts vendor_id from *203*717*<id>#
+// - Sends TheTeller request with your formatting + token build
+// - NEW: If access_mode='limited' only MSISDNs found in telephone_numbers can use the USSD
+// -----------------------
+
 const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const axios = require("axios");
 
-const router = express.Router();
-
 // ====== CONFIG ======
-const db = mysql.createConnection({
-  host: "localhost",        // MySQL server is on the same droplet
-  user: "sandypay_user",    // The user you created earlier
-  password: "VeryStrongPassword!123", // Your actual password
-  database: "vendor_portal" // The imported database
-});
+const PORT = 5050;
+const DB_CONFIG = {
+  host: "localhost",
+  user: "root",
+  password: "",
+  database: "vendor_portal",
+};
 
 // Your short code extension (from Moolre)
 const EXTENSION_EXPECTED = "717";
@@ -27,17 +34,18 @@ const THETELLER = {
     .from("sandipay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ=")
     .toString("base64"),
 };
+// ==================================
 
-// ====== MIDDLEWARE (scoped to this router) ======
-router.use(express.json({ type: "application/json" }));  // for JSON
-router.use(bodyParser.text({ type: "*/*" }));            // Moolre sometimes sends text/plain
-router.use(cors());
+const app = express();
+app.use(express.json({ type: "application/json" }));
+app.use(bodyParser.text({ type: "*/*" }));
+app.use(cors());
 
 // ====== DATABASE ======
-
+const db = mysql.createConnection(DB_CONFIG);
 db.connect((err) => {
   if (err) console.error("❌ Database connection failed:", err);
-  else console.log("✅ Connected to MySQL database (USSD Router).");
+  else console.log("✅ Connected to MySQL database.");
 });
 
 // ====== SESSION STATE ======
@@ -117,6 +125,7 @@ function checkAccess(msisdn, cb) {
     );
   }
 }
+
 
 // ====== CORE SESSION HANDLER ======
 function handleSession(sessionId, input, msisdn, res) {
@@ -291,8 +300,7 @@ function handleSession(sessionId, input, msisdn, res) {
 }
 
 // ====== USSD ROUTE (Moolre) ======
-// Parent app will mount this router at /api/moolre, so our path here is "/"
-router.post("/", (req, res) => {
+app.post("/ussd/moolre", (req, res) => {
   let payload = {};
   try {
     payload = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
@@ -340,4 +348,57 @@ router.post("/", (req, res) => {
   });
 });
 
-module.exports = router;
+// ===== Admin: toggle access mode =====
+// GET /api/set-access/:mode   -> mode = "all" | "limited"
+// GET /api/get-access         -> returns {mode: "all"|"limited"}
+
+app.get("/api/set-access/:mode", (req, res) => {
+  const mode = req.params.mode === "limited" ? "limited" : "all";
+
+  // Try new schema (setting/value) first
+  db.query(
+    "UPDATE app_settings SET `value`=? WHERE setting='access_mode'",
+    [mode],
+    (e) => {
+      if (e && e.errno === 1054) {
+        // Fallback to legacy single-column schema (access_mode)
+        return db.query(
+          "UPDATE app_settings SET access_mode=?",
+          [mode],
+          (e2) => {
+            if (e2) return res.status(500).send("DB error: " + e2.message);
+            res.send(`Access mode updated to ${mode.toUpperCase()}`);
+          }
+        );
+      }
+      if (e) return res.status(500).send("DB error: " + e.message);
+      res.send(`Access mode updated to ${mode.toUpperCase()}`);
+    }
+  );
+});
+
+app.get("/api/get-access", (req, res) => {
+  // New schema first
+  db.query(
+    "SELECT `value` AS v FROM app_settings WHERE setting='access_mode' LIMIT 1",
+    (e, rows) => {
+      if (e && e.errno === 1054) {
+        // Legacy schema fallback
+        return db.query("SELECT access_mode AS v FROM app_settings LIMIT 1", (e2, r2) => {
+          if (e2) return res.status(500).json({ error: e2.message });
+          return res.json({ mode: String(r2?.[0]?.v || "all").toLowerCase() });
+        });
+      }
+      if (e) return res.status(500).json({ error: e.message });
+      return res.json({ mode: String(rows?.[0]?.v || "all").toLowerCase() });
+    }
+  );
+});
+
+
+// ====== START SERVER ======
+app.listen(PORT, () => {
+  console.log(`✅ Server running on http://localhost:${PORT}`);
+  console.log(`↪️  Expecting Moolre extension: ${EXTENSION_EXPECTED}`);
+  console.log(`💳  TheTeller: ENABLED (token-based)`);
+});
