@@ -341,7 +341,16 @@
       <div class="wallet-label">USSD Sessions</div>
       <div class="wallet-value">
         <span id="ussdHits">0</span> hits
-        <small>(GHS <span id="ussdCost">0.00</span>)</small>
+        <small>
+          
+          <div class="metric">
+  <div class="label">USSD Sessions</div>
+  <div class="value">
+    <span id="ussdSessionsText">s: 0000</span>
+  </div>
+</div>
+
+        </small>
       </div>
     </div>
   </div>
@@ -885,6 +894,48 @@ window.onload = function () {
     if (link && vendorId) link.href = `sessionboard.html?id=${encodeURIComponent(vendorId)}`;
   })();
 </script>
+
+<script>
+  // Get vendor id from URL (you likely already have this)
+  const params = new URLSearchParams(location.search);
+  const vendorId = params.get("id");
+
+  // Reuse your API base; if you don’t have one set, use "/api"
+  const API_BASE = typeof API_BASE !== "undefined" ? API_BASE : "/api";
+
+  const ussdSessionsText = document.getElementById("ussdSessionsText");
+
+  // Optional: zero-pad to 4 (change width if you like)
+  function pad(n, width = 4) {
+    const s = String(n);
+    return s.length >= width ? s : "0".repeat(width - s.length) + s;
+  }
+
+  async function loadUssdHits() {
+    if (!vendorId) return;
+    try {
+      const res = await fetch(`${API_BASE}/sessions/hits?vendor_id=${encodeURIComponent(vendorId)}`);
+      const data = await res.json();
+      if (res.ok) {
+        const hits = Number(data.total_hits || 0);
+        if (ussdSessionsText) ussdSessionsText.textContent = `s: ${pad(hits)}`;
+      } else {
+        if (ussdSessionsText) ussdSessionsText.textContent = "s: 0000";
+        console.warn("sessions/hits error:", data.error);
+      }
+    } catch (e) {
+      if (ussdSessionsText) ussdSessionsText.textContent = "s: 0000";
+      console.error("sessions/hits fetch error:", e);
+    }
+  }
+
+  // Call on load
+  loadUssdHits();
+
+  // If you have a Refresh button, hook it:
+  // document.getElementById("refreshBtn")?.addEventListener("click", loadUssdHits);
+</script>
+
 
 </body>
 </html>
