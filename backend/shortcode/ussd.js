@@ -76,6 +76,9 @@ db.connect((err) => {
   if (err) console.error("❌ USSD DB connection failed:", err.message);
   else console.log("✅ USSD connected securely to DigitalOcean MySQL!");
 });
+
+// --- Promise helpers for MySQL ---
+const dbp = db.promise();
 ////////////////////////////////////////////////////////////
 // ====== SESSION STATE ======
 const sessions = {};
@@ -356,11 +359,30 @@ router.post("/", (req, res) => {
     }
 
     // New session: extract vendor_id from the first `data` (digits only)
-    if (isNew === true || !sessions[sessionId]) {
-      const raw = String(data || "").trim();
-      const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
-      const vendorId = Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0 ? vendorIdFromDial : 1;
+   // New session: extract vendor_id from the first `data` (digits only)
+if (isNew === true || !sessions[sessionId]) {
+  const raw = String(data || "").trim();
+  const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
+  const vendorId = Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0 ? vendorIdFromDial : 1;
 
+  (async () => {
+    try {
+      const remaining = await getRemainingHits(vendorId);
+      if (remaining <= 0) {
+        // No hits left – end immediately
+        return res.json({ message: "END Sorry, your session has finished.", reply: false });
+      }
+
+      // Deduct exactly 1 hit (transaction safe). If it fails, block the session.
+      const ok = await consumeOneHit(vendorId);
+      if (!ok) {
+        return res.json({ message: "END Sorry, your session has finished.", reply: false });
+      }
+
+      // Count this session for the dashboard “USSD Sessions: N hits”
+      await incrementUssdCounter(vendorId);
+
+      // Now create session state and continue
       sessions[sessionId] = {
         step: "start",
         vendorId,
@@ -370,7 +392,19 @@ router.post("/", (req, res) => {
         packageList: [],
         packagePage: 0,
       };
+
+      // Kick off the first screen right away
+      return handleSession(sessionId, (data || message || "").trim(), String(msisdn || ""), res);
+    } catch (e) {
+      console.error("Session start/hits error:", e.message);
+      return res.json({ message: "END Service temporarily unavailable. Try again later.", reply: false });
     }
+  })();
+
+  // Important: stop the normal flow here; we already responded from the async block.
+  return;
+}
+
 
     const input = (data || message || "").trim();
     handleSession(sessionId, input, String(msisdn || ""), res);
@@ -378,3 +412,72 @@ router.post("/", (req, res) => {
 });
 
 module.exports = router;
+
+// --- HIT helpers ---
+
+// Returns total remaining hits for a vendor (only 'completed' rows count)
+async function getRemainingHits(vendorId) {
+  const [rows] = await dbp.query(
+    `SELECT COALESCE(SUM(CASE WHEN status='completed' THEN hits ELSE 0 END), 0) AS total_hits
+     FROM session_purchases
+     WHERE vendor_id = ?`,
+    [vendorId]
+  );
+  return Number(rows?.[0]?.total_hits || 0);
+}
+
+// Atomically deduct 1 hit from the most recent row that still has hits > 0.
+// Returns true if 1 hit was deducted, false if none available.
+async function consumeOneHit(vendorId) {
+  // Use a transaction + FOR UPDATE to avoid race conditions
+  const conn = await dbp.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [pick] = await conn.query(
+      `SELECT id, hits
+         FROM session_purchases
+        WHERE vendor_id = ? AND status='completed' AND hits > 0
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        FOR UPDATE`,
+      [vendorId]
+    );
+
+    if (!pick || !pick.length) {
+      await conn.rollback();
+      conn.release();
+      return false;
+    }
+
+    const row = pick[0];
+    const newHits = Number(row.hits) - 1;
+
+    await conn.query(
+      `UPDATE session_purchases
+          SET hits = ?
+        WHERE id = ?`,
+      [newHits, row.id]
+    );
+
+    await conn.commit();
+    conn.release();
+    return true;
+  } catch (e) {
+    try { await conn.rollback(); } catch {}
+    conn.release();
+    console.error("consumeOneHit() error:", e.message);
+    return false;
+  }
+}
+
+// Bump the visible USSD session counter for the vendor (for dashboard display)
+async function incrementUssdCounter(vendorId) {
+  await dbp.query(
+    `INSERT INTO ussd_session_counters (vendor_id, hits_used)
+     VALUES (?, 1)
+     ON DUPLICATE KEY UPDATE hits_used = hits_used + 1`,
+    [vendorId]
+  );
+}
+
