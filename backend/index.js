@@ -13,6 +13,13 @@ const fs = require("fs");
 //calling ussd 
 const moolreRouter = require("./shortcode/ussd");
 
+// --- Sessions helpers (place near other requires/configs) ---
+const crypto = require("crypto");
+
+function newRef(prefix = "S") {
+  return `${prefix}${Date.now()}${Math.floor(Math.random()*1000)}`.slice(0, 24);
+}
+
 
 // Ensure uploads folder exists
 const uploadDir = path.join(__dirname, "uploads");
@@ -124,6 +131,124 @@ transporter.verify((error, success) => {
   if (error) console.log("Transporter setup error:", error);
   else console.log("SMTP is ready to send emails.");
 });
+
+
+
+// ✅ Save a session purchase paid from Main Account (wallet)
+// NOTE: per your instruction this only INSERTS a record.
+app.post("/api/sessions/purchase", async (req, res) => {
+  try {
+    const { vendor_id, amount } = req.body;
+    if (!vendor_id || !amount || Number(amount) <= 0) {
+      return res.status(400).json({ error: "vendor_id and valid amount are required" });
+    }
+
+    const reference = newRef("SW"); // Session Wallet
+    const [result] = await db
+      .promise()
+      .query(
+        "INSERT INTO session_purchases (vendor_id, source, amount, reference, status) VALUES (?,?,?,?,?)",
+        [vendor_id, "wallet", amount, reference, "completed"]
+      );
+
+    return res.json({ id: result.insertId, reference });
+  } catch (e) {
+    console.error("sessions/purchase error:", e.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+
+
+// ✅ Start a MoMo payment and record a session purchase
+app.post("/api/sessions/purchase-momo", async (req, res) => {
+  try {
+    const { vendor_id, amount, momo_number, network } = req.body;
+    if (!vendor_id || !amount || Number(amount) <= 0 || !momo_number || !network) {
+      return res.status(400).json({ error: "vendor_id, amount, momo_number, network are required" });
+    }
+
+    // Build TheTeller payload (reuse your working pattern)
+    const reference = newRef("SM"); // Session MoMo
+    const transactionId = reference; // you can reuse as transaction id
+    const amountFormatted = String(Math.round(Number(amount) * 100)).padStart(12, "0");
+
+    // Map your network names to TheTeller r-switch codes (reuse your helper if you have one)
+    function getSwitchCode(nw) {
+      switch (String(nw).toLowerCase()) {
+        case "mtn": return "MTN";
+        case "airteltigo":
+        case "airtel":
+        case "tigo": return "ATL";
+        case "telecel":
+        case "vodafone": return "VDF";
+        default: return null;
+      }
+    }
+    const rSwitch = getSwitchCode(network);
+    if (!rSwitch) return res.status(400).json({ error: "Unsupported network" });
+
+    const formattedMoMo = momo_number.replace(/^0/, "233");
+
+    const payload = {
+      amount: amountFormatted,
+      processing_code: "000200",
+      transaction_id: transactionId,
+      desc: `Purchase USSD sessions (GHS ${amount})`,
+      merchant_id: process.env.TT_MERCHANT_ID,  // set in env
+      subscriber_number: formattedMoMo,
+      r_switch: rSwitch
+    };
+
+    // Build Basic Auth (same as your working code)
+    const basic = Buffer.from(`${process.env.TT_USERNAME}:${process.env.TT_PASSWORD}`).toString("base64");
+
+    // Insert a pending row first (so we have a trail)
+    await db.promise().query(
+      "INSERT INTO session_purchases (vendor_id, source, amount, reference, status, meta_json) VALUES (?,?,?,?,?,JSON_OBJECT('network',?, 'momo',?))",
+      [vendor_id, "momo", amount, reference, "pending", network, momo_number]
+    );
+
+    // Hit TheTeller
+    const axios = require("axios");
+    const ttRes = await axios.post(
+      "https://prod.theteller.net/v1.1/transaction/process",
+      payload,
+      { headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/json" }, timeout: 20000 }
+    );
+
+    // Interpret TheTeller response according to what you already use (adjust if your field names differ)
+    const approved = String(ttRes?.data?.code || ttRes?.data?.status).startsWith("0") || String(ttRes?.data?.status).toLowerCase()==="approved";
+
+    // Update status accordingly
+    await db.promise().query(
+      "UPDATE session_purchases SET status=? WHERE reference=?",
+      [approved ? "completed" : "failed", reference]
+    );
+
+    if (!approved) {
+      return res.status(400).json({ error: "Payment not approved", details: ttRes.data, reference });
+    }
+
+    return res.json({ reference, status: "initiated", teller: ttRes.data });
+  } catch (e) {
+    console.error("sessions/purchase-momo error:", e.response?.data || e.message);
+    try {
+      // mark failed if we had already inserted pending with that ref
+      if (e.reference) {
+        await db.promise().query(
+          "UPDATE session_purchases SET status='failed' WHERE reference=?",
+          [e.reference]
+        );
+      }
+    } catch (_) {}
+    return res.status(500).json({ error: "Payment error", details: e.response?.data || e.message });
+  }
+});
+
+
+
+
 
 // ✅ DOWNLOAD COMPLETED ORDERS & RECORD
 app.get("/api/download-orders", async (req, res) => {
