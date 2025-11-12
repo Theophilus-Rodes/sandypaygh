@@ -136,30 +136,77 @@ transporter.verify((error, success) => {
 
 // ✅ Save a session purchase paid from Main Account (wallet)
 // NOTE: per your instruction this only INSERTS a record.
+// helper to make short refs (reuse if already defined)
+function newRef(prefix = "SW") {
+  return `${prefix}${Date.now()}${Math.floor(Math.random() * 1000)}`.slice(0, 30);
+}
+
+// ---------- WALLET (MAIN ACCOUNT) PURCHASE ----------
+// Uses wallet_loads as a ledger: credits = positive rows, debits = negative rows.
+// Balance = SUM(amount) for that vendor_id.
 app.post("/api/sessions/purchase", async (req, res) => {
+  const conn = await db.promise().getConnection(); // mysql2 connection (pooled)
   try {
     const { vendor_id, amount, computed_hits } = req.body;
     if (!vendor_id || !amount || Number(amount) <= 0) {
+      conn.release();
       return res.status(400).json({ error: "vendor_id and valid amount are required" });
     }
 
+    const amt = Number(amount);
     const HIT_COST = 0.02;
     const hits = Number.isFinite(Number(computed_hits))
       ? Math.max(0, Math.floor(Number(computed_hits)))
-      : Math.floor(Number(amount) / HIT_COST);
+      : Math.floor(amt / HIT_COST);
 
+    // 1) Check balance
+    const [balRows] = await conn.query(
+      "SELECT COALESCE(SUM(amount),0) AS balance FROM wallet_loads WHERE vendor_id = ?",
+      [vendor_id]
+    );
+    const balance = Number(balRows?.[0]?.balance || 0);
+
+    if (balance < amt) {
+      conn.release();
+      return res.status(400).json({
+        error: "Insufficient wallet balance",
+        balance,
+        required: amt
+      });
+    }
+
+    // 2) Begin TX
+    await conn.beginTransaction();
+
+    // 3) Insert a debit into wallet_loads (negative amount) to deduct
+    await conn.query(
+      "INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded) VALUES (?, ?, ?, NOW())",
+      [vendor_id, "sessions_purchase", -amt]
+    );
+
+    // 4) Insert the session purchase row (completed)
     const reference = newRef("SW");
-    const [result] = await db
-      .promise()
-      .query(
-        "INSERT INTO session_purchases (vendor_id, source, amount, hits, reference, status, meta_json) VALUES (?,?,?,?,?,?, JSON_OBJECT('computed_hits', ?))",
-        [vendor_id, "wallet", amount, hits, reference, "completed", hits]
-      );
+    const [ins] = await conn.query(
+      "INSERT INTO session_purchases (vendor_id, source, amount, hits, reference, status, meta_json) VALUES (?,?,?,?,?, 'completed', JSON_OBJECT('computed_hits', ?))",
+      [vendor_id, "wallet", amt, hits, reference, hits]
+    );
 
-    return res.json({ id: result.insertId, reference, hits });
+    // 5) Commit
+    await conn.commit();
+    conn.release();
+
+    return res.json({
+      id: ins.insertId,
+      reference,
+      status: "completed",
+      hits,
+      new_balance: balance - amt
+    });
   } catch (e) {
-    console.error("sessions/purchase error:", e.message);
-    return res.status(500).json({ error: "Server error" });
+    try { await conn.rollback(); } catch {}
+    conn.release();
+    console.error("sessions/purchase (wallet) error:", e.message);
+    return res.status(500).json({ error: "Server error", details: e.message });
   }
 });
 
