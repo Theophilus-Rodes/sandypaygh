@@ -295,9 +295,9 @@ function handleSession(sessionId, input, msisdn, res) {
           const revenueAmount = parseFloat((amount * 0.02).toFixed(2));
 
           const ins = `
-            INSERT INTO data_orders
-              (vendor_id, data_package, amount, recipient_number, momo_number, status, created_at, network, package_id)
-            VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)
+            INSERT INTO admin_orders
+              (vendor_id, data_package, amount, recipient_number, data_package, amount, network, status, sent_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?,? 'pending', NOW())
           `;
           db.query(ins, [vendor_id, data_package, amount, recipient_number, momo_number, network, package_id], (err) => {
             if (err) return console.error("❌ Failed to log order:", err);
