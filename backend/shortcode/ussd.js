@@ -70,15 +70,19 @@ router.use(cors());
 
 // ====== DATABASE ======
 /////////////////////////////////////////////////////////
-const db = mysql.createConnection(dbConfig);
-
-db.connect((err) => {
-  if (err) console.error("❌ USSD DB connection failed:", err.message);
-  else console.log("✅ USSD connected securely to DigitalOcean MySQL!");
+// ====== DATABASE (POOL) ======
+const db = mysql.createPool({
+  ...dbConfig,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
 });
 
-// --- Promise helpers for MySQL ---
+// Promise helper (works with pool)
 const dbp = db.promise();
+
+console.log("✅ USSD pool created (MySQL).");
+
 ////////////////////////////////////////////////////////////
 // ====== SESSION STATE ======
 const sessions = {};
@@ -194,7 +198,7 @@ function handleSession(sessionId, input, msisdn, res) {
           WHERE vendor_id = ? AND network = ? AND status = 'available'`,
         [state.vendorId, state.network],
         (err, rows) => {
-          if (err) { console.error("❌ MySQL error:", err); return end("Service temporarily unavailable. Try again later."); }
+          if (err) { console.error("❌ MySQL error:", err); return ("Service temporarily unavailable. Try again later."); }
           if (!rows || !rows.length) return end("No data packages available.");
 
           state.packageList = rows.map((r) => `${r.data_package} @ GHS${r.amount}`);
@@ -355,7 +359,7 @@ router.post("/", (req, res) => {
 
     // BLOCK base *203*717# (no vendor id after the code)
     if ((isNew === true || !sessions[sessionId]) && (!data || !String(data).trim())) {
-      return res.json({ message: "END APPLICATION UNKNOWN", reply: false });
+      return res.json({ message: "APPLICATION UNKNOWN", reply: false });
     }
 
     // New session: extract vendor_id from the first `data` (digits only)
@@ -370,7 +374,7 @@ if (isNew === true || !sessions[sessionId]) {
       const remaining = await getRemainingHits(vendorId);
       if (remaining <= 0) {
         // No hits left – end immediately
-        return res.json({ message: "END Sorry, your session has finished.", reply: false });
+        return res.json({ message: "Sorry, your session has finished.", reply: false });
       }
 
       // Deduct exactly 1 hit (transaction safe). If it fails, block the session.
