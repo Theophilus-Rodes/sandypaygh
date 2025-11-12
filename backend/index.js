@@ -812,10 +812,10 @@ app.post("/api/place-order", async (req, res) => {
       const revenueAmount = (amount * 0.02).toFixed(2);
       const vendorAmount = (amount - revenueAmount).toFixed(2);
 const insertSql = `
-  INSERT INTO admin_orders (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-  VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)
+  INSERT INTO admin_orders (vendor_id, recipient_number, data_package, amount, network, status, sent_at)
+  VALUES (?, ?, ?, ?, ?, 'pending', NOW())
 `;
-db.query(insertSql, [vendor_id, recipient_number, data_package, amount, network, package_id], (err) => {
+db.query(insertSql, [vendor_id, recipient_number, data_package, amount, network], (err) => {
   if (err) {
     console.error("❌ Failed to insert into admin_orders:", err);
   } else {
