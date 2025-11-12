@@ -97,7 +97,7 @@
   });
 
   // --- API base ---
-  const API_BASE = "/api";
+  const API_BASE = "https://vendor.sandipay.co/api";
 
   // --- Hits calculator ---
   const HIT_COST = 0.02; // GHS per hit -> 1 GHS = 50 hits
@@ -143,24 +143,28 @@
 
     const computed_hits = calcHitsFromAmount(amount);
 
-    try {
-      walletBtn.disabled = true;
-      const res = await fetch(`${API_BASE}/sessions/purchase`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ vendor_id: vendorId, amount, computed_hits })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        walletMsg.innerHTML = `<span class="ok">Saved! Ref: ${data.reference || data.id}. Credited: ${computed_hits} hits.</span>`;
-      } else {
-        walletMsg.innerHTML = `<span class="err">${data.error || "Could not save."}</span>`;
-      }
-    } catch (e) {
-      walletMsg.innerHTML = `<span class="err">${e.message}</span>`;
-    } finally {
-      walletBtn.disabled = false;
-    }
+  try {
+  walletBtn.disabled = true;
+  const res = await fetch(`${API_BASE}/sessions/purchase`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ vendor_id: vendorId, amount, computed_hits: calcHitsFromAmount(amount) })
+  });
+
+  let data;
+  try { data = await res.json(); }
+  catch { data = { error: `Invalid JSON: ${await res.text()}` }; }
+
+  if (res.ok) {
+    walletMsg.innerHTML = `<span class="ok">Saved! Ref: ${data.reference || data.id}. Credited: ${data.hits ?? calcHitsFromAmount(amount)} hits.</span>`;
+  } else {
+    walletMsg.innerHTML = `<span class="err">${data.error || "Could not save."}</span>`;
+  }
+} catch (e) {
+  walletMsg.innerHTML = `<span class="err">${e.message}</span>`;
+} finally {
+  walletBtn.disabled = false;
+}
   });
 
   // --- MoMo purchase (TheTeller) ---
@@ -179,26 +183,36 @@
     const computed_hits = calcHitsFromAmount(amount);
 
     try {
-      momoBtn.disabled = true;
-      momoMsg.innerHTML = 'Please wait while you approve the payment on your phone…';
+  momoBtn.disabled = true;
+  momoMsg.innerHTML = 'Please wait while you approve the payment on your phone…';
 
-      const res = await fetch(`${API_BASE}/sessions/purchase-momo`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ vendor_id: vendorId, amount, momo_number, network, computed_hits })
-      });
-      const data = await res.json();
+  const res = await fetch(`${API_BASE}/sessions/purchase-momo`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      vendor_id: vendorId,
+      amount,
+      momo_number,
+      network,
+      computed_hits: calcHitsFromAmount(amount)
+    })
+  });
 
-      if (res.ok) {
-        momoMsg.innerHTML = `<span class="ok">Payment initiated. Ref: ${data.reference}. Expected credit: ${computed_hits} hits.</span>`;
-      } else {
-        momoMsg.innerHTML = `<span class="err">${data.error || "Payment failed to start."}</span>`;
-      }
-    } catch (e) {
-      momoMsg.innerHTML = `<span class="err">${e.message}</span>`;
-    } finally {
-      momoBtn.disabled = false;
-    }
+  let data;
+  try { data = await res.json(); }
+  catch { data = { error: `Invalid JSON: ${await res.text()}` }; }
+
+  if (res.ok) {
+    momoMsg.innerHTML = `<span class="ok">Payment initiated. Ref: ${data.reference}. Expected credit: ${data.hits ?? calcHitsFromAmount(amount)} hits.</span>`;
+  } else {
+    momoMsg.innerHTML = `<span class="err">${data.error || "Payment failed to start."}</span>`;
+  }
+} catch (e) {
+  momoMsg.innerHTML = `<span class="err">${e.message}</span>`;
+} finally {
+  momoBtn.disabled = false;
+}
+
   });
 </script>
 
