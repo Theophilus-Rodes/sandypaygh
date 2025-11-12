@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Purchase Sessions</title>
+<link rel="stylesheet" href="style.css" />
+<style>
+  body{background:#f5f7fb;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial}
+  .wrap{max-width:720px;margin:32px auto;padding:20px}
+  .card{background:#fff;border-radius:16px;box-shadow:0 8px 24px rgba(10,15,90,.08);padding:20px;margin-bottom:16px}
+  h1{font-size:22px;margin-bottom:12px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .muted{color:#6f7b95;font-size:14px;margin-bottom:12px}
+  label{display:block;font-size:14px;margin:10px 0 6px}
+  input,select,button{width:100%;padding:12px;border:1px solid #e4e8f1;border-radius:10px;font-size:14px}
+  button{border:0;background:#0a0f5a;color:#fff;cursor:pointer}
+  button:disabled{opacity:.6;cursor:not-allowed}
+  .seg{display:flex;gap:10px;margin:8px 0 14px}
+  .seg > label{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e4e8f1;border-radius:10px;cursor:pointer}
+  .hidden{display:none}
+  .msg{margin-top:12px;font-size:14px}
+  .ok{color:#106b21}
+  .err{color:#b00020}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Purchase Sessions</h1>
+      <p class="muted">Choose a funding source and enter the amount you want to purchase.</p>
+
+      <div class="seg">
+        <label><input type="radio" name="source" value="wallet" checked /> Main Account</label>
+        <label><input type="radio" name="source" value="momo" /> MoMo</label>
+      </div>
+
+      <!-- Main Account form -->
+      <div id="walletForm" class="">
+        <label>Amount (GHS)</label>
+        <input type="number" id="walletAmount" min="1" step="1" placeholder="e.g. 50" />
+        <button id="walletBtn">Purchase from Main Account</button>
+        <div id="walletMsg" class="msg"></div>
+      </div>
+
+      <!-- MoMo form -->
+      <div id="momoForm" class="hidden">
+        <label>Amount (GHS)</label>
+        <input type="number" id="momoAmount" min="1" step="1" placeholder="e.g. 50" />
+        <label>MoMo Number</label>
+        <input type="tel" id="momoNumber" placeholder="e.g. 024XXXXXXX" />
+        <label>Network</label>
+        <select id="momoNetwork">
+          <option value="">-- Select Network --</option>
+          <option value="mtn">MTN</option>
+          <option value="airteltigo">AirtelTigo</option>
+          <option value="telecel">Telecel</option>
+        </select>
+        <button id="momoBtn">Purchase via MoMo</button>
+        <div id="momoMsg" class="msg"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const vendorId = params.get("id");
+
+  const walletForm = document.getElementById("walletForm");
+  const momoForm = document.getElementById("momoForm");
+  document.querySelectorAll('input[name="source"]').forEach(r => {
+    r.addEventListener("change", () => {
+      const val = document.querySelector('input[name="source"]:checked').value;
+      walletForm.classList.toggle("hidden", val !== "wallet");
+      momoForm.classList.toggle("hidden", val !== "momo");
+    });
+  });
+
+  // Adjust this to your live backend base URL if needed
+  const API_BASE = "/api";
+
+  // Wallet purchase
+  document.getElementById("walletBtn").addEventListener("click", async () => {
+    const amount = Number(document.getElementById("walletAmount").value);
+    const msg = document.getElementById("walletMsg");
+    msg.textContent = "";
+    if (!vendorId) return msg.innerHTML = '<span class="err">Missing vendor id.</span>';
+    if (!amount || amount < 1) return msg.innerHTML = '<span class="err">Enter a valid amount.</span>';
+
+    try {
+      document.getElementById("walletBtn").disabled = true;
+      const res = await fetch(`${API_BASE}/sessions/purchase`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ vendor_id: vendorId, amount })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        msg.innerHTML = `<span class="ok">Saved! Ref: ${data.reference || data.id}</span>`;
+      } else {
+        msg.innerHTML = `<span class="err">${data.error || "Could not save."}</span>`;
+      }
+    } catch (e) {
+      msg.innerHTML = `<span class="err">${e.message}</span>`;
+    } finally {
+      document.getElementById("walletBtn").disabled = false;
+    }
+  });
+
+  // MoMo purchase (TheTeller)
+  document.getElementById("momoBtn").addEventListener("click", async () => {
+    const amount = Number(document.getElementById("momoAmount").value);
+    const momo_number = document.getElementById("momoNumber").value.trim();
+    const network = document.getElementById("momoNetwork").value;
+    const msg = document.getElementById("momoMsg");
+    msg.textContent = "";
+    if (!vendorId) return msg.innerHTML = '<span class="err">Missing vendor id.</span>';
+    if (!amount || amount < 1) return msg.innerHTML = '<span class="err">Enter a valid amount.</span>';
+    if (!momo_number) return msg.innerHTML = '<span class="err">Enter a MoMo number.</span>';
+    if (!network) return msg.innerHTML = '<span class="err">Select a network.</span>';
+
+    try {
+      document.getElementById("momoBtn").disabled = true;
+      msg.innerHTML = 'Please wait while you approve the payment on your phone…';
+      const res = await fetch(`${API_BASE}/sessions/purchase-momo`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ vendor_id: vendorId, amount, momo_number, network })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        msg.innerHTML = `<span class="ok">Payment initiated. Ref: ${data.reference}. You’ll get a prompt on your phone.</span>`;
+      } else {
+        msg.innerHTML = `<span class="err">${data.error || "Payment failed to start."}</span>`;
+      }
+    } catch (e) {
+      msg.innerHTML = `<span class="err">${e.message}</span>`;
+    } finally {
+      document.getElementById("momoBtn").disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
