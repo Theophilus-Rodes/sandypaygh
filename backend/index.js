@@ -91,6 +91,18 @@ function checkAccess(req, res, next) {
   });
 }
 
+
+
+// ✅ INITIALIZE APP
+const app = express();
+app.use(cors());
+app.use(bodyParser.json());
+//Continue ussd
+app.use("/api/moolre", moolreRouter);
+
+
+
+
 // compat: GET /api/get-access
 app.get('/api/get-access', (req, res) => {
   getAccessMode((err, mode) => {
@@ -110,15 +122,6 @@ app.get('/api/set-access/:mode', (req, res) => {
     res.json({ success: true, mode });
   });
 });
-
-
-// ✅ INITIALIZE APP
-const app = express();
-app.use(cors());
-app.use(bodyParser.json());
-//Continue ussd
-app.use("/api/moolre", moolreRouter);
-
 
 
 // ✅ Create database connection (SECURE + supports CA text or path)
