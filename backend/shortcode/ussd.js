@@ -561,6 +561,7 @@ db.query(
 }
 
 // ====== USSD ROUTE (Moolre) ======
+// ====== USSD ROUTE (Moolre) ======
 router.post("/", (req, res) => {
   console.log("📲 NEW USSD REQUEST:", req.body);
 
@@ -579,106 +580,60 @@ router.post("/", (req, res) => {
     return res.json({ message: "END Invalid USSD entry point", reply: false });
   }
 
-  checkAccess(msisdn, (allowed) => {
-    if (!allowed) {
-      return res.json({
-        message: "END Sorry, you don't have access.",
-        reply: false,
-      });
-    }
+  const inputFromUser = (data || message || "").trim();
+  const isNewSession = isNew === true || !sessions[sessionId];
 
-    const isNewSession = isNew === true || !sessions[sessionId];
-    const inputFromUser = (data || message || "").trim();
+  console.log("🔍 SESSION CHECK:", {
+    sessionId,
+    isNewSession,
+    data,
+    message,
+    inputFromUser,
+  });
 
-    console.log("🔍 SESSION CHECK:", {
-      sessionId,
-      isNewSession,
-      data,
-      message,
-      inputFromUser,
-    });
+  // 🔹 CASE 1: NEW PLAIN MODE SESSION → *203*717# (no ID)
+  if (isNewSession && !inputFromUser) {
+    console.log(
+      "🟦 NEW PLAIN MODE SESSION DETECTED (*203*717#) for:",
+      msisdn
+    );
 
-    // 🔹 CASE 1: Plain mode start → *203*717#
-    if (isNewSession && !inputFromUser) {
-      console.log(
-        "🟦 NEW PLAIN MODE SESSION DETECTED (*203*717#) for:",
-        msisdn
-      );
+    // Check telephone_numbers table first
+    const [intl, local, plusIntl] = msisdnVariants(msisdn);
 
-      sessions[sessionId] = {
-        step: "start",
-        vendorId: 1,
-        brandName: "SandyPay",
-        isPlain: true,
-        network: "",
-        selectedPkg: "",
-        recipient: "",
-        packageList: [],
-        packagePage: 0,
-      };
-
-      console.log(
-        "🟦 CREATED PLAIN SESSION OBJECT:",
-        sessions[sessionId]
-      );
-
-      // first screen – ignore input, just show menu
-      return handleSession(sessionId, "", String(msisdn || ""), res);
-    }
-
-    // 🔹 CASE 2: New vendor session → *203*717*ID#
-    // 🔹 CASE 2: New vendor session → *203*717*ID#
-if (isNewSession) {
-  console.log(
-    "🟨 NEW VENDOR SESSION (ID MODE). Raw first data:",
-    inputFromUser
-  );
-
-  (async () => {
-    const raw = String(inputFromUser || "").trim();
-    const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
-    const vendorId =
-      Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0
-        ? vendorIdFromDial
-        : 1;
-
-    // ✅ 1. Check remaining hits
-    const remaining = await getRemainingHits(vendorId);
-    console.log("📊 Remaining hits for vendor", vendorId, "=", remaining);
-    if (remaining <= 0) {
-      return res.json({
-        message: "END Sorry, your session has finished.",
-        reply: false,
-      });
-    }
-
-    // ✅ 2. Deduct exactly 1 hit
-    const ok = await consumeOneHit(vendorId);
-    if (!ok) {
-      return res.json({
-        message: "END Sorry, your session has finished.",
-        reply: false,
-      });
-    }
-
-    // ✅ 3. Increment USSD counter for dashboard
-    await incrementUssdCounter(vendorId);
-
-    // ✅ 4. Fetch vendor username for brand name
     db.query(
-      "SELECT username FROM users WHERE id = ? LIMIT 1",
-      [vendorId],
+      `SELECT 1
+         FROM telephone_numbers
+        WHERE phone_number IN (?, ?, ?)
+          AND (status IS NULL OR status='allowed')
+        LIMIT 1`,
+      [intl, local, plusIntl],
       (err, rows) => {
-        let brandName = "SandyPay";
-        if (!err && rows && rows.length && rows[0].username) {
-          brandName = rows[0].username;
+        if (err) {
+          console.error("❌ telephone_numbers lookup error:", err);
+          return res.json({
+            message: "APPLICATION UNKNOWN",
+            reply: false,
+          });
         }
 
+        if (!rows || !rows.length) {
+          console.log(
+            "❌ MSISDN not found in telephone_numbers for plain mode:",
+            msisdn
+          );
+          return res.json({
+            message: "APPLICATION UNKNOWN",
+            reply: false,
+          });
+        }
+
+        // Allowed: create plain session
         sessions[sessionId] = {
           step: "start",
-          vendorId,
-          brandName,
-          isPlain: false,
+          vendorId: 1,
+          brandName: "SandyPay",
+          isPlain: true,
           network: "",
           selectedPkg: "",
           recipient: "",
@@ -687,35 +642,119 @@ if (isNewSession) {
         };
 
         console.log(
-          "🟩 CREATED SESSION OBJECT FOR ID MODE (WITH HIT DEDUCTION):",
+          "🟦 CREATED PLAIN SESSION OBJECT:",
           sessions[sessionId]
         );
 
-        // First screen – ignore the ID as input, just show menu
+        // First screen – show welcome/menu
         return handleSession(sessionId, "", String(msisdn || ""), res);
       }
     );
-  })().catch((e) => {
-    console.error("❌ Vendor session error:", e.message);
-    return res.json({
-      message: "END Service temporarily unavailable. Please try again later.",
-      reply: false,
-    });
-  });
 
-  return;
-}
+    return; // important: don't fall through to vendor logic
+  }
 
+  // 🔹 All other cases (vendor ID mode & existing sessions)
+  checkAccess(msisdn, (allowed) => {
+    if (!allowed) {
+      return res.json({
+        message: "END Sorry, you don't have access.",
+        reply: false,
+      });
+    }
 
-    // 🔹 CASE 3: Existing session → use user input normally
+    const isNewSessionInner = isNew === true || !sessions[sessionId];
+    const inputInner = inputFromUser;
+
+    // 🔹 CASE 2: New vendor session → *203*717*ID#
+    if (isNewSessionInner) {
+      console.log(
+        "🟨 NEW VENDOR SESSION (ID MODE). Raw first data:",
+        inputInner
+      );
+
+      (async () => {
+        const raw = String(inputInner || "").trim();
+        const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
+        const vendorId =
+          Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0
+            ? vendorIdFromDial
+            : 1;
+
+        // ✅ 1. Check remaining hits
+        const remaining = await getRemainingHits(vendorId);
+        console.log("📊 Remaining hits for vendor", vendorId, "=", remaining);
+        if (remaining <= 0) {
+          return res.json({
+            message: "END Sorry, your session has finished.",
+            reply: false,
+          });
+        }
+
+        // ✅ 2. Deduct exactly 1 hit
+        const ok = await consumeOneHit(vendorId);
+        if (!ok) {
+          return res.json({
+            message: "END Sorry, your session has finished.",
+            reply: false,
+          });
+        }
+
+        // ✅ 3. Increment USSD counter for dashboard
+        await incrementUssdCounter(vendorId);
+
+        // ✅ 4. Fetch vendor username for brand name
+        db.query(
+          "SELECT username FROM users WHERE id = ? LIMIT 1",
+          [vendorId],
+          (err, rows) => {
+            let brandName = "SandyPay";
+            if (!err && rows && rows.length && rows[0].username) {
+              brandName = rows[0].username;
+            }
+
+            sessions[sessionId] = {
+              step: "start",
+              vendorId,
+              brandName,
+              isPlain: false,
+              network: "",
+              selectedPkg: "",
+              recipient: "",
+              packageList: [],
+              packagePage: 0,
+            };
+
+            console.log(
+              "🟩 CREATED SESSION OBJECT FOR ID MODE (WITH HIT DEDUCTION):",
+              sessions[sessionId]
+            );
+
+            // First screen – ignore the ID as input, just show menu
+            return handleSession(sessionId, "", String(msisdn || ""), res);
+          }
+        );
+      })().catch((e) => {
+        console.error("❌ Vendor session error:", e.message);
+        return res.json({
+          message: "END Service temporarily unavailable. Please try again later.",
+          reply: false,
+        });
+      });
+
+      return;
+    }
+
+    // 🔹 CASE 3: Existing session → continue as normal
     return handleSession(
       sessionId,
-      inputFromUser,
+      inputInner,
       String(msisdn || ""),
       res
     );
   });
 });
+
 
 // --- HIT HELPERS ---
 
