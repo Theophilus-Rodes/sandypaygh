@@ -379,30 +379,38 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
 </div>
 
 <script>
-  async function allowForAll() {
+  // Point to API (local vs live)
+  const API_BASE = location.hostname.includes('localhost')
+    ? 'http://localhost:5000'
+    : 'https://sandipay.co';
+
+  async function setAccess(mode) {
     try {
-      const r = await fetch("https://sandipay.co/api/access-mode", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "all" })
+      const r = await fetch(`${API_BASE}/api/access-mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
       });
       const j = await r.json();
-      alert(j.success ? "Access mode set to: Allow For All" : (j.error || "Failed"));
-    } catch (e) { alert("Failed to update mode"); }
+      if (!r.ok || !j.success) {
+        alert(j.error || 'Failed to update mode');
+        return;
+      }
+      alert(`Access set to: ${mode === 'all' ? 'Allow For All' : 'Close Limited'}`);
+      closeAllow();           // close the modal
+      // optional: close mobile drawer if open
+      if (window.innerWidth <= 860 && typeof closeDrawer === 'function') closeDrawer();
+    } catch (e) {
+      console.error(e);
+      alert('Network error');
+    }
   }
 
-  async function closeLimited() {
-    try {
-      const r = await fetch("https://sandipay.co/api/access-mode", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "limited" })
-      });
-      const j = await r.json();
-      alert(j.success ? "Access mode set to: Close Limited" : (j.error || "Failed"));
-    } catch (e) { alert("Failed to update mode"); }
-  }
+  // Hook buttons
+  document.getElementById('btnAllowAll').addEventListener('click', () => setAccess('all'));
+  document.getElementById('btnCloseLimited').addEventListener('click', () => setAccess('limited'));
 </script>
+
 
 
 
