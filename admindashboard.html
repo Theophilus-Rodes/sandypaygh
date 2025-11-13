@@ -512,75 +512,7 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
  
 </script>
 
-<script>
-  // Point to your backend that runs ussd.js
-  const API_BASE = "https://sandipay.co";
 
-  async function setAccess(mode) {
-    try {
-      const res = await fetch(`${API_BASE}/api/set-access/${mode}`, { method: "GET" });
-      const text = await res.text();
-      alert(text); // you can replace with your custom toast
-      showCurrentMode(); // refresh label if you add one
-    } catch (e) {
-      alert("Failed to update access mode: " + e.message);
-    }
-  }
-
-  async function showCurrentMode() {
-    try {
-      const res = await fetch(`${API_BASE}/api/get-access`);
-      const data = await res.json();
-      // Optional: update a small label/badge in your UI
-      const el = document.getElementById("accessModeBadge");
-      if (el) el.textContent = data.mode === "limited" ? "LIMITED" : "ALL";
-    } catch {}
-  }
-
-  // Wire up buttons
-  document.getElementById("btnAllowAll")?.addEventListener("click", () => setAccess("all"));
-  document.getElementById("btnCloseLimited")?.addEventListener("click", () => setAccess("limited"));
-
-  // Optional: show current mode when modal opens / page loads
-  document.addEventListener("DOMContentLoaded", showCurrentMode);
-</script>
-
-<script>
-  const sidebar  = document.getElementById('sidebar');
-  const btn      = document.getElementById('collapseBtn');
-  const mask     = document.getElementById('drawerMask');
-
-  function setSidebarMode() {
-    if (window.innerWidth <= 860) {
-      sidebar.classList.add('mobile');
-      btn.style.display = 'block';
-      sidebar.classList.remove('open');
-      mask?.classList.remove('show');
-      document.body.classList.remove('drawer-open');
-    } else {
-      sidebar.classList.remove('mobile','open');
-      btn.style.display = 'none';
-      mask?.classList.remove('show');
-      document.body.classList.remove('drawer-open');
-    }
-  }
-  setSidebarMode();
-  window.addEventListener('resize', setSidebarMode);
-
-  btn?.addEventListener('click', () => {
-    const isOpen = sidebar.classList.toggle('open');
-    if (window.innerWidth <= 860) {
-      mask?.classList.toggle('show', isOpen);
-      document.body.classList.toggle('drawer-open', isOpen);
-    }
-  });
-
-  mask?.addEventListener('click', () => {
-    sidebar.classList.remove('open');
-    mask.classList.remove('show');
-    document.body.classList.remove('drawer-open');
-  });
-</script>
 
 
 
