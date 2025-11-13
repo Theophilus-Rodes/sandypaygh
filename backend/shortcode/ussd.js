@@ -169,10 +169,13 @@ function handleSession(sessionId, input, msisdn, res) {
   const reply = (msg) => res.json({ message: msg, reply: true });
   const end = (msg) => res.json({ message: msg, reply: false });
 
-  switch (state.step) {
-    case "start":
+ switch (state.step) {
+    case "start": 
       state.step = "menu";
-      return reply("SandyPay.\nNB: The Data Is NOT INSTANT.\n0. Cancel\n\n1. Buy Data\n2. Contact Us");
+      const brand = state.brandName || "SandyPay";
+      return reply(
+        `${brand}.\nNB: The Data Is NOT INSTANT.\n0. Cancel\n\n1. Buy Data\n2. Contact Us`
+      );
 
     case "menu":
       if (input === "1") {
@@ -345,6 +348,8 @@ db.query(
 // Parent app will mount this router at /api/moolre, so our path here is "/"
 // ====== USSD ROUTE (Moolre) ======
 // Parent app will mount this router at /api/moolre, so our path here is "/"
+// ====== USSD ROUTE (Moolre) ======
+// Parent app will mount this router at /api/moolre, so our path here is "/"
 router.post("/", async (req, res) => {
   let payload = {};
   try {
@@ -390,6 +395,7 @@ router.post("/", async (req, res) => {
       sessions[sessionId] = {
         step: "start",
         vendorId,
+        brandName: "SandyPay", // base code always shows SandyPay
         network: "",
         selectedPkg: "",
         recipient: "",
@@ -433,10 +439,25 @@ router.post("/", async (req, res) => {
       // Increment counter for dashboard
       await incrementUssdCounter(vendorId);
 
+      // 🔹 Fetch vendor display name from users.username
+      let brandName = "SandyPay";
+      try {
+        const [userRows] = await dbp.query(
+          "SELECT username FROM users WHERE id = ? LIMIT 1",
+          [vendorId]
+        );
+        if (userRows && userRows.length && userRows[0].username) {
+          brandName = userRows[0].username;
+        }
+      } catch (e) {
+        console.error("Error fetching vendor username:", e.message);
+      }
+
       // Create session state
       sessions[sessionId] = {
         step: "start",
         vendorId,
+        brandName, // 👈 used in handleSession 'start'
         network: "",
         selectedPkg: "",
         recipient: "",
@@ -444,7 +465,7 @@ router.post("/", async (req, res) => {
         packagePage: 0,
       };
 
-      // First menu (input here is the ID string, but handleSession will start at "start")
+      // First menu (welcome will show vendor brand name)
       handleSession(sessionId, input, String(msisdn || ""), res);
       return;
     }
@@ -459,6 +480,7 @@ router.post("/", async (req, res) => {
     });
   }
 });
+
 
 
 module.exports = router;
