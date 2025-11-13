@@ -81,6 +81,8 @@ db.connect((err) => {
   else console.log("✅ USSD connected securely to DigitalOcean MySQL!");
 });
 
+const dbp = db.promise();   // 👈 for async/await helper queries
+
 // ====== SESSION STATE ======
 const sessions = {};
 
@@ -588,52 +590,85 @@ router.post("/", (req, res) => {
     }
 
     // 🔹 CASE 2: New vendor session → *203*717*ID#
-    if (isNewSession) {
-      console.log(
-        "🟨 NEW VENDOR SESSION (ID MODE). Raw first data:",
-        inputFromUser
-      );
+    // 🔹 CASE 2: New vendor session → *203*717*ID#
+if (isNewSession) {
+  console.log(
+    "🟨 NEW VENDOR SESSION (ID MODE). Raw first data:",
+    inputFromUser
+  );
 
-      const raw = String(inputFromUser || "").trim();
-      const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
-      const vendorId =
-        Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0
-          ? vendorIdFromDial
-          : 1;
+  (async () => {
+    const raw = String(inputFromUser || "").trim();
+    const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
+    const vendorId =
+      Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0
+        ? vendorIdFromDial
+        : 1;
 
-      // Fetch vendor username for brandName
-      db.query(
-        "SELECT username FROM users WHERE id = ? LIMIT 1",
-        [vendorId],
-        (err, rows) => {
-          let brandName = "SandyPay";
-          if (!err && rows && rows.length && rows[0].username) {
-            brandName = rows[0].username;
-          }
-
-          sessions[sessionId] = {
-            step: "start",
-            vendorId,
-            brandName,
-            isPlain: false,
-            network: "",
-            selectedPkg: "",
-            recipient: "",
-            packageList: [],
-            packagePage: 0,
-          };
-
-          console.log(
-            "🟩 CREATED SESSION OBJECT FOR ID MODE:",
-            sessions[sessionId]
-          );
-
-          // First screen – ignore the ID as input, just show menu
-          return handleSession(sessionId, "", String(msisdn || ""), res);
-        }
-      );
-      return;
+    // ✅ 1. Check remaining hits
+    const remaining = await getRemainingHits(vendorId);
+    console.log("📊 Remaining hits for vendor", vendorId, "=", remaining);
+    if (remaining <= 0) {
+      return res.json({
+        message: "END Sorry, your session has finished.",
+        reply: false,
+      });
     }
+
+    // ✅ 2. Deduct exactly 1 hit
+    const ok = await consumeOneHit(vendorId);
+    if (!ok) {
+      return res.json({
+        message: "END Sorry, your session has finished.",
+        reply: false,
+      });
+    }
+
+    // ✅ 3. Increment USSD counter for dashboard
+    await incrementUssdCounter(vendorId);
+
+    // ✅ 4. Fetch vendor username for brand name
+    db.query(
+      "SELECT username FROM users WHERE id = ? LIMIT 1",
+      [vendorId],
+      (err, rows) => {
+        let brandName = "SandyPay";
+        if (!err && rows && rows.length && rows[0].username) {
+          brandName = rows[0].username;
+        }
+
+        sessions[sessionId] = {
+          step: "start",
+          vendorId,
+          brandName,
+          isPlain: false,
+          network: "",
+          selectedPkg: "",
+          recipient: "",
+          packageList: [],
+          packagePage: 0,
+        };
+
+        console.log(
+          "🟩 CREATED SESSION OBJECT FOR ID MODE (WITH HIT DEDUCTION):",
+          sessions[sessionId]
+        );
+
+        // First screen – ignore the ID as input, just show menu
+        return handleSession(sessionId, "", String(msisdn || ""), res);
+      }
+    );
+  })().catch((e) => {
+    console.error("❌ Vendor session error:", e.message);
+    return res.json({
+      message: "END Service temporarily unavailable. Please try again later.",
+      reply: false,
+    });
+  });
+
+  return;
+}
+
 
     // 🔹 CASE 3: Existing session → use user input normally
     return handleSession(
@@ -644,5 +679,54 @@ router.post("/", (req, res) => {
     );
   });
 });
+
+// --- HIT HELPERS ---
+
+// Total remaining hits for a vendor (only 'completed' rows count)
+async function getRemainingHits(vendorId) {
+  const [rows] = await dbp.query(
+    `SELECT COALESCE(SUM(CASE WHEN status='completed' THEN hits ELSE 0 END), 0) AS total_hits
+     FROM session_purchases
+     WHERE vendor_id = ?`,
+    [vendorId]
+  );
+  return Number(rows?.[0]?.total_hits || 0);
+}
+
+// Deduct 1 hit from the most recent row with hits > 0
+async function consumeOneHit(vendorId) {
+  const [pick] = await dbp.query(
+    `SELECT id, hits
+       FROM session_purchases
+       WHERE vendor_id = ? AND status='completed' AND hits > 0
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`,
+    [vendorId]
+  );
+
+  if (!pick || !pick.length) return false;
+
+  const row = pick[0];
+  const newHits = Math.max(0, Number(row.hits) - 1);
+
+  await dbp.query(
+    `UPDATE session_purchases
+       SET hits = ?
+     WHERE id = ?`,
+    [newHits, row.id]
+  );
+  return true;
+}
+
+// Increment visible USSD session counter for dashboard
+async function incrementUssdCounter(vendorId) {
+  await dbp.query(
+    `INSERT INTO ussd_session_counters (vendor_id, hits_used)
+     VALUES (?, 1)
+     ON DUPLICATE KEY UPDATE hits_used = hits_used + 1`,
+    [vendorId]
+  );
+}
+
 
 module.exports = router;
