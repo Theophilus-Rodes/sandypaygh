@@ -172,7 +172,7 @@ function handleSession(sessionId, input, msisdn, res) {
   switch (state.step) {
     case "start":
       state.step = "menu";
-      return reply("SandyPay.\nNB: The Data Is NOT INSTANT.\n0. Cancel\n\n1. Buy Data\n2. Contact Us");
+      return reply("SandyPay.\nNB: The Data Is NOT INSTANT.\nIt takes 5-12 minutes to deliver\n0. Cancel\n\n1. Buy Data\n2. Contact Us");
 
     case "menu":
       if (input === "1") {
@@ -343,7 +343,8 @@ db.query(
 
 // ====== USSD ROUTE (Moolre) ======
 // Parent app will mount this router at /api/moolre, so our path here is "/"
-router.post("/", (req, res) => {
+// ====== USSD ROUTE (Moolre) ======
+router.post("/", async (req, res) => {
   let payload = {};
   try {
     payload = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
@@ -353,47 +354,69 @@ router.post("/", (req, res) => {
 
   const { sessionId, msisdn, data, message, extension, new: isNew } = payload;
 
-  // Wrong extension
-  if (String(extension) !== EXTENSION_EXPECTED) {
+  const ext = String(extension || "");
+
+  // Must be our 717 extension
+  if (ext !== EXTENSION_EXPECTED) {
     return res.json({ message: "END Invalid USSD entry point", reply: false });
   }
 
-  // ===== ACCESS CHECK FIRST =====
-  checkAccess(msisdn, (allowed) => {
-    if (!allowed) {
-      return res.json({ message: "END Sorry, you don't have access.", reply: false });
-    }
+  const input = (data || message || "").trim();
 
-    // BLOCK base *203*717# (no vendor id after the code)
-    if ((isNew === true || !sessions[sessionId]) && (!data || !String(data).trim())) {
-      return res.json({ message: "APPLICATION UNKNOWN", reply: false });
-    }
+  // Block bare *203*717# with no vendor id
+  if ((isNew === true || !sessions[sessionId]) && !input) {
+    return res.json({ message: "APPLICATION UNKNOWN", reply: false });
+  }
 
-    // New session: extract vendor_id from the first `data` (digits only)
-   // New session: extract vendor_id from the first `data` (digits only)
-if (isNew === true || !sessions[sessionId]) {
-  const raw = String(data || "").trim();
-  const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
-  const vendorId = Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0 ? vendorIdFromDial : 1;
+  try {
+    // NEW SESSION
+    if (isNew === true || !sessions[sessionId]) {
+      // 1️⃣ FIRST: check telephone_numbers whitelist
+      const [intl, local, plusIntl] = msisdnVariants(msisdn);
+      const [rowsTel] = await dbp.query(
+        `SELECT 1
+           FROM telephone_numbers
+          WHERE phone_number IN (?, ?, ?)
+            AND (status IS NULL OR status = 'allowed')
+          LIMIT 1`,
+        [intl, local, plusIntl]
+      );
 
-  (async () => {
-    try {
+      // Not in telephone_numbers → behave like unknown app
+      if (!rowsTel || !rowsTel.length) {
+        return res.json({ message: "APPLICATION UNKNOWN", reply: false });
+      }
+
+      // 2️⃣ Extract vendor id from the first data (digits only)
+      const raw = String(data || "").trim();
+      const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
+      const vendorId =
+        Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0
+          ? vendorIdFromDial
+          : 1;
+
+      // 3️⃣ Check remaining hits
       const remaining = await getRemainingHits(vendorId);
       if (remaining <= 0) {
-        // No hits left – end immediately
-        return res.json({ message: "Sorry, your session has finished.", reply: false });
+        return res.json({
+          message: "Sorry, your session has finished.",
+          reply: false,
+        });
       }
 
-      // Deduct exactly 1 hit (transaction safe). If it fails, block the session.
+      // 4️⃣ Deduct exactly 1 hit
       const ok = await consumeOneHit(vendorId);
       if (!ok) {
-        return res.json({ message: "END Sorry, your session has finished.", reply: false });
+        return res.json({
+          message: "APPLICATION UNKNOWN.",
+          reply: false,
+        });
       }
 
-      // Count this session for the dashboard “USSD Sessions: N hits”
+      // 5️⃣ Bump visible USSD counter
       await incrementUssdCounter(vendorId);
 
-      // Now create session state and continue
+      // 6️⃣ Create session state
       sessions[sessionId] = {
         step: "start",
         vendorId,
@@ -404,23 +427,27 @@ if (isNew === true || !sessions[sessionId]) {
         packagePage: 0,
       };
 
-      // Kick off the first screen right away
-      return handleSession(sessionId, (data || message || "").trim(), String(msisdn || ""), res);
-    } catch (e) {
-      console.error("Session start/hits error:", e.message);
-      return res.json({ message: "END Service temporarily unavailable. Try again later.", reply: false });
+      // 7️⃣ Kick off first screen
+      handleSession(
+        sessionId,
+        input, // first input
+        String(msisdn || ""),
+        res
+      );
+      return;
     }
-  })();
 
-  // Important: stop the normal flow here; we already responded from the async block.
-  return;
-}
-
-
-    const input = (data || message || "").trim();
+    // EXISTING SESSION → just continue the flow
     handleSession(sessionId, input, String(msisdn || ""), res);
-  });
+  } catch (e) {
+    console.error("USSD route error:", e.message);
+    return res.json({
+      message: "END Service temporarily unavailable. Try again later.",
+      reply: false,
+    });
+  }
 });
+
 
 module.exports = router;
 
