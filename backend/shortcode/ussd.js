@@ -165,6 +165,14 @@ function checkAccess(msisdn, cb) {
 
 // ====== CORE SESSION HANDLER ======
 function handleSession(sessionId, input, msisdn, res) {
+  console.log("➡️ handleSession called:", {
+  sessionId,
+  step: state.step,
+  input,
+  msisdn,
+  vendorId: state.vendorId,
+  isPlain: state.isPlain
+});
   const state = sessions[sessionId];
   const reply = (msg) => res.json({ message: msg, reply: true });
   const end = (msg) => res.json({ message: msg, reply: false });
@@ -349,10 +357,15 @@ db.query(
 // ====== USSD ROUTE (Moolre) ======
 // Parent app will mount this router at /api/moolre, so our path here is "/"
 router.post("/", async (req, res) => {
+   // Log the raw body exactly as received
+  console.log("🟦 RAW BODY RECEIVED:", req.body);
   let payload = {};
   try {
     payload = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+     // Log parsed payload
+    console.log("🟩 PARSED PAYLOAD:", payload);
   } catch {
+       console.log("❌ JSON PARSE ERROR:", err.message);
     return res.json({ message: "END Invalid JSON format", reply: false });
   }
 
@@ -360,18 +373,20 @@ router.post("/", async (req, res) => {
 
   // Must be our 717 extension
   if (String(extension || "") !== EXTENSION_EXPECTED) {
+    console.log("❌ INVALID EXTENSION:", extension);
     return res.json({ message: "END Invalid USSD entry point", reply: false });
   }
 
   const input = (data || message || "").trim();
   const isNewSession = isNew === true || !sessions[sessionId];
+  console.log("🔍 SESSION CHECK:", { sessionId, isNewSession, input });
 
   try {
     // 🔹 CASE 1: New session with NO ID → *203*717#
     // Free to use (no hits check) BUT must be in telephone_numbers
     if (isNewSession && !input) {
       const [intl, local, plusIntl] = msisdnVariants(msisdn);
-
+console.log("🟦 NEW PLAIN MODE SESSION DETECTED (*203*717#) for:", msisdn);
       // Check whitelist table first
       const [rowsTel] = await dbp.query(
         `SELECT 1
@@ -449,6 +464,8 @@ router.post("/", async (req, res) => {
 
       // First menu (input here is the ID string, but handleSession will start at "start")
       handleSession(sessionId, input, String(msisdn || ""), res);
+      console.log("🟨 NEW VENDOR SESSION (ID MODE). Dialed Input:", input);
+console.log("🟨 Extracted Vendor ID:", vendorId);
       return;
     }
 
