@@ -91,25 +91,25 @@ function checkAccess(req, res, next) {
   });
 }
 
-// Admin endpoints to toggle mode
-app.post("/api/access-mode", (req, res) => {
-  const { mode } = req.body; // 'all' or 'limited'
-  if (!["all", "limited"].includes(mode)) {
-    return res.status(400).json({ error: "Invalid mode" });
-  }
-  setAccessMode(mode, (err) => {
-    if (err) return res.status(500).json({ error: "Failed to update mode" });
-    res.json({ success: true, mode });
-  });
-});
-
-app.get("/api/access-mode", (req, res) => {
+// compat: GET /api/get-access
+app.get('/api/get-access', (req, res) => {
   getAccessMode((err, mode) => {
-    if (err) return res.status(500).json({ error: "Failed to read mode" });
+    if (err) return res.status(500).json({ error: 'Failed to read mode' });
     res.json({ mode });
   });
 });
-// ===== END ACCESS CONTROL =====
+
+// compat: GET /api/set-access/:mode
+app.get('/api/set-access/:mode', (req, res) => {
+  const mode = req.params.mode;
+  if (!['all','limited'].includes(mode)) {
+    return res.status(400).json({ error: 'Invalid mode' });
+  }
+  setAccessMode(mode, (err) => {
+    if (err) return res.status(500).json({ error: 'Failed to update mode' });
+    res.json({ success: true, mode });
+  });
+});
 
 
 // ✅ INITIALIZE APP
@@ -3687,25 +3687,7 @@ app.post('/api/admin-packages-by-code', (req, res) => {
 });
 
 
-// compat: GET /api/get-access
-app.get('/api/get-access', (req, res) => {
-  getAccessMode((err, mode) => {
-    if (err) return res.status(500).json({ error: 'Failed to read mode' });
-    res.json({ mode });
-  });
-});
 
-// compat: GET /api/set-access/:mode
-app.get('/api/set-access/:mode', (req, res) => {
-  const mode = req.params.mode;
-  if (!['all','limited'].includes(mode)) {
-    return res.status(400).json({ error: 'Invalid mode' });
-  }
-  setAccessMode(mode, (err) => {
-    if (err) return res.status(500).json({ error: 'Failed to update mode' });
-    res.json({ success: true, mode });
-  });
-});
 
 
 
