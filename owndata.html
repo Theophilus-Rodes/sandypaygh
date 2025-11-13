@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin • Data Packages</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f7fb;
+      margin: 0;
+      padding: 20px;
+      color: #222;
+    }
+    h1 {
+      margin-bottom: 10px;
+    }
+    .card {
+      background: #fff;
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+      max-width: 700px;
+      margin-bottom: 20px;
+    }
+    .form-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .form-row input {
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      flex: 1;
+      min-width: 150px;
+    }
+    button {
+      padding: 8px 14px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn-primary {
+      background: #0a0f5a;
+      color: #fff;
+    }
+    .btn-danger {
+      background: #d72638;
+      color: #fff;
+    }
+    .btn-secondary {
+      background: #eef2ff;
+      color: #0a0f5a;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 8px;
+      text-align: left;
+      border-bottom: 1px solid #eee;
+    }
+    th {
+      background: #f0f2ff;
+    }
+    .status-badge {
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .status-active {
+      background: #e6ffed;
+      color: #056b32;
+    }
+    .status-inactive {
+      background: #ffecec;
+      color: #b02222;
+    }
+    .message {
+      margin-top: 8px;
+      font-size: 13px;
+    }
+    .message.success { color: #056b32; }
+    .message.error { color: #b02222; }
+  </style>
+</head>
+<body>
+  <h1>Admin • Data Packages</h1>
+
+  <div class="card">
+    <h2>Add New Data Package</h2>
+    <div class="form-row">
+      <input type="text" id="packageName" placeholder="e.g. 1GB Daily" />
+      <input type="number" id="price" placeholder="Price (GHS)" step="0.01" />
+      <button class="btn-primary" onclick="addPackage()">Add</button>
+    </div>
+    <div id="formMessage" class="message"></div>
+  </div>
+
+  <div class="card">
+    <h2>All Packages</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Package</th>
+          <th>Price (GHS)</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="packagesTableBody">
+        <!-- Filled by JS -->
+      </tbody>
+    </table>
+    <div id="tableMessage" class="message"></div>
+  </div>
+
+  <script>
+    const apiBase = "/api/admin/data-packages"; // same origin as backend
+
+    async function loadPackages() {
+      const tableBody = document.getElementById("packagesTableBody");
+      const msg = document.getElementById("tableMessage");
+      tableBody.innerHTML = "";
+      msg.textContent = "Loading...";
+
+      try {
+        const res = await fetch(apiBase);
+        const data = await res.json();
+        if (!data.success) {
+          msg.textContent = data.message || "Failed to load packages";
+          msg.className = "message error";
+          return;
+        }
+
+        const rows = data.data;
+        if (!rows.length) {
+          msg.textContent = "No packages added yet.";
+          msg.className = "message";
+          return;
+        }
+
+        msg.textContent = "";
+        rows.forEach(pkg => {
+          const tr = document.createElement("tr");
+
+          const statusClass = pkg.status === "active" ? "status-active" : "status-inactive";
+          const statusText = pkg.status === "active" ? "Active" : "Inactive";
+
+          tr.innerHTML = `
+            <td>${pkg.id}</td>
+            <td>${pkg.package_name}</td>
+            <td>${Number(pkg.price).toFixed(2)}</td>
+            <td>
+              <span class="status-badge ${statusClass}">
+                ${statusText}
+              </span>
+            </td>
+            <td>${pkg.created_at ? new Date(pkg.created_at).toLocaleString() : ""}</td>
+            <td>
+              <button class="btn-secondary" onclick="toggleStatus(${pkg.id}, '${pkg.status}')">
+                ${pkg.status === "active" ? "Deactivate" : "Activate"}
+              </button>
+              <button class="btn-danger" onclick="deletePackage(${pkg.id})">
+                Delete
+              </button>
+            </td>
+          `;
+          tableBody.appendChild(tr);
+        });
+      } catch (err) {
+        console.error(err);
+        msg.textContent = "Error loading packages";
+        msg.className = "message error";
+      }
+    }
+
+    async function addPackage() {
+      const packageName = document.getElementById("packageName").value.trim();
+      const price = document.getElementById("price").value.trim();
+      const msg = document.getElementById("formMessage");
+
+      if (!packageName || !price) {
+        msg.textContent = "Please enter package name and price.";
+        msg.className = "message error";
+        return;
+      }
+
+      try {
+        const res = await fetch(apiBase, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ package_name: packageName, price })
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+          msg.textContent = data.message || "Failed to add package.";
+          msg.className = "message error";
+          return;
+        }
+
+        msg.textContent = "Package added successfully.";
+        msg.className = "message success";
+        document.getElementById("packageName").value = "";
+        document.getElementById("price").value = "";
+        loadPackages();
+      } catch (err) {
+        console.error(err);
+        msg.textContent = "Error adding package.";
+        msg.className = "message error";
+      }
+    }
+
+    async function toggleStatus(id, currentStatus) {
+      const newStatus = currentStatus === "active" ? "inactive" : "active";
+      const confirmMsg =
+        newStatus === "inactive"
+          ? "Are you sure you want to deactivate this package?"
+          : "Activate this package?";
+
+      if (!confirm(confirmMsg)) return;
+
+      try {
+        const res = await fetch(`${apiBase}/${id}/status`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: newStatus })
+        });
+        const data = await res.json();
+        if (!data.success) {
+          alert(data.message || "Failed to update status.");
+          return;
+        }
+        loadPackages();
+      } catch (err) {
+        console.error(err);
+        alert("Error updating status.");
+      }
+    }
+
+    async function deletePackage(id) {
+      if (!confirm("Are you sure you want to permanently delete this package?")) return;
+
+      try {
+        const res = await fetch(`${apiBase}/${id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (!data.success) {
+          alert(data.message || "Failed to delete package.");
+          return;
+        }
+        loadPackages();
+      } catch (err) {
+        console.error(err);
+        alert("Error deleting package.");
+      }
+    }
+
+    // Load packages when page opens
+    loadPackages();
+  </script>
+</body>
+</html>
