@@ -422,52 +422,68 @@ console.log("🟦 NEW PLAIN MODE SESSION DETECTED (*203*717#) for:", msisdn);
 
     // 🔹 CASE 2: New session WITH ID → *203*717*ID#
     // Here we ALLOW every number, but we CHECK SESSIONS/HITS
-    if (isNewSession) {
-      const raw = input; // contains the ID part from Moolre on first request
-      const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
-      const vendorId =
-        Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0
-          ? vendorIdFromDial
-          : 1;
+  if (isNewSession) {
+  console.log("🟨 NEW VENDOR SESSION — ID MODE. Input:", input);
 
-      // Check remaining hits for this vendor
-      const remaining = await getRemainingHits(vendorId);
-      if (remaining <= 0) {
-        return res.json({
-          message: "Sorry, your session has finished.",
-          reply: false,
-        });
-      }
+  // extract vendor id
+  const raw = input;
+  const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
+  const vendorId =
+    Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0
+      ? vendorIdFromDial
+      : 1;
 
-      // Deduct exactly 1 hit
-      const ok = await consumeOneHit(vendorId);
-      if (!ok) {
-        return res.json({
-          message: "END Sorry, your session has finished.",
-          reply: false,
-        });
-      }
+  // Create session FIRST (avoid undefined state)
+  sessions[sessionId] = {
+    step: "start",
+    vendorId,
+    brandName: "SandyPay", // will be replaced below
+    isPlain: false,
+    network: "",
+    selectedPkg: "",
+    recipient: "",
+    packageList: [],
+    packagePage: 0,
+  };
+  console.log("🟩 CREATED SESSION OBJECT FOR ID MODE:", sessions[sessionId]);
 
-      // Increment counter for dashboard
-      await incrementUssdCounter(vendorId);
+  // Check hits AFTER session is created
+  const remaining = await getRemainingHits(vendorId);
+  if (remaining <= 0) {
+    return res.json({
+      message: "Sorry, your session has finished.",
+      reply: false,
+    });
+  }
 
-      // Create session state
-      sessions[sessionId] = {
-        step: "start",
-        vendorId,
-        network: "",
-        selectedPkg: "",
-        recipient: "",
-        packageList: [],
-        packagePage: 0,
-      };
+  // Deduct one hit
+  const ok = await consumeOneHit(vendorId);
+  if (!ok) {
+    return res.json({
+      message: "END Sorry, your session has finished.",
+      reply: false,
+    });
+  }
 
-      // First menu (input here is the ID string, but handleSession will start at "start")
-      handleSession(sessionId, input, String(msisdn || ""), res);
-      console.log("🟨 NEW VENDOR SESSION (ID MODE). Dialed Input:", input);
-console.log("🟨 Extracted Vendor ID:", vendorId);
-      return;
+  // Increment counter
+  await incrementUssdCounter(vendorId);
+
+  // Fetch vendor brand name
+  try {
+    const [userRows] = await dbp.query(
+      "SELECT username FROM users WHERE id = ? LIMIT 1",
+      [vendorId]
+    );
+    if (userRows?.[0]?.username) {
+      sessions[sessionId].brandName = userRows[0].username;
     }
+  } catch (e) {
+    console.log("Error fetching vendor username:", e.message);
+  }
+
+  console.log("➡️ STARTING FIRST SCREEN FOR ID MODE");
+  return handleSession(sessionId, input, String(msisdn || ""), res);
+}
 
     // 🔹 CASE 3: Existing session → continue normally
     handleSession(sessionId, input, String(msisdn || ""), res);
