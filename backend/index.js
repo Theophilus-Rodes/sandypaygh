@@ -799,7 +799,7 @@ app.post("/api/reset-pin", async (req, res) => {
 const axios = require("axios"); // Ensure this is at the top of your file
 
 // ✅ Multi-network payment endpoint
-app.post("/api/place-order", checkAccess, async (req, res) => {
+app.post("/api/place-order",  async (req, res) => {
   const { vendor_id, network, data_package, amount, recipient_number, momo_number } = req.body;
 
   console.log("📥 Incoming order body:", req.body);
