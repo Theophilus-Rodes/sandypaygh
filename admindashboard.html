@@ -512,6 +512,38 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
  
 </script>
 
+<script>
+  (function () {
+    const sidebar   = document.getElementById('sidebar');
+    const mask      = document.getElementById('drawerMask');
+    const toggleBtn = document.getElementById('collapseBtn');
+
+    function openDrawer() {
+      // mark as mobile and slide in
+      sidebar.classList.add('mobile','open');
+      mask.classList.add('show');
+      document.body.style.overflow = 'hidden'; // prevent background scroll
+    }
+
+    function closeDrawer() {
+      sidebar.classList.remove('open');
+      mask.classList.remove('show');
+      document.body.style.overflow = '';
+      // remove the mobile helper class after the slide-out finishes
+      setTimeout(() => sidebar.classList.remove('mobile'), 250);
+    }
+
+    toggleBtn.addEventListener('click', openDrawer);
+    mask.addEventListener('click', closeDrawer);
+    window.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+    // Clean up state if user rotates or resizes to desktop width
+    const mq = window.matchMedia('(min-width: 861px)');
+    mq.addEventListener('change', (e) => { if (e.matches) closeDrawer(); });
+  })();
+</script>
+
+
 
 
 
