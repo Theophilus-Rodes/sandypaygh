@@ -34,27 +34,83 @@ function generateUssdCode(baseCode, userId) {
 }
 
 
-// --- helpers / settings loader ---
-const normalizePhone = (raw='') => {
-  const s = String(raw).replace(/\s+/g,'');
-  if (s.startsWith('+233')) return '0' + s.slice(4,6) + s.slice(6); // +23324xxxxxxx -> 024xxxxxxx
-  if (s.startsWith('233') && s.length === 12) return '0' + s.slice(3,5) + s.slice(5);
-  return s; // assumes already like 024xxxxxxx
-};
+// ===== ACCESS CONTROL (place after db is created, before routes) =====
+function normalizePhone(raw = "") {
+  const s = String(raw || "").replace(/\s+/g, "");
+  // +23324xxxxxxx -> 024xxxxxxx
+  if (s.startsWith("+233") && s.length >= 13) return "0" + s.slice(4, 6) + s.slice(6);
+  // 23324xxxxxxx -> 024xxxxxxx
+  if (s.startsWith("233") && s.length === 12)  return "0" + s.slice(3, 5) + s.slice(5);
+  return s; // assume already like 024xxxxxxx
+}
 
-const getAccessMode = (cb) => {
+function getAccessMode(cb) {
   db.query(
     "SELECT setting_value FROM app_settings WHERE setting_key='access_mode' LIMIT 1",
-    (err, rows) => cb(err, rows?.[0]?.setting_value || 'all')
+    (err, rows) => cb(err, rows && rows[0] ? rows[0].setting_value : "all")
   );
-};
+}
 
-const setAccessMode = (mode, cb) => {
+function setAccessMode(mode, cb) {
   db.query(
-    "INSERT INTO app_settings (setting_key, setting_value) VALUES ('access_mode', ?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
-    [mode], cb
+    "INSERT INTO app_settings (setting_key, setting_value) VALUES ('access_mode', ?) " +
+    "ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)",
+    [mode],
+    cb
   );
-};
+}
+
+function checkAccess(req, res, next) {
+  getAccessMode((err, mode) => {
+    if (err) return res.status(500).json({ error: "Settings error" });
+    if (mode !== "limited") return next(); // open for all
+
+    // Try to read the caller's phone from common fields
+    const raw =
+      (req.body && (req.body.phone_number || req.body.msisdn || req.body.momo_number)) ||
+      (req.query && (req.query.phone_number || req.query.msisdn)) ||
+      "";
+
+    const phone = normalizePhone(raw);
+    if (!phone) {
+      return res.status(403).json({ error: "You don't have access to this service" });
+    }
+
+    db.query(
+      "SELECT 1 FROM telephone_numbers " +
+      "WHERE phone_number = ? AND (status IS NULL OR status = 'allowed') LIMIT 1",
+      [phone],
+      (qErr, rows) => {
+        if (qErr) return res.status(500).json({ error: "Database error" });
+        if (!rows || rows.length === 0) {
+          return res.status(403).json({ error: "You don't have access to this service" });
+        }
+        next(); // allowed
+      }
+    );
+  });
+}
+
+// Admin endpoints to toggle mode
+app.post("/api/access-mode", (req, res) => {
+  const { mode } = req.body; // 'all' or 'limited'
+  if (!["all", "limited"].includes(mode)) {
+    return res.status(400).json({ error: "Invalid mode" });
+  }
+  setAccessMode(mode, (err) => {
+    if (err) return res.status(500).json({ error: "Failed to update mode" });
+    res.json({ success: true, mode });
+  });
+});
+
+app.get("/api/access-mode", (req, res) => {
+  getAccessMode((err, mode) => {
+    if (err) return res.status(500).json({ error: "Failed to read mode" });
+    res.json({ mode });
+  });
+});
+// ===== END ACCESS CONTROL =====
+
 
 // ✅ INITIALIZE APP
 const app = express();
@@ -3631,57 +3687,6 @@ app.post('/api/admin-packages-by-code', (req, res) => {
 });
 
 
-// --- middleware to enforce limited mode ---
-const checkAccess = (req, res, next) => {
-  getAccessMode((err, mode) => {
-    if (err) return res.status(500).json({ error: "Settings error" });
-    if (mode !== 'limited') return next(); // open for all
-
-    // pull a phone from common spots
-    const raw =
-      req.body?.phone_number ||
-      req.body?.msisdn ||
-      req.body?.momo_number ||
-      req.query?.phone_number ||
-      req.query?.msisdn;
-
-    const phone = normalizePhone(raw || '');
-    if (!phone) {
-      return res.status(403).json({ error: "You don't have access to this service" });
-    }
-
-    db.query(
-      "SELECT 1 FROM telephone_numbers WHERE phone_number=? AND (status IS NULL OR status='allowed') LIMIT 1",
-      [phone],
-      (qErr, rows) => {
-        if (qErr) return res.status(500).json({ error: "Database error" });
-        if (!rows || rows.length === 0) {
-          return res.status(403).json({ error: "You don't have access to this service" });
-        }
-        next(); // allowed
-      }
-    );
-  });
-};
-
-// --- admin endpoints to toggle mode ---
-app.post("/api/access-mode", (req, res) => {
-  const { mode } = req.body; // 'all' or 'limited'
-  if (!['all','limited'].includes(mode)) {
-    return res.status(400).json({ error: "Invalid mode" });
-  }
-  setAccessMode(mode, (err) => {
-    if (err) return res.status(500).json({ error: "Failed to update mode" });
-    res.json({ success: true, mode });
-  });
-});
-
-app.get("/api/access-mode", (req, res) => {
-  getAccessMode((err, mode) => {
-    if (err) return res.status(500).json({ error: "Failed to read mode" });
-    res.json({ mode });
-  });
-});
 
 
 
