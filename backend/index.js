@@ -12,6 +12,7 @@ const path = require("path");
 const fs = require("fs");
 //calling ussd 
 const moolreRouter = require("./shortcode/ussd");
+const ussdRouter = require("./api");
 
 // --- Sessions helpers (place near other requires/configs) ---
 const crypto = require("crypto");
