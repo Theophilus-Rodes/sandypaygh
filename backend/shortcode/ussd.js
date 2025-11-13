@@ -172,7 +172,7 @@ function handleSession(sessionId, input, msisdn, res) {
   switch (state.step) {
     case "start":
       state.step = "menu";
-      return reply("SandyPay.\nNB: The Data Is NOT INSTANT.\nIt takes 5-12 minutes to deliver\n0. Cancel\n\n1. Buy Data\n2. Contact Us");
+      return reply("SandyPay.\nNB: The Data Is NOT INSTANT.\n0. Cancel\n\n1. Buy Data\n2. Contact Us");
 
     case "menu":
       if (input === "1") {
@@ -344,6 +344,7 @@ db.query(
 // ====== USSD ROUTE (Moolre) ======
 // Parent app will mount this router at /api/moolre, so our path here is "/"
 // ====== USSD ROUTE (Moolre) ======
+// Parent app will mount this router at /api/moolre, so our path here is "/"
 router.post("/", async (req, res) => {
   let payload = {};
   try {
@@ -354,24 +355,18 @@ router.post("/", async (req, res) => {
 
   const { sessionId, msisdn, data, message, extension, new: isNew } = payload;
 
-  const ext = String(extension || "");
-
   // Must be our 717 extension
-  if (ext !== EXTENSION_EXPECTED) {
+  if (String(extension || "") !== EXTENSION_EXPECTED) {
     return res.json({ message: "END Invalid USSD entry point", reply: false });
   }
 
   const input = (data || message || "").trim();
-
-  // Block bare *203*717# with no vendor id
-  if ((isNew === true || !sessions[sessionId]) && !input) {
-    return res.json({ message: "APPLICATION UNKNOWN", reply: false });
-  }
+  const isNewSession = isNew === true || !sessions[sessionId];
 
   try {
-    // NEW SESSION
-    if (isNew === true || !sessions[sessionId]) {
-      // 1️⃣ FIRST: check telephone_numbers whitelist
+    // 🔹 CASE 1: New session AND no ID → *203*717# (no vendor ID)
+    if (isNewSession && !input) {
+      // 1) Check telephone_numbers first
       const [intl, local, plusIntl] = msisdnVariants(msisdn);
       const [rowsTel] = await dbp.query(
         `SELECT 1
@@ -382,20 +377,14 @@ router.post("/", async (req, res) => {
         [intl, local, plusIntl]
       );
 
-      // Not in telephone_numbers → behave like unknown app
+      // Not in whitelist → behave like application unknown
       if (!rowsTel || !rowsTel.length) {
         return res.json({ message: "APPLICATION UNKNOWN", reply: false });
       }
 
-      // 2️⃣ Extract vendor id from the first data (digits only)
-      const raw = String(data || "").trim();
-      const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
-      const vendorId =
-        Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0
-          ? vendorIdFromDial
-          : 1;
+      // If you want a specific vendor for this mode, set it here (e.g. 1 is default)
+      const vendorId = 1;
 
-      // 3️⃣ Check remaining hits
       const remaining = await getRemainingHits(vendorId);
       if (remaining <= 0) {
         return res.json({
@@ -404,19 +393,16 @@ router.post("/", async (req, res) => {
         });
       }
 
-      // 4️⃣ Deduct exactly 1 hit
       const ok = await consumeOneHit(vendorId);
       if (!ok) {
         return res.json({
-          message: "APPLICATION UNKNOWN.",
+          message: "END Sorry, your session has finished.",
           reply: false,
         });
       }
 
-      // 5️⃣ Bump visible USSD counter
       await incrementUssdCounter(vendorId);
 
-      // 6️⃣ Create session state
       sessions[sessionId] = {
         step: "start",
         vendorId,
@@ -427,17 +413,55 @@ router.post("/", async (req, res) => {
         packagePage: 0,
       };
 
-      // 7️⃣ Kick off first screen
-      handleSession(
-        sessionId,
-        input, // first input
-        String(msisdn || ""),
-        res
-      );
+      // input is empty here, handleSession will just show the first menu
+      handleSession(sessionId, input, String(msisdn || ""), res);
       return;
     }
 
-    // EXISTING SESSION → just continue the flow
+    // 🔹 CASE 2: New session WITH ID → *203*717*ID#
+    if (isNewSession) {
+      // Here we ALLOW every number (no telephone_numbers check)
+      const raw = input; // contains the ID part from Moolre
+      const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
+      const vendorId =
+        Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0
+          ? vendorIdFromDial
+          : 1;
+
+      const remaining = await getRemainingHits(vendorId);
+      if (remaining <= 0) {
+        return res.json({
+          message: "Sorry, your session has finished.",
+          reply: false,
+        });
+      }
+
+      const ok = await consumeOneHit(vendorId);
+      if (!ok) {
+        return res.json({
+          message: "END Sorry, your session has finished.",
+          reply: false,
+        });
+      }
+
+      await incrementUssdCounter(vendorId);
+
+      sessions[sessionId] = {
+        step: "start",
+        vendorId,
+        network: "",
+        selectedPkg: "",
+        recipient: "",
+        packageList: [],
+        packagePage: 0,
+      };
+
+      // First screen (menu)
+      handleSession(sessionId, input, String(msisdn || ""), res);
+      return;
+    }
+
+    // 🔹 CASE 3: Existing session → continue normally
     handleSession(sessionId, input, String(msisdn || ""), res);
   } catch (e) {
     console.error("USSD route error:", e.message);
