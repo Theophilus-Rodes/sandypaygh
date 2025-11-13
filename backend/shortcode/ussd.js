@@ -450,58 +450,95 @@ function handleSession(sessionId, input, msisdn, res) {
               );
             } else {
               // ------- VENDOR MODE: *203*717*ID# -------
-              const vendorAmount = parseFloat(
-                (amount * 0.98).toFixed(2)
-              );
-              const revenueAmount = parseFloat(
-                (amount * 0.02).toFixed(2)
-              );
+            // ------- VENDOR MODE: *203*717*ID# with admin_data_packages cost -------
+// First, look up the base cost in admin_data_packages
+db.query(
+  `SELECT amount
+     FROM admin_data_packages
+    WHERE data_package = ?
+    LIMIT 1`,
+  [data_package],
+  (err, rows) => {
+    if (err) {
+      console.error("❌ admin_data_packages lookup error:", err);
+      return;
+    }
 
-              db.query(
-                `INSERT INTO admin_orders
-                   (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-                 VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-                [
-                  vendor_id,
-                  recipient_number,
-                  data_package,
-                  amount,
-                  network,
-                  package_id,
-                ],
-                (err) => {
-                  if (err)
-                    return console.error(
-                      "❌ Failed to log vendor admin_order:",
-                      err
-                    );
-                  console.log("✅ Vendor admin_order logged.");
+    if (!rows || !rows.length) {
+      console.error(
+        "❌ Package doesn't match admin_data_packages for:",
+        data_package
+      );
+      // At this point USSD session is already closed, so we can only log.
+      // No DB inserts will be made.
+      return;
+    }
 
-                  db.query(
-                    `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
-                     VALUES (?, ?, ?, NOW())`,
-                    [vendor_id, momo_number, vendorAmount],
-                    (e) =>
-                      e
-                        ? console.error("❌ Wallet load insert:", e)
-                        : console.log("✅ Wallet 98% logged.")
-                  );
+    const baseAmount = parseFloat(rows[0].amount);       // admin cost
+    const revenueAmount = baseAmount;                    // goes to total_revenue
+    const vendorAmount = parseFloat(
+      (amount - baseAmount).toFixed(2)                    // remainder goes to vendor
+    );
 
-                  db.query(
-                    `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-                     VALUES (?, ?, ?, NOW())`,
-                    [
-                      vendor_id,
-                      `2% from ${network} payment`,
-                      revenueAmount,
-                    ],
-                    (e) =>
-                      e
-                        ? console.error("❌ Revenue insert:", e)
-                        : console.log("✅ 2% revenue logged.")
-                  );
-                }
-              );
+    if (vendorAmount < 0) {
+      console.warn(
+        "⚠️ Vendor amount is negative. Check pricing.",
+        { data_package, amount, baseAmount }
+      );
+    }
+
+    // Insert order for tracking (full customer amount)
+    db.query(
+      `INSERT INTO admin_orders
+         (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+       VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+      [
+        vendor_id,
+        recipient_number,
+        data_package,
+        amount,
+        network,
+        package_id,
+      ],
+      (err2) => {
+        if (err2) {
+          return console.error(
+            "❌ Failed to log vendor admin_order:",
+            err2
+          );
+        }
+        console.log("✅ Vendor admin_order logged.");
+
+        // Vendor's share (selling price - base cost)
+        db.query(
+          `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
+           VALUES (?, ?, ?, NOW())`,
+          [vendor_id, momo_number, vendorAmount],
+          (e) =>
+            e
+              ? console.error("❌ Wallet load insert:", e)
+              : console.log("✅ Vendor wallet share logged.")
+        );
+
+        // Admin/base cost into total_revenue
+        db.query(
+          `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+           VALUES (?, ?, ?, NOW())`,
+          [
+            vendor_id,
+            `Admin base for ${network} ${data_package}`,
+            revenueAmount,
+          ],
+          (e) =>
+            e
+              ? console.error("❌ Revenue insert:", e)
+              : console.log("✅ Admin base revenue logged.")
+        );
+      }
+    );
+  }
+);
+
             }
           })
           .catch((err) => {
