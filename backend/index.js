@@ -936,6 +936,87 @@ app.get("/api/total-revenue", (req, res) => {
   });
 });
 
+///////////////////////////////////////////////////
+// ===================== ADMIN DATA PACKAGES ===================== //
+
+// Add a new data package
+app.post("/api/admin/data-packages", (req, res) => {
+  const { package_name, price } = req.body;
+
+  if (!package_name || !price) {
+    return res.status(400).json({ success: false, message: "Package name and price are required" });
+  }
+
+  const sql = `
+    INSERT INTO AdminData (package_name, price)
+    VALUES (?, ?)
+  `;
+  db.query(sql, [package_name, price], (err, result) => {
+    if (err) {
+      console.error("Error inserting package:", err);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+    return res.json({ success: true, message: "Package added", id: result.insertId });
+  });
+});
+
+// Get all data packages
+app.get("/api/admin/data-packages", (req, res) => {
+  const sql = `
+    SELECT id, package_name, price, status, created_at
+    FROM AdminData
+    ORDER BY id DESC
+  `;
+  db.query(sql, (err, rows) => {
+    if (err) {
+      console.error("Error fetching packages:", err);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+    return res.json({ success: true, data: rows });
+  });
+});
+
+// Activate / Deactivate a package
+app.patch("/api/admin/data-packages/:id/status", (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body; // "active" or "inactive"
+
+  if (!["active", "inactive"].includes(status)) {
+    return res.status(400).json({ success: false, message: "Invalid status" });
+  }
+
+  const sql = `UPDATE AdminData SET status = ? WHERE id = ?`;
+  db.query(sql, [status, id], (err, result) => {
+    if (err) {
+      console.error("Error updating status:", err);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Package not found" });
+    }
+    return res.json({ success: true, message: `Package ${status}` });
+  });
+});
+
+// Delete a package
+app.delete("/api/admin/data-packages/:id", (req, res) => {
+  const { id } = req.params;
+
+  const sql = `DELETE FROM AdminData WHERE id = ?`;
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      console.error("Error deleting package:", err);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Package not found" });
+    }
+    return res.json({ success: true, message: "Package deleted" });
+  });
+});
+//////////////////////////////////////////////////////////////////////////
+
+
 
 
 // 📞 Get all telephone numbers
