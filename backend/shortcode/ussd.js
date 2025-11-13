@@ -216,7 +216,7 @@ function handleSession(sessionId, input, msisdn, res) {
       state.step = "menu";
       const brand = state.brandName || "SandyPay";
       return reply(
-        `${brand}.\nNB: The Data Is NOT INSTANT.\n0. Cancel\n\n1. Buy Data\n2. Contact Us`
+        `${brand}.\nNB: The Data Is NOT INSTANT.\n It takes between 5min to 24hrs to deliver\n0. Cancel\n\n1. Buy Data\n2. Contact Us`
       );
     }
 
@@ -658,7 +658,7 @@ router.post("/", (req, res) => {
   checkAccess(msisdn, (allowed) => {
     if (!allowed) {
       return res.json({
-        message: "END Sorry, you don't have access.",
+        message: "Sorry, you don't have access.",
         reply: false,
       });
     }
@@ -686,7 +686,7 @@ router.post("/", (req, res) => {
         console.log("📊 Remaining hits for vendor", vendorId, "=", remaining);
         if (remaining <= 0) {
           return res.json({
-            message: "END Sorry, your session has finished.",
+            message: "APPLICATION UNKNOWN.",
             reply: false,
           });
         }
