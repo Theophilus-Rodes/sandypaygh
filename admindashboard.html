@@ -179,16 +179,16 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
     <div class="brand"><span class="dot"></span> Sandypay Admin</div>
     <div class="welcome">Welcome: <strong id="adminNameSide">Admin</strong></div>
     <nav class="nav">
-      <button onclick="showComingSoon()">🛒 Sell</button>
+      <button onclick="showComingSoon(); closeDrawer()">🛒 Sell</button>
       <button onclick="goto('user.html')">👤 User</button>
       <button onclick="goto('signup.html')">➕ Create Account</button>
       <button onclick="goto('completed.html')">✅ Completed</button>
       <button onclick="goto('Admindata.html')">📦 Data</button>
-      <button onclick="showAdminAfaDialog()">💳 Set AFA Price</button>
+      <button onclick="showAdminAfaDialog(); closeDrawer()">💳 Set AFA Price</button>
       <button onclick="goto('Total_Amount.html')">💰 Total Amount</button>
       <button onclick="goto('Payment.html')">💵 Payments</button>
       <button onclick="goto('LinkCustomDomain.html')">🔗 Link Domain</button>
-      <button onclick="openAllow()">✅ Allow</button>
+      <button onclick="openAllow(); closeDrawer()">✅ Allow</button>
     </nav>
     
 
@@ -519,29 +519,40 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
     const toggleBtn = document.getElementById('collapseBtn');
 
     function openDrawer() {
-      // mark as mobile and slide in
       sidebar.classList.add('mobile','open');
       mask.classList.add('show');
-      document.body.style.overflow = 'hidden'; // prevent background scroll
+      document.body.style.overflow = 'hidden';
     }
 
     function closeDrawer() {
       sidebar.classList.remove('open');
       mask.classList.remove('show');
       document.body.style.overflow = '';
-      // remove the mobile helper class after the slide-out finishes
       setTimeout(() => sidebar.classList.remove('mobile'), 250);
     }
+
+    // Make closeDrawer available globally so other buttons can call it
+    window.closeDrawer = closeDrawer;
 
     toggleBtn.addEventListener('click', openDrawer);
     mask.addEventListener('click', closeDrawer);
     window.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
 
-    // Clean up state if user rotates or resizes to desktop width
     const mq = window.matchMedia('(min-width: 861px)');
-    mq.addEventListener('change', (e) => { if (e.matches) closeDrawer(); });
+    mq.addEventListener('change', e => { if (e.matches) closeDrawer(); });
   })();
 </script>
+
+<script>
+  // Automatically close drawer when any sidebar button is clicked (mobile only)
+  document.querySelectorAll('#sidebar button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (window.innerWidth <= 860) closeDrawer();
+    });
+  });
+</script>
+
+
 
 
 
