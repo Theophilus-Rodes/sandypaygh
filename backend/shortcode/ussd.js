@@ -91,7 +91,7 @@ const sessions = {};
 // --- Access mode (ALL vs LIMITED) ------------------------------
 
 // GET current access mode
-router.get("/api/get-access", async (req, res) => {
+router.get("/get-access", async (req, res) => {
   try {
     const [rows] = await db.promise().query(
       "SELECT value FROM app_settings WHERE setting='access_mode' LIMIT 1"
@@ -105,7 +105,7 @@ router.get("/api/get-access", async (req, res) => {
 });
 
 // SET access mode
-router.get("/api/set-access/:mode", async (req, res) => {
+router.get("/set-access/:mode", async (req, res) => {
   try {
     const mode = req.params.mode === "limited" ? "limited" : "all";
     await db
