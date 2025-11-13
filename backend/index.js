@@ -12,7 +12,7 @@ const path = require("path");
 const fs = require("fs");
 //calling ussd 
 const moolreRouter = require("./shortcode/ussd");
-const ussdRouter = require("./api");
+
 
 // --- Sessions helpers (place near other requires/configs) ---
 const crypto = require("crypto");
@@ -62,7 +62,7 @@ app.use(cors());
 app.use(bodyParser.json());
 //Continue ussd
 app.use("/api/moolre", moolreRouter);
-app.use("/api", ussdRouter);
+
 
 
 // ✅ Create database connection (SECURE + supports CA text or path)
@@ -740,7 +740,7 @@ app.post("/api/reset-pin", async (req, res) => {
 const axios = require("axios"); // Ensure this is at the top of your file
 
 // ✅ Multi-network payment endpoint
-app.post("/api/place-order", async (req, res) => {
+app.post("/api/place-order", checkAccess, async (req, res) => {
   const { vendor_id, network, data_package, amount, recipient_number, momo_number } = req.body;
 
   console.log("📥 Incoming order body:", req.body);
