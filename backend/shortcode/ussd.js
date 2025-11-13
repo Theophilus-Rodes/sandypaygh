@@ -88,41 +88,6 @@ console.log("✅ USSD pool created (MySQL).");
 const sessions = {};
 
 
-// --- Access mode (ALL vs LIMITED) ------------------------------
-
-// GET current access mode
-router.get("/api/get-access", async (req, res) => {
-  try {
-    const [rows] = await db.promise().query(
-      "SELECT value FROM app_settings WHERE setting='access_mode' LIMIT 1"
-    );
-    const mode = rows?.[0]?.value || "all";
-    res.json({ mode });
-  } catch (e) {
-    console.error("get-access error:", e.message);
-    res.status(500).json({ error: "db error" });
-  }
-});
-
-// SET access mode
-router.get("/api/set-access/:mode", async (req, res) => {
-  try {
-    const mode = req.params.mode === "limited" ? "limited" : "all";
-    await db
-      .promise()
-      .query(
-        `INSERT INTO app_settings (setting, value)
-         VALUES ('access_mode', ?)
-         ON DUPLICATE KEY UPDATE value = VALUES(value)`,
-        [mode]
-      );
-    res.send(`✅ Access mode set to ${mode.toUpperCase()}`);
-  } catch (e) {
-    console.error("set-access error:", e.message);
-    res.status(500).send("❌ Failed to set access mode");
-  }
-});
-
 
 // ====== HELPERS ======
 function getSwitchCode(network) {
