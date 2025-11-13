@@ -41,77 +41,131 @@
     tr:hover {
       background-color: #f1f1f1;
     }
+
+    .status-btn {
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .delete-btn {
+      background: #dc3545;
+      color: #fff;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .delete-btn:hover {
+      background: #b02030;
+    }
   </style>
 </head>
 <body>
   <h2>All Telephone Numbers</h2>
 
   <table id="numbersTable">
-  <thead>
-    <tr>
-      <th>ID</th>
-      <th>Phone Number</th>
-      <th>Status</th>
-      <th>Date Added</th>
-    </tr>
-  </thead>
-  <tbody></tbody>
-</table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Phone Number</th>
+        <th>Status</th>
+        <th>Date Added</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
- <script>
-  async function loadNumbers() {
-    try {
-      const response = await fetch("https://sandipay.co/api/telephone-numbers");
-      const data = await response.json();
-      const tbody = document.querySelector("#numbersTable tbody");
-      tbody.innerHTML = "";
+  <script>
+    async function loadNumbers() {
+      try {
+        const response = await fetch("https://sandipay.co/api/telephone-numbers");
+        const data = await response.json();
+        const tbody = document.querySelector("#numbersTable tbody");
+        tbody.innerHTML = "";
 
-      data.forEach((row) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${row.id}</td>
-          <td>${row.phone_number}</td>
-          <td>
-            <button 
-              class="status-btn" 
-              data-id="${row.id}" 
-              data-status="${row.status}"
-              style="background:${row.status === 'allowed' ? '#28a745' : '#dc3545'};color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;">
-              ${row.status === 'allowed' ? 'Allowed' : 'Denied'}
-            </button>
-          </td>
-          <td>${new Date(row.created_at).toLocaleString()}</td>
-        `;
-        tbody.appendChild(tr);
-      });
-
-      // Add toggle click listener
-      document.querySelectorAll(".status-btn").forEach(btn => {
-        btn.addEventListener("click", async () => {
-          const id = btn.getAttribute("data-id");
-          const current = btn.getAttribute("data-status");
-          const newStatus = current === "allowed" ? "denied" : "allowed";
-
-          const res = await fetch("https://sandipay.co/api/update-status", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, status: newStatus })
-          });
-          const result = await res.json();
-          if (result.success) {
-            btn.setAttribute("data-status", newStatus);
-            btn.style.background = newStatus === "allowed" ? "#28a745" : "#dc3545";
-            btn.textContent = newStatus === "allowed" ? "Allowed" : "Denied";
-          }
+        data.forEach((row) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${row.id}</td>
+            <td>${row.phone_number}</td>
+            <td>
+              <button 
+                class="status-btn" 
+                data-id="${row.id}" 
+                data-status="${row.status}"
+                style="background:${row.status === 'allowed' ? '#28a745' : '#dc3545'};">
+                ${row.status === 'allowed' ? 'Allowed' : 'Denied'}
+              </button>
+            </td>
+            <td>${new Date(row.created_at).toLocaleString()}</td>
+            <td>
+              <button class="delete-btn" data-id="${row.id}">Delete</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
         });
-      });
-    } catch (error) {
-      console.error("Error loading numbers:", error);
-    }
-  }
 
-  window.onload = loadNumbers;
-</script>
+        // Toggle status
+        document.querySelectorAll(".status-btn").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-id");
+            const current = btn.getAttribute("data-status");
+            const newStatus = current === "allowed" ? "denied" : "allowed";
+
+            const res = await fetch("https://sandipay.co/api/update-status", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id, status: newStatus })
+            });
+            const result = await res.json();
+            if (result.success) {
+              btn.setAttribute("data-status", newStatus);
+              btn.style.background = newStatus === "allowed" ? "#28a745" : "#dc3545";
+              btn.textContent = newStatus === "allowed" ? "Allowed" : "Denied";
+            }
+          });
+        });
+
+        // Delete number
+        document.querySelectorAll(".delete-btn").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-id");
+            const rowEl = btn.closest("tr");
+
+            if (!confirm("Are you sure you want to delete this number?")) return;
+
+            try {
+              const res = await fetch("https://sandipay.co/api/delete-telephone-number", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id })
+              });
+              const result = await res.json();
+
+              if (result.success) {
+                rowEl.remove();
+              } else {
+                alert(result.message || "Failed to delete number.");
+              }
+            } catch (err) {
+              console.error("Delete error:", err);
+              alert("Error deleting number. Please try again.");
+            }
+          });
+        });
+
+      } catch (error) {
+        console.error("Error loading numbers:", error);
+      }
+    }
+
+    window.onload = loadNumbers;
+  </script>
 
 </body>
 </html>
