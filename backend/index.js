@@ -61,6 +61,7 @@ app.use(cors());
 app.use(bodyParser.json());
 //Continue ussd
 app.use("/api/moolre", moolreRouter);
+app.use("/api", ussdRouter);
 
 
 // ✅ Create database connection (SECURE + supports CA text or path)
