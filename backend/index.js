@@ -2481,6 +2481,38 @@ app.post("/api/delete-admin-package", (req, res) => {
 
 
 
+// Delete a telephone number
+app.post("/api/delete-telephone-number", (req, res) => {
+  const { id } = req.body;
+
+  if (!id) {
+    return res.status(400).json({
+      success: false,
+      message: "ID is required",
+    });
+  }
+
+  const sql = "DELETE FROM telephone_numbers WHERE id = ?";
+
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      console.error("❌ Error deleting telephone number:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Database error while deleting number",
+      });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.json({
+        success: false,
+        message: "Number not found",
+      });
+    }
+
+    return res.json({ success: true });
+  });
+});
 
 
 
