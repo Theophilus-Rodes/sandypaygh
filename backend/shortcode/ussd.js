@@ -364,10 +364,12 @@ router.post("/", async (req, res) => {
   const isNewSession = isNew === true || !sessions[sessionId];
 
   try {
-    // 🔹 CASE 1: New session AND no ID → *203*717# (no vendor ID)
+    // 🔹 CASE 1: New session with NO ID → *203*717#
+    // Free to use (no hits check) BUT must be in telephone_numbers
     if (isNewSession && !input) {
-      // 1) Check telephone_numbers first
       const [intl, local, plusIntl] = msisdnVariants(msisdn);
+
+      // Check whitelist table first
       const [rowsTel] = await dbp.query(
         `SELECT 1
            FROM telephone_numbers
@@ -377,31 +379,13 @@ router.post("/", async (req, res) => {
         [intl, local, plusIntl]
       );
 
-      // Not in whitelist → behave like application unknown
+      // Not in whitelist → behave like unknown application
       if (!rowsTel || !rowsTel.length) {
         return res.json({ message: "APPLICATION UNKNOWN", reply: false });
       }
 
-      // If you want a specific vendor for this mode, set it here (e.g. 1 is default)
-      const vendorId = 1;
-
-      const remaining = await getRemainingHits(vendorId);
-      if (remaining <= 0) {
-        return res.json({
-          message: "Sorry, your session has finished.",
-          reply: false,
-        });
-      }
-
-      const ok = await consumeOneHit(vendorId);
-      if (!ok) {
-        return res.json({
-          message: "END Sorry, your session has finished.",
-          reply: false,
-        });
-      }
-
-      await incrementUssdCounter(vendorId);
+      // Allowed: no hits check, just open a "free" session
+      const vendorId = 1; // default/general vendor for plain *203*717#
 
       sessions[sessionId] = {
         step: "start",
@@ -413,21 +397,22 @@ router.post("/", async (req, res) => {
         packagePage: 0,
       };
 
-      // input is empty here, handleSession will just show the first menu
+      // input is empty here; handleSession will show the first menu
       handleSession(sessionId, input, String(msisdn || ""), res);
       return;
     }
 
     // 🔹 CASE 2: New session WITH ID → *203*717*ID#
+    // Here we ALLOW every number, but we CHECK SESSIONS/HITS
     if (isNewSession) {
-      // Here we ALLOW every number (no telephone_numbers check)
-      const raw = input; // contains the ID part from Moolre
+      const raw = input; // contains the ID part from Moolre on first request
       const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
       const vendorId =
         Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0
           ? vendorIdFromDial
           : 1;
 
+      // Check remaining hits for this vendor
       const remaining = await getRemainingHits(vendorId);
       if (remaining <= 0) {
         return res.json({
@@ -436,6 +421,7 @@ router.post("/", async (req, res) => {
         });
       }
 
+      // Deduct exactly 1 hit
       const ok = await consumeOneHit(vendorId);
       if (!ok) {
         return res.json({
@@ -444,8 +430,10 @@ router.post("/", async (req, res) => {
         });
       }
 
+      // Increment counter for dashboard
       await incrementUssdCounter(vendorId);
 
+      // Create session state
       sessions[sessionId] = {
         step: "start",
         vendorId,
@@ -456,7 +444,7 @@ router.post("/", async (req, res) => {
         packagePage: 0,
       };
 
-      // First screen (menu)
+      // First menu (input here is the ID string, but handleSession will start at "start")
       handleSession(sessionId, input, String(msisdn || ""), res);
       return;
     }
