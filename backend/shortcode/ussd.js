@@ -173,9 +173,9 @@ function handleSession(sessionId, input, msisdn, res) {
     case "start": 
       state.step = "menu";
       const brand = state.brandName || "SandyPay";
-      return reply(
+      return reply
         `${brand}.\nNB: The Data Is NOT INSTANT.\n0. Cancel\n\n1. Buy Data\n2. Contact Us`
-      );
+      
 
     case "menu":
       if (input === "1") {
@@ -196,12 +196,36 @@ function handleSession(sessionId, input, msisdn, res) {
       else if (input === "0") { state.step = "menu"; return reply("Back to menu:\n1. Buy Data\n2. Contact Us"); }
       else return reply("Invalid network. Choose:\n1) MTN\n2) AirtelTigo\n3) Telecel");
 
+            // 🔹 If plain mode (*203*717#) → load AdminData table
+      if (state.isPlain) {
+        db.query(
+          `SELECT package_name AS data_package, price AS amount
+             FROM AdminData
+            WHERE status='active'`,
+          (err, rows) => {
+            if (err) {
+              console.error("❌ MySQL error:", err);
+              return end("Service temporarily unavailable. Try again later.");
+            }
+            if (!rows || !rows.length) return end("No data packages available.");
+
+            state.packageList = rows.map((r) => `${r.data_package} @ GHS${r.amount}`);
+            state.packagePage = 0;
+            state.step = "package";
+            return reply(renderPackages(state));
+          }
+        );
+        return;
+      }
+
+      // 🔹 Normal mode (with ID) → use vendor data_packages
       db.query(
         `SELECT data_package, amount
            FROM data_packages
           WHERE vendor_id = ? AND network = ? AND status = 'available'`,
         [state.vendorId, state.network],
         (err, rows) => {
+
           if (err) { console.error("❌ MySQL error:", err); return ("Service temporarily unavailable. Try again later."); }
           if (!rows || !rows.length) return end("No data packages available.");
 
@@ -291,46 +315,82 @@ function handleSession(sessionId, input, msisdn, res) {
             }
           }
         )
-        .then((response) => {
-          console.log("✅ TheTeller response:", response.data);
-
-          // After payment request fires, log to DB (pending)
-         // After payment request fires, log to DB (pending)
-const vendorAmount = parseFloat((amount * 0.98).toFixed(2));
-const revenueAmount = parseFloat((amount * 0.02).toFixed(2));
-
-const ins = `
-  INSERT INTO admin_orders
-    (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-  VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)
-`;
-db.query(
-  ins,
-  [vendor_id, recipient_number, data_package, amount, network, package_id],
-  (err) => {
-    if (err) return console.error("❌ Failed to log admin order:", err);
-    console.log("✅ Admin order logged.");
-
-    db.query(
-      `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
-       VALUES (?, ?, ?, NOW())`,
-      [vendor_id, momo_number, vendorAmount],
-      (e) => e ? console.error("❌ Wallet load insert:", e) : console.log("✅ Wallet 98% logged.")
-    );
-
-    db.query(
-      `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-       VALUES (?, ?, ?, NOW())`,
-      [vendor_id, `2% from ${network} payment`, revenueAmount],
-      (e) => e ? console.error("❌ Revenue insert:", e) : console.log("✅ 2% revenue logged.")
-    );
+       axios.post(
+  THETELLER.url,
+  payload,
+  {
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Basic ${THETELLER.tokenBase64}`,
+      "Cache-Control": "no-cache"
+    }
   }
-);
+)
+.then(async (response) => {
+  console.log("🔍 TheTeller response:", response.data);
 
-        })
-        .catch((err) => {
-          console.error("❌ TheTeller error:", err.response?.data || err.message);
-        });
+  // ❗ DO NOT INSERT ANYTHING UNTIL PAYMENT IS CONFIRMED
+  if (response.data.code !== "000") {
+    console.log("❌ Payment failed. Nothing inserted.");
+    return;
+  }
+
+  console.log("✅ PAYMENT APPROVED. INSERTING RECORDS...");
+
+  // ===== PLAIN MODE: *203*717# (NO ID) =====
+  if (state.isPlain) {
+
+    // insert into admin_orders
+    await dbp.query(
+      `INSERT INTO admin_orders
+        (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+       VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+      [1, recipient_number, data_package, amount, network, package_id]
+    );
+
+    // insert FULL amount into total_revenue
+    await dbp.query(
+      `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+       VALUES (1, 'AdminData Sale', ?, NOW())`,
+      [amount]
+    );
+
+    console.log("✅ AdminData order + revenue saved.");
+    return;
+  }
+
+  // ===== NORMAL MODE: *203*717*ID# (WITH ID) =====
+  const vendorAmount = parseFloat((amount * 0.98).toFixed(2));
+  const revenueAmount = parseFloat((amount * 0.02).toFixed(2));
+
+  // admin_orders
+  await dbp.query(
+    `INSERT INTO admin_orders
+      (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+     VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+    [vendor_id, recipient_number, data_package, amount, network, package_id]
+  );
+
+  // wallet_loads (98%)
+  await dbp.query(
+    `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
+     VALUES (?, ?, ?, NOW())`,
+    [vendor_id, momo_number, vendorAmount]
+  );
+
+  // total_revenue (2%)
+  await dbp.query(
+    `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+     VALUES (?, ?, ?, NOW())`,
+    [vendor_id, `2% from ${network} payment`, revenueAmount]
+  );
+
+  console.log("✅ Vendor 98% + Revenue 2% + Order inserted.");
+})
+.catch((err) => {
+  console.error("❌ TheTeller error:", err.response?.data || err.message);
+});
+
 
         return;
       }
@@ -344,6 +404,8 @@ db.query(
   }
 }
 
+// ====== USSD ROUTE (Moolre) ======
+// Parent app will mount this router at /api/moolre, so our path here is "/"
 // ====== USSD ROUTE (Moolre) ======
 // Parent app will mount this router at /api/moolre, so our path here is "/"
 // ====== USSD ROUTE (Moolre) ======
@@ -369,41 +431,18 @@ router.post("/", async (req, res) => {
   try {
     // 🔹 CASE 1: New session with NO ID → *203*717#
     // Free to use (no hits check) BUT must be in telephone_numbers
-    if (isNewSession && !input) {
-      const [intl, local, plusIntl] = msisdnVariants(msisdn);
+   sessions[sessionId] = {
+    step: "start",
+    vendorId: 1,
+    brandName: "SandyPay",
+    isPlain: true,   // 👈 NEW FLAG
+    network: "",
+    selectedPkg: "",
+    recipient: "",
+    packageList: [],
+    packagePage: 0,
+};
 
-      // Check whitelist table first
-      const [rowsTel] = await dbp.query(
-        `SELECT 1
-           FROM telephone_numbers
-          WHERE phone_number IN (?, ?, ?)
-            AND (status IS NULL OR status = 'allowed')
-          LIMIT 1`,
-        [intl, local, plusIntl]
-      );
-
-      // Not in whitelist → behave like unknown application
-      if (!rowsTel || !rowsTel.length) {
-        return res.json({ message: "APPLICATION UNKNOWN", reply: false });
-      }
-
-      // Allowed: no hits check, just open a "free" session
-      const vendorId = 1; // default/general vendor for plain *203*717#
-
-      sessions[sessionId] = {
-        step: "start",
-        vendorId,
-        network: "",
-        selectedPkg: "",
-        recipient: "",
-        packageList: [],
-        packagePage: 0,
-      };
-
-      // input is empty here; handleSession will show the first menu
-      handleSession(sessionId, input, String(msisdn || ""), res);
-      return;
-    }
 
     // 🔹 CASE 2: New session WITH ID → *203*717*ID#
     // Here we ALLOW every number, but we CHECK SESSIONS/HITS
@@ -436,10 +475,25 @@ router.post("/", async (req, res) => {
       // Increment counter for dashboard
       await incrementUssdCounter(vendorId);
 
+      // 🔹 Fetch vendor display name from users.username
+      let brandName = "SandyPay";
+      try {
+        const [userRows] = await dbp.query(
+          "SELECT username FROM users WHERE id = ? LIMIT 1",
+          [vendorId]
+        );
+        if (userRows && userRows.length && userRows[0].username) {
+          brandName = userRows[0].username;
+        }
+      } catch (e) {
+        console.error("Error fetching vendor username:", e.message);
+      }
+
       // Create session state
       sessions[sessionId] = {
         step: "start",
         vendorId,
+        brandName, // 👈 used in handleSession 'start'
         network: "",
         selectedPkg: "",
         recipient: "",
@@ -447,7 +501,7 @@ router.post("/", async (req, res) => {
         packagePage: 0,
       };
 
-      // First menu (input here is the ID string, but handleSession will start at "start")
+      // First menu (welcome will show vendor brand name)
       handleSession(sessionId, input, String(msisdn || ""), res);
       return;
     }
@@ -462,6 +516,7 @@ router.post("/", async (req, res) => {
     });
   }
 });
+
 
 
 module.exports = router;
