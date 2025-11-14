@@ -52,26 +52,95 @@
     }
 
     .package-list {
-      margin-top: 20px;
+      margin-top: 10px;
+    }
+
+    /* ==== TABLE STYLE HEADER (Data / Cost / Selling / Status / Action) ==== */
+    .package-table-header {
+      display: none; /* shown only when data exists */
+      background: #e5edff;
+      padding: 10px 15px;
+      border-radius: 10px;
+      margin-top: 15px;
+      font-weight: 600;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
     }
 
     .package-item {
       background: #fff;
-      margin-bottom: 12px;
-      padding: 15px;
+      margin-top: 8px;
+      padding: 12px 15px;
       border-radius: 10px;
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-      font-weight: 500;
+      font-size: 14px;
       display: flex;
-      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .col {
+      display: flex;
       align-items: center;
     }
 
-    .package-item select {
-      padding: 5px;
-      border-radius: 4px;
+    .data-col {
+      flex: 1.2;
+      font-weight: 500;
     }
 
+    .cost-col {
+      flex: 1;
+      color: #1f2937;
+    }
+
+    .sell-col {
+      flex: 1;
+    }
+
+    .status-col {
+      flex: 0.9;
+      justify-content: flex-end;
+    }
+
+    .action-col {
+      flex: 0.5;
+      justify-content: flex-end;
+    }
+
+    .sell-input {
+      width: 100%;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #d1d5db;
+      font-size: 14px;
+    }
+
+    .status-select {
+      padding: 5px;
+      border-radius: 6px;
+      border: 1px solid #d1d5db;
+      font-size: 13px;
+    }
+
+    .delete-btn {
+      background-color: red;
+      color: white;
+      border: none;
+      padding: 5px 8px;
+      width: 32px;
+      height: 32px;
+      font-size: 14px;
+      line-height: 1;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* FAB + MODALS (unchanged) */
     .fab {
       position: fixed;
       bottom: 20px;
@@ -152,6 +221,16 @@
 
   <div class="packages">
     <h3 id="package-title">No packages added yet</h3>
+
+    <!-- TABLE HEADER: Data / Cost / Selling / Status / Action -->
+    <div class="package-table-header" id="package-table-header">
+      <div class="col data-col">DATA</div>
+      <div class="col cost-col">COST PRICE (GHS)</div>
+      <div class="col sell-col">SELLING PRICE (GHS)</div>
+      <div class="col status-col">STATUS</div>
+      <div class="col action-col">ACTION</div>
+    </div>
+
     <div class="package-list" id="package-list"></div>
   </div>
 
@@ -217,7 +296,6 @@
       }, 1500);
     }
 
-
     function addPackage() {
       const value = document.getElementById('value').value;
       const amount = document.getElementById('amount').value;
@@ -225,7 +303,13 @@
         fetch("https://sandipay.co/api/add-package", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ network: currentNetwork, value, amount, status: "available", vendor_id: currentUserId })
+          body: JSON.stringify({
+            network: currentNetwork,
+            value,
+            amount,
+            status: "available",
+            vendor_id: currentUserId
+          })
         })
         .then(res => res.text())
         .then(() => {
@@ -239,80 +323,91 @@
     }
 
     function fetchPackages() {
-     fetch("https://sandipay.co/api/get-all-packages", {
+      fetch("https://sandipay.co/api/get-all-packages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vendor_id: currentUserId, network: currentNetwork })
       })
       .then(res => res.json())
       .then(data => {
-        const list = document.getElementById("package-list");
-        const title = document.getElementById("package-title");
+        const list   = document.getElementById("package-list");
+        const title  = document.getElementById("package-title");
+        const header = document.getElementById("package-table-header");
+
         list.innerHTML = "";
 
         if (!data.length) {
           title.textContent = 'No packages added yet';
+          header.style.display = "none";
           return;
         }
 
         title.textContent = `${currentNetwork} Packages`;
+        header.style.display = "flex";
 
         data.forEach(pkg => {
+          // EXPECTED FIELDS:
+          // pkg.data_package -> e.g. "1 GB"
+          // pkg.cost_price   -> FROM admin_data_packages.amount (non editable)
+          // pkg.amount       -> SELLING PRICE (editable)
+          const cost = pkg.cost_price !== undefined
+            ? parseFloat(pkg.cost_price).toFixed(2)
+            : parseFloat(pkg.amount).toFixed(2); // fallback
+
+          const selling = parseFloat(pkg.amount).toFixed(2);
+
           const item = document.createElement('div');
           item.className = 'package-item';
-item.innerHTML = `
-  <div style="flex: 1;"><strong>${pkg.data_package}</strong> - GHS ${parseFloat(pkg.amount).toFixed(2)}</div>
-  <select onchange="updateStatus(${pkg.id}, this.value)" style="margin-right: 10px; padding: 5px; border-radius: 6px;">
-    <option value="available" ${pkg.status === "available" ? "selected" : ""}>Active</option>
-    <option value="unavailable" ${pkg.status === "unavailable" ? "selected" : ""}>Inactive</option>
-  </select>
- <button onclick="deletePackage(${pkg.id})" style="
-  background-color: red;
-  color: white;
-  border: none;
-  padding: 5px 8px;
-  width: 32px;
-  height: 32px;
-  font-size: 14px;
-  line-height: 1;
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-">✖</button>
 
-`;
-
-
+          item.innerHTML = `
+            <div class="col data-col">${pkg.data_package}</div>
+            <div class="col cost-col">GHS ${cost}</div>
+            <div class="col sell-col">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                class="sell-input"
+                value="${selling}"
+                onchange="updateSellingPrice(${pkg.id}, this.value)"
+              />
+            </div>
+            <div class="col status-col">
+              <select
+                class="status-select"
+                onchange="updateStatus(${pkg.id}, this.value)">
+                <option value="available" ${pkg.status === "available" ? "selected" : ""}>Active</option>
+                <option value="unavailable" ${pkg.status === "unavailable" ? "selected" : ""}>Inactive</option>
+              </select>
+            </div>
+            <div class="col action-col">
+              <button class="delete-btn" onclick="deletePackage(${pkg.id})">✖</button>
+            </div>
+          `;
 
           list.appendChild(item);
         });
       });
     }
 
+    function deletePackage(id) {
+      if (!confirm("Are you sure you want to delete this package?")) return;
 
-
-function deletePackage(id) {
-  if (!confirm("Are you sure you want to delete this package?")) return;
-
-  fetch("https://sandipay.co/api/delete-package", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id })
-  })
-  .then(res => res.text())
-  .then(msg => {
-    alert("✅ Package deleted");
-    fetchPackages(); // Refresh list
-  })
-  .catch(err => {
-    console.error("❌ Delete error:", err);
-    alert("❌ Failed to delete package.");
-  });
-}
-
-
+      fetch("https://sandipay.co/api/delete-package", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id })
+      })
+      .then(res => res.text())
+      .then(msg => {
+        alert("✅ Package deleted");
+        fetchPackages(); // Refresh list
+      })
+      .catch(err => {
+        console.error("❌ Delete error:", err);
+        alert("❌ Failed to delete package.");
+      });
+    }
 
     function updateStatus(id, status) {
       if (!status) return;
@@ -322,6 +417,24 @@ function deletePackage(id) {
         body: JSON.stringify({ id, status })
       })
       .then(() => fetchPackages());
+    }
+
+    // 🔹 NEW: update selling price only
+    function updateSellingPrice(id, amount) {
+      if (!amount) return;
+      fetch("https://sandipay.co/api/update-package-amount", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, amount })
+      })
+      .then(() => {
+        // Optional: you can remove this if you don't want an auto refresh
+        fetchPackages();
+      })
+      .catch(err => {
+        console.error("❌ Update amount error:", err);
+        alert("Failed to update selling price");
+      });
     }
 
     window.onload = fetchPackages;
