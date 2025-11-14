@@ -220,18 +220,50 @@ function handleSession(sessionId, input, msisdn, res) {
       );
     }
 
-    case "menu":
+       case "menu": {
       if (input === "1") {
         state.step = "network";
         return reply("Network\n1) MTN\n2) AirtelTigo\n3) Telecel\n0) Back");
       }
-      if (input === "2")
-        return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
+
+      if (input === "2") {
+        // 🔹 Plain code or no vendor ID → use default contact
+        if (!state.vendorId || state.isPlain) {
+          return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
+        }
+
+        // 🔹 DIALLED WITH ID → use vendor's phone from users table
+        db.query(
+          "SELECT phone FROM users WHERE id = ? LIMIT 1",
+          [state.vendorId],
+          (err, rows) => {
+            if (err) {
+              console.error("❌ MySQL error (Contact vendor):", err);
+              // fallback to default contact
+              return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
+            }
+
+            if (!rows || !rows.length || !rows[0].phone) {
+              // if no phone set, also fallback
+              return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
+            }
+
+            const phone = rows[0].phone;
+            // You can change the email part if you like – only phone is dynamic
+            return end(`Contact us:\n${phone}\nsupport@sandypaygh.com`);
+          }
+        );
+        return; // important: stop here, response will be sent in the callback
+      }
+
       if (input === "0") {
         state.step = "start";
         return reply("Cancelled.\n1. Buy Data\n2. Contact Us");
       }
+
       return reply("Invalid option. Choose:\n1) Buy Data\n2) Contact Us");
+    }
+
 
     case "network":
       if (input === "1") state.network = "MTN";
