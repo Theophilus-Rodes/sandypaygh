@@ -221,7 +221,7 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
 </div>
         <div class="kpi">
           <div class="label">Transactions</div>
-          <div class="value" id="kpiTx">0</div>
+          <div class="value" id="totalTransactions"></div>
           <div class="sub">lifetime</div>
         </div>
        <div class="kpi">
@@ -231,7 +231,7 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
 </div>
         <div class="kpi">
           <div class="label">Revenue (GHS)</div>
-          <div class="value" id="kpiRevenue">0.00</div>
+          <div class="value" id="revenueToday">0.00</div>
           <div class="sub">today</div>
         </div>
       </div>
@@ -569,7 +569,7 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
 
 <script>
   document.addEventListener("DOMContentLoaded", () => {
-    // 🔹 Load total users (excluding admins)
+    // 🔹 Total users (excluding admins)
     fetch("/api/total-users")
       .then(response => response.json())
       .then(data => {
@@ -578,11 +578,9 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
           el.textContent = data.totalUsers;
         }
       })
-      .catch(err => {
-        console.error("Failed to load total users:", err);
-      });
+      .catch(err => console.error("Failed to load total users:", err));
 
-    // 🔹 Load pending orders (from admin_orders where status='pending')
+    // 🔹 Pending orders (admin_orders where status = 'pending')
     fetch("/api/pending-orders")
       .then(response => response.json())
       .then(data => {
@@ -591,11 +589,35 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
           el.textContent = data.pendingOrders;
         }
       })
-      .catch(err => {
-        console.error("Failed to load pending orders:", err);
-      });
+      .catch(err => console.error("Failed to load pending orders:", err));
+
+    // 🔹 Revenue today (sum of amount in total_revenue for today)
+    fetch("/api/revenue-today")
+      .then(response => response.json())
+      .then(data => {
+        const el = document.getElementById("revenueToday");
+        if (el && typeof data.revenueToday === "number") {
+          // format as 2 decimal places
+          el.textContent = data.revenueToday.toFixed(2);
+        }
+      })
+      .catch(err => console.error("Failed to load revenue today:", err));
   });
+
+
+  // 🔹 Total lifetime transactions (all rows in admin_orders)
+fetch("/api/total-transactions")
+  .then(response => response.json())
+  .then(data => {
+    const el = document.getElementById("totalTransactions");
+    if (el && typeof data.totalTransactions === "number") {
+      el.textContent = data.totalTransactions;
+    }
+  })
+  .catch(err => console.error("Failed to load transactions:", err));
+
 </script>
+
 
 
 
