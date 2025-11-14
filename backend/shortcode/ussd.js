@@ -250,7 +250,7 @@ function handleSession(sessionId, input, msisdn, res) {
 
             const phone = rows[0].phone;
             // You can change the email part if you like – only phone is dynamic
-            return end(`Contact us:\n${phone}\nsupport@sandypaygh.com`);
+            return end(`Contact us:\n${phone}`);
           }
         );
         return; // important: stop here, response will be sent in the callback
