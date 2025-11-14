@@ -752,9 +752,22 @@ app.post("/api/get-all-packages", (req, res) => {
   const { vendor_id, network } = req.body;
 
   const query = `
-    SELECT * FROM data_packages
-    WHERE vendor_id = ? AND network = ?
-    ORDER BY FIELD(status, 'available', 'unavailable')
+    SELECT
+      adp.id                AS admin_id,       -- admin_data_packages.id
+      adp.network,
+      adp.data_package,
+      adp.amount            AS cost_price,     -- admin cost price
+
+      dp.id                 AS vendor_id,      -- data_packages.id (can be null)
+      dp.amount             AS selling_price,  -- vendor selling price (can be null)
+      dp.status             AS status          -- vendor status (can be null)
+    FROM admin_data_packages adp
+    LEFT JOIN data_packages dp
+      ON dp.vendor_id    = ?
+     AND dp.network      = adp.network
+     AND dp.data_package = adp.data_package
+    WHERE adp.network = ?
+    ORDER BY adp.id ASC
   `;
 
   db.query(query, [vendor_id, network], (err, results) => {
@@ -765,6 +778,7 @@ app.post("/api/get-all-packages", (req, res) => {
     res.json(results);
   });
 });
+
 
 
 
