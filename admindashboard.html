@@ -214,21 +214,21 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
     <section class="content">
       <!-- KPI Row -->
       <div class="kpis">
-        <div class="kpi">
-          <div class="label">Total Users</div>
-          <div class="value" id="kpiUsers">0</div>
-          <div class="sub">active</div>
-        </div>
+       <div class="kpi">
+  <div class="label">Total Users</div>
+  <div class="value" id="totalUsersCount">0</div>
+  <div class="sub">active</div>
+</div>
         <div class="kpi">
           <div class="label">Transactions</div>
           <div class="value" id="kpiTx">0</div>
           <div class="sub">lifetime</div>
         </div>
-        <div class="kpi">
-          <div class="label">Pending Orders</div>
-          <div class="value" id="kpiPending">0</div>
-          <div class="sub">all networks</div>
-        </div>
+       <div class="kpi">
+  <div class="label">Pending Orders</div>
+  <div class="value" id="pendingOrdersCount">0</div>
+  <div class="sub">all networks</div>
+</div>
         <div class="kpi">
           <div class="label">Revenue (GHS)</div>
           <div class="value" id="kpiRevenue">0.00</div>
@@ -566,6 +566,36 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
 
 
 
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    // 🔹 Load total users (excluding admins)
+    fetch("/api/total-users")
+      .then(response => response.json())
+      .then(data => {
+        const el = document.getElementById("totalUsersCount");
+        if (el && typeof data.totalUsers === "number") {
+          el.textContent = data.totalUsers;
+        }
+      })
+      .catch(err => {
+        console.error("Failed to load total users:", err);
+      });
+
+    // 🔹 Load pending orders (from admin_orders where status='pending')
+    fetch("/api/pending-orders")
+      .then(response => response.json())
+      .then(data => {
+        const el = document.getElementById("pendingOrdersCount");
+        if (el && typeof data.pendingOrders === "number") {
+          el.textContent = data.pendingOrders;
+        }
+      })
+      .catch(err => {
+        console.error("Failed to load pending orders:", err);
+      });
+  });
+</script>
 
 
 
