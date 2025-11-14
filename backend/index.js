@@ -2608,8 +2608,43 @@ app.get("/api/pending-orders", (req, res) => {
 });
 
 
+// ✅ Revenue today (sum of total_revenue.amount for current date)
+app.get("/api/revenue-today", (req, res) => {
+  const sql = `
+    SELECT COALESCE(SUM(amount), 0) AS revenueToday
+    FROM total_revenue
+    WHERE DATE(date_received) = CURDATE()
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error("Error getting today's revenue:", err);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    const revenueToday = results[0]?.revenueToday || 0;
+    res.json({ revenueToday });
+  });
+});
 
 
+// ✅ Total lifetime transactions (count all admin_orders)
+app.get("/api/total-transactions", (req, res) => {
+  const sql = `
+    SELECT COUNT(*) AS totalTransactions
+    FROM admin_orders
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error("Error counting transactions:", err);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    const totalTransactions = results[0]?.totalTransactions || 0;
+    res.json({ totalTransactions });
+  });
+});
 
 
 
@@ -2685,6 +2720,52 @@ app.get("/api/admin/packages", (req, res) => {
 });
 
 
+// vendor packages are in data_packages
+// base cost price is in admin_data_packages
+app.post("/api/get-all-packages", (req, res) => {
+  const { vendor_id, network } = req.body;
+
+  const sql = `
+    SELECT
+      dp.id,
+      dp.data_package,
+      dp.amount,              -- SELLING PRICE (what you edit)
+      dp.status,
+      adp.amount AS cost_price -- COST PRICE from admin_data_packages
+    FROM data_packages dp
+    LEFT JOIN admin_data_packages adp
+      ON adp.network = dp.network
+     AND adp.data_package = dp.data_package
+    WHERE dp.vendor_id = ?
+      AND dp.network = ?
+    ORDER BY dp.id ASC
+  `;
+
+  db.query(sql, [vendor_id, network], (err, rows) => {
+    if (err) {
+      console.error("get-all-packages error:", err);
+      return res.status(500).json({ error: "db error" });
+    }
+    res.json(rows);
+  });
+});
+
+
+app.post("/api/update-package-amount", (req, res) => {
+  const { id, amount } = req.body;
+  if (!id || amount === undefined) {
+    return res.status(400).json({ error: "Missing id or amount" });
+  }
+
+  const sql = `UPDATE data_packages SET amount = ? WHERE id = ?`;
+  db.query(sql, [amount, id], (err) => {
+    if (err) {
+      console.error("update-package-amount error:", err);
+      return res.status(500).json({ error: "db error" });
+    }
+    res.json({ success: true });
+  });
+});
 
 
 
