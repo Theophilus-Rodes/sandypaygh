@@ -2567,6 +2567,54 @@ app.post("/api/admin-mark-delivered", (req, res) => {
   });
 });
 
+//DASHBOARD COUNTS 
+///////////////////////////////////////////////////////////////////////////////////////
+// Total users (exclude admins)
+app.get("/api/total-users", (req, res) => {
+  const sql = `
+    SELECT COUNT(*) AS totalUsers
+    FROM users
+    WHERE LOWER(role) <> 'admin'
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error("Error counting users:", err);
+      return res.status(500).json({ error: "Database error" });
+    }
+    const totalUsers = results[0]?.totalUsers || 0;
+    res.json({ totalUsers });
+  });
+});
+
+
+// ✅ Total pending orders from admin_orders
+app.get("/api/pending-orders", (req, res) => {
+  const sql = `
+    SELECT COUNT(*) AS pendingOrders
+    FROM admin_orders
+    WHERE LOWER(status) = 'pending'
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error("Error counting pending orders:", err);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    const pendingOrders = results[0]?.pendingOrders || 0;
+    res.json({ pendingOrders });
+  });
+});
+
+
+
+
+
+
+
+
+
 
 app.post("/api/admin/add-package", (req, res) => {
   const { network, data_package, amount } = req.body;
