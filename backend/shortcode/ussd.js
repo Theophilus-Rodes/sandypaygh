@@ -407,7 +407,7 @@ function handleSession(sessionId, input, msisdn, res) {
 
         const transactionId = `TRX${Date.now()}`.slice(0, 30);
 
-        const payerLocal = momo_number; // Moolre accepts local format like 0532XXXXXX
+        const payerLocal = toLocalFormat(momo_number); // Moolre accepts local format like 0532XXXXXX
 
         const payload = {
           type: 1,
@@ -830,6 +830,14 @@ async function consumeOneHit(vendorId) {
   );
   return true;
 }
+
+function toLocalFormat(msisdn) {
+  const digits = String(msisdn || "").replace(/[^\d]/g, "");
+  if (digits.startsWith("0")) return digits;              // Already 0XXXXXXXXX
+  if (digits.startsWith("233")) return "0" + digits.slice(3); // 233XXXXXXXXX → 0XXXXXXXXX
+  return digits.length === 9 ? "0" + digits : digits;     // fallback
+}
+
 
 // Increment visible USSD session counter for dashboard
 async function incrementUssdCounter(vendorId) {
