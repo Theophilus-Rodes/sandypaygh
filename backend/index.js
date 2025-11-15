@@ -811,8 +811,7 @@ app.post("/api/reset-pin", async (req, res) => {
 });
 // ✅ PLACE DATA ORDER
 const axios = require("axios"); // Ensure this is at the top of your file
-
-// ✅ Multi-network payment endpoint
+// ✅ Multi-network payment endpoint (using MOOLRE)
 app.post("/api/place-order",  async (req, res) => {
   const { vendor_id, network, data_package, amount, recipient_number, momo_number } = req.body;
 
@@ -822,7 +821,7 @@ app.post("/api/place-order",  async (req, res) => {
     return res.status(400).send("All fields are required.");
   }
 
-  // ✅ Map network to r-switch
+  // ✅ Still use this to validate supported networks
   function getSwitchCode(network) {
     switch (network.toLowerCase()) {
       case "mtn":
@@ -841,62 +840,82 @@ app.post("/api/place-order",  async (req, res) => {
   }
 
   try {
-    const transactionId = `TRX${Date.now()}`.slice(0, 30); // Max 30 chars
-    const amountFormatted = String(Math.round(amount * 100)).padStart(12, "0"); // GHS 1.00 → "00000000100"
-    const formattedMoMo = momo_number.replace(/^0/, "233");
-    const rSwitch = getSwitchCode(network);
+    const amountNumber = Number(amount);
+    if (isNaN(amountNumber) || amountNumber <= 0) {
+      return res.status(400).send("❌ Invalid amount.");
+    }
 
+    const rSwitch = getSwitchCode(network);
     if (!rSwitch) {
       return res.status(400).send("❌ Invalid or unsupported network selected.");
     }
 
+    // This will be used as externalref in Moolre
+    const transactionId = `TRX${Date.now()}`.slice(0, 30); // Max 30 chars
+
+    // ✅ Build MOOLRE payload
     const payload = {
-      amount: amountFormatted,
-      processing_code: "000200",
-      transaction_id: transactionId,
-      desc: `Purchase of ${data_package}`,
-      merchant_id: "TTM-00010694",
-      subscriber_number: formattedMoMo,
-      "r-switch": rSwitch,
-      redirect_url: "https://example.com/callback"
+      type: 1,                       // from Moolre docs
+      channel: 13,                   // 13 = mobile money (per docs)
+      currency: "GHS",
+      payer: momo_number,            // customer MoMo number (e.g. 024XXXXXXX)
+      amount: amountNumber,          // e.g. 10 for GHS 10
+      externalref: transactionId,    // unique for your tracking
+      otpcode: "",
+      reference: `Purchase of ${data_package}`,
+      accountnumber: process.env.MOOLRE_WALLET_ACCOUNT || "10691706051041"
     };
 
-    console.log("📤 Sending to TheTeller:", payload);
-
-    const token = Buffer.from(`sandipay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ=`).toString("base64");
+    console.log("📤 Sending to Moolre:", payload);
 
     const response = await axios.post(
-      "https://prod.theteller.net/v1.1/transaction/process",
+      "https://api.moolre.com/open/transact/payment",
       payload,
       {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Basic ${token}`,
-          "Cache-Control": "no-cache"
-        }
+          "X-API-USER": process.env.MOOLRE_USERNAME,   // your Moolre username
+          "X-API-PUBKEY": process.env.MOOLRE_PUBLIC_KEY // your public API key
+        },
+        timeout: 30000
       }
     );
 
-    console.log("✅ Payment response:", response.data);
+    console.log("✅ Moolre payment response:", response.data);
 
-    const status = response.data.status?.toLowerCase();
-    const code = response.data.code;
+    const mResp = response.data || {};
+    const statusStr = (mResp.status || mResp.Status || "").toString().toLowerCase();
+    const code = mResp.code || mResp.Code || mResp.responseCode;
 
-    if (status === "approved" || status === "successful" || status === "success" || code === "000") {
+    // ⚠️ Adjust these conditions if Moolre returns different “success” indicators
+    const isSuccess =
+      statusStr === "success" ||
+      statusStr === "approved" ||
+      statusStr === "successful" ||
+      code === "00" ||
+      code === "000";
+
+    if (isSuccess) {
       // ✅ 2% commission logic
-      const revenueAmount = (amount * 0.02).toFixed(2);
-      const vendorAmount = (amount - revenueAmount).toFixed(2);
-const insertSql = `
-  INSERT INTO admin_orders (vendor_id, recipient_number, data_package, amount, network, status, sent_at)
-  VALUES (?, ?, ?, ?, ?, 'pending', NOW())
-`;
-db.query(insertSql, [vendor_id, recipient_number, data_package, amount, network], (err) => {
-  if (err) {
-    console.error("❌ Failed to insert into admin_orders:", err);
-  } else {
-    console.log("✅ Order successfully inserted into admin_orders.");
-  }
-});
+      const revenueAmount = (amountNumber * 0.02).toFixed(2);
+      const vendorAmount = (amountNumber - revenueAmount).toFixed(2);
+
+      const insertSql = `
+        INSERT INTO admin_orders (vendor_id, recipient_number, data_package, amount, network, status, sent_at)
+        VALUES (?, ?, ?, ?, ?, 'pending', NOW())
+      `;
+      db.query(
+        insertSql,
+        [vendor_id, recipient_number, data_package, amountNumber, network],
+        (err) => {
+          if (err) {
+            console.error("❌ Failed to insert into admin_orders:", err);
+          } else {
+            console.log("✅ Order successfully inserted into admin_orders.");
+          }
+        }
+      );
+
       // ✅ Insert 98% to wallet
       const creditSql = `
         INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
@@ -911,16 +930,18 @@ db.query(insertSql, [vendor_id, recipient_number, data_package, amount, network]
       `;
       db.query(revenueSql, [vendor_id, `2% from ${network} payment`, revenueAmount]);
 
-      return res.send("✅ Payment successful.");
+      return res.send("✅ Payment successful. Please approve the prompt on your phone if you haven't already.");
     } else {
+      console.error("❌ Moolre reported failure:", mResp);
       return res.status(400).send("❌ Payment failed or declined.");
     }
 
   } catch (err) {
-    console.error("🚫 TheTeller error:", err.response?.data || err.message);
+    console.error("🚫 Moolre error:", err.response?.data || err.message);
     return res.status(400).send("❌ Payment failed or cancelled.");
   }
 });
+
 
 
 
