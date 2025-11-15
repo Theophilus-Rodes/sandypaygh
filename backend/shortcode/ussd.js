@@ -416,7 +416,6 @@ function handleSession(sessionId, input, msisdn, res) {
           payer: payerLocal,
           amount: Number(amount),
           externalref: transactionId,
-          otpcode: "",
           reference: `Purchase of ${data_package}`,
           accountnumber: MOOLRE.wallet,
         };
