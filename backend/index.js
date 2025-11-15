@@ -843,7 +843,7 @@ app.post("/api/place-order", async (req, res) => {
   try {
     // 🔐 Hardcoded Moolre Authentication
     // >>>> REPLACE THESE 3 LINES WITH YOUR REAL VALUES <<<<
-    const MOOLRE_USER   = "+233545773991";  // exactly what you type to login (phone or email)
+    const MOOLRE_USER   = "0545773991";  // exactly what you type to login (phone or email)
     const MOOLRE_PUBKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwljoxOTI1MDA5OTk5fQ.x2qzFc-tmOGM0j9tqD3KEsrRzkVFZ3cxvJMukb4bfos";    // full public key, 1 line, no spaces
     const MOOLRE_WALLET = "10691706051041";              // your wallet/account number
 
