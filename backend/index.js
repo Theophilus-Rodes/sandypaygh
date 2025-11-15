@@ -848,7 +848,7 @@ app.post("/api/place-order", async (req, res) => {
   try {
     // 🔐 Hardcoded Moolre Authentication
     const MOOLRE_USER   = "dataguygh";                // ← your Moolre username
-    const MOOLRE_PUBKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwljoxOTI1MDA5OTk5fQ.x2qzFc-tmOGM0j9tqD3KEsrRzkVFZ3cxvJMukb4bfos"; // ← paste full Public API key here (one line)
+    const MOOLRE_PUBKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTI1MDA5OTk5fQ.x2qzFc-tmOGM0j9tqD3KEsrRzkVFZ3cxvJMukb4bfos"; // ← paste full Public API key here (one line)
     const MOOLRE_WALLET = "10691706051041";           // ← GHS Wallet (correct one)
 
     // Debug auth being used (doesn't print full key)
