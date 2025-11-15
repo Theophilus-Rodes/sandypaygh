@@ -811,8 +811,8 @@ app.post("/api/reset-pin", async (req, res) => {
 });
 // ✅ PLACE DATA ORDER
 const axios = require("axios"); // Ensure this is at the top of your file
-// ✅ Multi-network payment endpoint (using MOOLRE — hardcoded keys)
-app.post("/api/place-order",  async (req, res) => {
+// ✅ Multi-network payment endpoint (Moolre)
+app.post("/api/place-order", async (req, res) => {
   const { vendor_id, network, data_package, amount, recipient_number, momo_number } = req.body;
 
   console.log("📥 Incoming order body:", req.body);
@@ -821,53 +821,57 @@ app.post("/api/place-order",  async (req, res) => {
     return res.status(400).send("All fields are required.");
   }
 
-  // Network check (we still keep this)
-  function getSwitchCode(network) {
+  // Map network -> Moolre channel (from docs)
+  function getChannel(network) {
     switch (network.toLowerCase()) {
-      case "mtn": return "MTN";
-      case "vodafone":
-      case "telecel": return "VDF";
+      case "mtn":       return 13; // MTN
       case "airteltigo":
-      case "airtel": return "ATL";
-      case "tigo": return "TGO";
-      default: return null;
+      case "airtel":
+      case "at":        return 7;  // AirtelTigo
+      case "vodafone":
+      case "telecel":
+      case "voda":      return 6;  // Vodafone/Telecel
+      default:          return null;
     }
   }
 
+  const channel = getChannel(network);
+  if (!channel) {
+    return res.status(400).send("❌ Invalid or unsupported network selected.");
+  }
+
   try {
-    const rSwitch = getSwitchCode(network);
-    if (!rSwitch) {
-      return res.status(400).send("❌ Invalid or unsupported network selected.");
-    }
+    // 🔐 Hardcoded Moolre Authentication
+    // >>>> REPLACE THESE 3 LINES WITH YOUR REAL VALUES <<<<
+    const MOOLRE_USER   = "+233545773991";  // exactly what you type to login (phone or email)
+    const MOOLRE_PUBKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwljoxOTI1MDA5OTk5fQ.x2qzFc-tmOGM0j9tqD3KEsrRzkVFZ3cxvJMukb4bfos";    // full public key, 1 line, no spaces
+    const MOOLRE_WALLET = "10691706051041";              // your wallet/account number
 
-    // 🔥 Hardcoded Moolre Authentication
-    const MOOLRE_USER   = "dataguygh";          // <-- CHANGE THIS
-    const MOOLRE_PUBKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwljoxOTI1MDA5OTk5fQ.x2qzFc-tmOGM0j9tqD3KEsrRzkVFZ3cxvJMukb4bfos";         // <-- CHANGE THIS
-    const MOOLRE_WALLET = "10691706051041";                   // <-- Already correct
+    // Debug what we are sending (safe)
+    console.log("🔐 Using Moolre auth:", {
+      user: MOOLRE_USER,
+      pubkeyStart: MOOLRE_PUBKEY.substring(0, 25) + "...",
+      wallet: MOOLRE_WALLET
+    });
 
-    // Build transaction reference
+    // Build transaction reference (unique)
     const transactionId = `TRX${Date.now()}`.slice(0, 30);
 
-    // 🔥 MOOLRE PAYMENT PAYLOAD
+    // 🔥 MOOLRE PAYMENT PAYLOAD (from docs)
     const payload = {
       type: 1,
-      channel: 13,
+      channel: channel,
       currency: "GHS",
-      payer: momo_number,
-      amount: Number(amount),
-      externalref: transactionId,
-      otpcode: "",
+      payer: momo_number,             // e.g. "024XXXXXXX" as per docs
+      amount: Number(amount),         // amount in GHS, 2dp e.g. 0.20
+      externalref: transactionId,     // your own unique ID
+      otpcode: "",                    // first call = empty, Moolre will handle OTP/prompt
       reference: `Purchase of ${data_package}`,
       accountnumber: MOOLRE_WALLET
     };
 
     console.log("📤 Sending to Moolre:", payload);
 
-
-    console.log("🔐 Using Moolre auth:", {
-  user: MOOLRE_USER,
-  pubkeyStart: MOOLRE_PUBKEY.substring(0, 25) + "...",
-});
     const response = await axios.post(
       "https://api.moolre.com/open/transact/payment",
       payload,
@@ -884,40 +888,45 @@ app.post("/api/place-order",  async (req, res) => {
     console.log("✅ Moolre payment response:", response.data);
 
     const mResp = response.data;
-
-    const statusStr = (mResp.status || "").toString().toLowerCase();
+    const statusNum = Number(mResp.status);
     const code = mResp.code;
+    const message = mResp.message;
 
-    const isSuccess =
-      statusStr === "success" ||
-      statusStr === "approved" ||
-      statusStr === "successful" ||
-      code === "00" ||
-      code === "000" ||
-      code === 0;
+    // According to docs: status 1 = success, 0 = failed.
+    // TP14 etc. means OTP / further verification.
+    const isSuccess = statusNum === 1;
 
     if (isSuccess) {
-      // Store order
+      // === Your DB logic (unchanged) ===
       const insertSql = `
         INSERT INTO admin_orders (vendor_id, recipient_number, data_package, amount, network, status, sent_at)
         VALUES (?, ?, ?, ?, ?, 'pending', NOW())
       `;
       db.query(insertSql, [vendor_id, recipient_number, data_package, amount, network]);
 
-      // Commission logic
       const revenueAmount = (amount * 0.02).toFixed(2);
       const vendorAmount = (amount - revenueAmount).toFixed(2);
 
-      db.query("INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded) VALUES (?, ?, ?, NOW())",
-               [vendor_id, momo_number, vendorAmount]);
+      db.query(
+        "INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded) VALUES (?, ?, ?, NOW())",
+        [vendor_id, momo_number, vendorAmount]
+      );
 
-      db.query("INSERT INTO total_revenue (vendor_id, source, amount, date_received) VALUES (?, ?, ?, NOW())",
-               [vendor_id, `2% from ${network} payment`, revenueAmount]);
+      db.query(
+        "INSERT INTO total_revenue (vendor_id, source, amount, date_received) VALUES (?, ?, ?, NOW())",
+        [vendor_id, `2% from ${network} payment`, revenueAmount]
+      );
 
-      return res.send("✅ Payment successful. Approve the prompt on your phone.");
+      // If code is TP14 -> OTP or verification step
+      if (code === "TP14") {
+        return res.send("✅ Payment request sent. " + (message || "Please complete the verification sent to your phone."));
+      }
+
+      return res.send("✅ Payment successful.");
     }
 
-    return res.status(400).send("❌ Payment failed or declined.");
+    console.error("❌ Moolre reported failure:", mResp);
+    return res.status(400).send(`❌ Payment failed: ${message || "Authentication / validation error"}`);
 
   } catch (err) {
     console.error("🚫 Moolre error:", err.response?.data || err.message);
