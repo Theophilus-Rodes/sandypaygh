@@ -863,6 +863,11 @@ app.post("/api/place-order",  async (req, res) => {
 
     console.log("📤 Sending to Moolre:", payload);
 
+
+    console.log("🔐 Using Moolre auth:", {
+  user: MOOLRE_USER,
+  pubkeyStart: MOOLRE_PUBKEY.substring(0, 25) + "...",
+});
     const response = await axios.post(
       "https://api.moolre.com/open/transact/payment",
       payload,
