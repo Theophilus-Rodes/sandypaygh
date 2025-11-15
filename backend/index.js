@@ -842,7 +842,7 @@ app.post("/api/place-order",  async (req, res) => {
 
     // 🔥 Hardcoded Moolre Authentication
     const MOOLRE_USER   = "+233545773991";          // <-- CHANGE THIS
-    const MOOLRE_PUBKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2 VyaWQiOjEwNjkxNywiZXhwljoxOTI1MDA5OT k5fQ.x2qzFc-tmOGM0j9tqD3KEsrRzkVFZ3cxvJ Mukb4bfos";         // <-- CHANGE THIS
+    const MOOLRE_PUBKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwljoxOTI1MDA5OTk5fQ.x2qzFc-tmOGM0j9tqD3KEsrRzkVFZ3cxvJMukb4bfos";         // <-- CHANGE THIS
     const MOOLRE_WALLET = "10691706051041";                   // <-- Already correct
 
     // Build transaction reference
