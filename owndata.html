@@ -29,7 +29,8 @@
       gap: 10px;
       margin-bottom: 10px;
     }
-    .form-row input {
+    .form-row input,
+    .form-row select {
       padding: 8px 10px;
       border-radius: 6px;
       border: 1px solid #ccc;
@@ -99,6 +100,12 @@
     <div class="form-row">
       <input type="text" id="packageName" placeholder="e.g. 1GB Daily" />
       <input type="number" id="price" placeholder="Price (GHS)" step="0.01" />
+      <select id="network">
+        <option value="">Select Network</option>
+        <option value="mtn">MTN</option>
+        <option value="airteltigo">AirtelTigo</option>
+        <option value="telecel">Telecel</option>
+      </select>
       <button class="btn-primary" onclick="addPackage()">Add</button>
     </div>
     <div id="formMessage" class="message"></div>
@@ -112,6 +119,7 @@
           <th>ID</th>
           <th>Package</th>
           <th>Price (GHS)</th>
+          <th>Network</th>
           <th>Status</th>
           <th>Created</th>
           <th>Actions</th>
@@ -160,6 +168,7 @@
             <td>${pkg.id}</td>
             <td>${pkg.package_name}</td>
             <td>${Number(pkg.price).toFixed(2)}</td>
+            <td>${(pkg.network || "").toUpperCase()}</td>
             <td>
               <span class="status-badge ${statusClass}">
                 ${statusText}
@@ -187,10 +196,11 @@
     async function addPackage() {
       const packageName = document.getElementById("packageName").value.trim();
       const price = document.getElementById("price").value.trim();
+      const network = document.getElementById("network").value;
       const msg = document.getElementById("formMessage");
 
-      if (!packageName || !price) {
-        msg.textContent = "Please enter package name and price.";
+      if (!packageName || !price || !network) {
+        msg.textContent = "Please enter package name, price, and select network.";
         msg.className = "message error";
         return;
       }
@@ -199,7 +209,7 @@
         const res = await fetch(apiBase, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ package_name: packageName, price })
+          body: JSON.stringify({ package_name: packageName, price, network })
         });
         const data = await res.json();
 
@@ -213,6 +223,7 @@
         msg.className = "message success";
         document.getElementById("packageName").value = "";
         document.getElementById("price").value = "";
+        document.getElementById("network").value = "";
         loadPackages();
       } catch (err) {
         console.error(err);
