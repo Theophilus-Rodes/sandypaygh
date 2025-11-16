@@ -285,27 +285,38 @@ function handleSession(sessionId, input, msisdn, res) {
         );
 
       // 🔹 Plain mode → AdminData table
-      if (state.isPlain) {
-        db.query(
-          `SELECT package_name AS data_package, price AS amount
-           FROM AdminData
-           WHERE status='active'`,
-          (err, rows) => {
-            if (err) {
-              console.error("❌ MySQL error (AdminData):", err);
-              return end("Service temporarily unavailable. Try again later.");
-            }
-            if (!rows || !rows.length)
-              return end("No data packages available.");
+   if (state.isPlain) {
+  db.query(
+    `SELECT 
+        package_name AS data_package, 
+        price AS amount,
+        network
+     FROM AdminData
+     WHERE status = 'active' AND network = ?
+     ORDER BY FIELD(network, 'mtn', 'airteltigo', 'telecel'), id DESC`,
+    [state.network],   // <-- filter by selected network
+    (err, rows) => {
+      if (err) {
+        console.error("❌ MySQL error (AdminData):", err);
+        return end("Service temporarily unavailable. Try again later.");
+      }
 
-            state.packageList = rows.map(
-              (r) => `${r.data_package} @ GHS${r.amount}`
-            );
-            state.packagePage = 0;
-            state.step = "package";
-            return reply(renderPackages(state));
-          }
-        );
+      if (!rows || !rows.length) {
+        return end("No data packages available for this network.");
+      }
+
+      // Format packages: "1GB @ GHS6"
+      state.packageList = rows.map(
+        (r) => `${r.data_package} @ GHS${r.amount}`
+      );
+
+      state.packagePage = 0;
+      state.step = "package";
+      return reply(renderPackages(state));
+    }
+  );
+
+
         return;
       }
 
