@@ -1,4 +1,4 @@
-// shortcode/ussd.js  (ROUTER VERSION)
+// shortcode/ussd.js  (ROUTER VERSION - MOOLRE ONLY)
 const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
@@ -59,13 +59,13 @@ if (!DB_PASSWORD) {
 // Your short code extension (from Moolre)
 const EXTENSION_EXPECTED = "717";
 
-// ✅ Moolre config (USSD payment)
+// ✅ Moolre config (from your account)
 const MOOLRE = {
   url: "https://api.moolre.com/open/transact/payment",
-  user: "dataguygh",
+  user: "dataguygh", // Moolre username
   pubkey:
     "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTI1MDA5OTk5fQ.x2qzFc-tmOGM0j9tqD3KEsrRzkVFZ3cxvJMukb4bfos",
-  wallet: "10691706051041",
+  wallet: "10691706051041", // GHS wallet number
 };
 
 // ====== MIDDLEWARE (scoped to this router) ======
@@ -88,23 +88,36 @@ const sessions = {};
 
 // ====== HELPERS ======
 
-/**
- * Map our network string to Moolre "channel" code:
- *  - 13 = MTN
- *  - 7  = AT (AirtelTigo)
- *  - 6  = Vodafone / Telecel
- */
-function getMoolreChannel(network) {
-  const n = String(network || "").toLowerCase();
-  switch (n) {
+// (Old helper kept in case you use it somewhere else)
+function getSwitchCode(network) {
+  switch ((network || "").toLowerCase()) {
+    case "mtn":
+      return "MTN";
+    case "vodafone":
+    case "telecel":
+      return "VDF";
+    case "airteltigo":
+    case "airtel":
+      return "ATL";
+    case "tigo":
+      return "TGO";
+    default:
+      return null;
+  }
+}
+
+// 🔹 Map network name -> Moolre channel ID
+function getChannelId(network) {
+  switch ((network || "").toLowerCase()) {
     case "mtn":
       return 13;
     case "airteltigo":
     case "airtel":
-    case "tigo":
+    case "at":
       return 7;
-    case "telecel":
     case "vodafone":
+    case "telecel":
+    case "voda":
       return 6;
     default:
       return null;
@@ -132,17 +145,27 @@ Price: ${price}
 2) Cancel`;
 }
 
+// Normalize to 233XXXXXXXXX
 function normalizeMsisdn(msisdn) {
   const digits = String(msisdn || "").replace(/[^\d]/g, "");
   if (digits.startsWith("233")) return digits; // 233XXXXXXXXX
   if (digits.startsWith("0")) return "233" + digits.slice(1); // 0XXXXXXXXX -> 233XXXXXXXXX
+  if (digits.startsWith("00233")) return digits.slice(2); // 00233XXXXXXXXX -> 233XXXXXXXXX
   return digits;
 }
+
+// Return [233XXXXXXXXX, 0XXXXXXXXX, +233XXXXXXXXX]
 function msisdnVariants(msisdn) {
   const intl = normalizeMsisdn(msisdn); // 233XXXXXXXXX
   const local = "0" + intl.slice(3); // 0XXXXXXXXX
   const plusIntl = "+" + intl; // +233XXXXXXXXX
   return [intl, local, plusIntl];
+}
+
+// Local "0XXXXXXXXX" for Moolre payer
+function toLocalMsisdn(msisdn) {
+  const intl = normalizeMsisdn(msisdn); // 233XXXXXXXXX
+  return "0" + intl.slice(3); // 0XXXXXXXXX
 }
 
 // Access control
@@ -256,11 +279,10 @@ function handleSession(sessionId, input, msisdn, res) {
             }
 
             const phone = rows[0].phone;
-            // You can change the email part if you like – only phone is dynamic
             return end(`Contact us:\n${phone}`);
           }
         );
-        return; // important: stop here, response will be sent in the callback
+        return; // response in callback
       }
 
       if (input === "0") {
@@ -380,6 +402,7 @@ function handleSession(sessionId, input, msisdn, res) {
 
     case "confirm":
       if (input === "1") {
+        // ====== PAYMENT VIA MOOLRE ======
         const m = state.selectedPkg.match(/@ GHS\s*(\d+(\.\d+)?)/);
         const amount = m ? parseFloat(m[1]) : 0;
         if (!amount) return end("Invalid amount in package.");
@@ -399,33 +422,34 @@ function handleSession(sessionId, input, msisdn, res) {
           "✅ Please wait while the prompt loads...\nEnter your MoMo PIN to approve."
         );
 
-        const channel = getMoolreChannel(network);
-        if (!channel) {
+        const channelId = getChannelId(network);
+        if (!channelId) {
           console.error("❌ Unsupported network for Moolre channel:", network);
           return;
         }
 
-        const transactionId = `TRX${Date.now()}`.slice(0, 30);
-
-        const payerLocal = toLocalFormat(momo_number); // Moolre accepts local format like 0532XXXXXX
+        const transactionId = `TRX${Date.now()}`.slice(0, 30); // max 30 chars
+        const payerLocal = toLocalMsisdn(momo_number); // 0XXXXXXXXX
 
         const payload = {
           type: 1,
-          channel,
+          channel: channelId,
           currency: "GHS",
           payer: payerLocal,
-          amount: Number(amount),
+          amount: Number(amount.toFixed(2)), // decimal, 2dp
           externalref: transactionId,
           reference: `Purchase of ${data_package}`,
           accountnumber: MOOLRE.wallet,
+          // ⭐ This is what lets them skip OTP for USSD:
+          sessionid: state.moolreSessionId,
         };
 
-        console.log("📤 Sending to MOOLRE:", payload);
         console.log("🟡 Using Moolre auth:", {
           user: MOOLRE.user,
-          pubkeyStart: MOOLRE.pubkey.slice(0, 30) + "...",
+          pubkeyStart: MOOLRE.pubkey.slice(0, 20) + "...",
           wallet: MOOLRE.wallet,
         });
+        console.log("📤 Sending to MOOLRE:", payload);
 
         axios
           .post(MOOLRE.url, payload, {
@@ -434,29 +458,28 @@ function handleSession(sessionId, input, msisdn, res) {
               "X-API-USER": MOOLRE.user,
               "X-API-PUBKEY": MOOLRE.pubkey,
             },
-            timeout: 30000,
           })
           .then((response) => {
-            const mResp = response.data || {};
-            console.log("✅ MOOLRE payment response:", mResp);
+            const resp = response.data || {};
+            console.log("✅ MOOLRE payment response:", resp);
 
-            const statusInt = Number(mResp.status);
-            const code = String(mResp.code || "").trim();
+            const status = Number(resp.status || 0);
+            const code = String(resp.code || "").trim();
 
-            // Docs: status 1 = successful. Code TP14 = OTP step; they can skip on their side.
-            if (statusInt !== 1) {
+            // status=1 means request accepted.
+            // With sessionid, OTP should be skipped and MoMo prompt should appear.
+            if (status !== 1) {
               console.log(
                 "❌ Moolre reported failure:",
-                mResp.status,
+                resp.status,
                 code,
-                mResp.message
+                resp.message
               );
               return;
             }
 
             console.log(
-              "✅ Moolre accepted request (status=1, code=%s). Logging order...",
-              code
+              "✅ Moolre accepted request (status=1, code=" + code + "). Logging order..."
             );
 
             if (state.isPlain) {
@@ -477,7 +500,7 @@ function handleSession(sessionId, input, msisdn, res) {
                   db.query(
                     `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
                      VALUES (?, ?, ?, NOW())`,
-                    [1, "AdminData USSD sale (Moolre)", amount],
+                    [1, "AdminData USSD sale", amount],
                     (e) =>
                       e
                         ? console.error("❌ Revenue insert:", e)
@@ -497,10 +520,7 @@ function handleSession(sessionId, input, msisdn, res) {
                 [data_package],
                 (err, rows) => {
                   if (err) {
-                    console.error(
-                      "❌ admin_data_packages lookup error:",
-                      err
-                    );
+                    console.error("❌ admin_data_packages lookup error:", err);
                     return;
                   }
 
@@ -509,7 +529,6 @@ function handleSession(sessionId, input, msisdn, res) {
                       "❌ Package doesn't match admin_data_packages for:",
                       data_package
                     );
-                    // USSD is already closed, so just log.
                     return;
                   }
 
@@ -565,7 +584,7 @@ function handleSession(sessionId, input, msisdn, res) {
                          VALUES (?, ?, ?, NOW())`,
                         [
                           vendor_id,
-                          `Admin base for ${network} ${data_package} (Moolre)`,
+                          `Admin base for ${network} ${data_package}`,
                           revenueAmount,
                         ],
                         (e) =>
@@ -581,7 +600,7 @@ function handleSession(sessionId, input, msisdn, res) {
           })
           .catch((err) => {
             console.error(
-              "❌ MOOLRE ERROR:",
+              "❌ MOOLRE error:",
               err.response?.data || err.message
             );
           });
@@ -676,12 +695,11 @@ router.post("/", (req, res) => {
           recipient: "",
           packageList: [],
           packagePage: 0,
+          // ⭐ Save original Moolre USSD sessionId so we can skip OTP
+          moolreSessionId: sessionId,
         };
 
-        console.log(
-          "🟦 CREATED PLAIN SESSION OBJECT:",
-          sessions[sessionId]
-        );
+        console.log("🟦 CREATED PLAIN SESSION OBJECT:", sessions[sessionId]);
 
         // First screen – show welcome/menu
         return handleSession(sessionId, "", String(msisdn || ""), res);
@@ -760,6 +778,8 @@ router.post("/", (req, res) => {
               recipient: "",
               packageList: [],
               packagePage: 0,
+              // ⭐ Save Moolre USSD session id for OTP skip
+              moolreSessionId: sessionId,
             };
 
             console.log(
@@ -783,12 +803,7 @@ router.post("/", (req, res) => {
     }
 
     // 🔹 CASE 3: Existing session → continue as normal
-    return handleSession(
-      sessionId,
-      inputInner,
-      String(msisdn || ""),
-      res
-    );
+    return handleSession(sessionId, inputInner, String(msisdn || ""), res);
   });
 });
 
@@ -829,14 +844,6 @@ async function consumeOneHit(vendorId) {
   );
   return true;
 }
-
-function toLocalFormat(msisdn) {
-  const digits = String(msisdn || "").replace(/[^\d]/g, "");
-  if (digits.startsWith("0")) return digits;              // Already 0XXXXXXXXX
-  if (digits.startsWith("233")) return "0" + digits.slice(3); // 233XXXXXXXXX → 0XXXXXXXXX
-  return digits.length === 9 ? "0" + digits : digits;     // fallback
-}
-
 
 // Increment visible USSD session counter for dashboard
 async function incrementUssdCounter(vendorId) {
