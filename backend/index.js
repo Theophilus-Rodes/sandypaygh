@@ -254,6 +254,12 @@ app.post("/api/sessions/purchase", async (req, res) => {
 
 
 
+
+
+
+
+
+
 // ✅ Start a MoMo payment and record a session purchase
 // --- helper: make short unique refs ---
 // --- helpers ---
@@ -403,6 +409,41 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 
   
 });
+
+
+// ===== MOOLRE CALLBACK (matches Wallet Settings URL) =====
+app.post("/api/moolre-callback", (req, res) => {
+  console.log("📥 Incoming Moolre callback:", req.body);
+
+  // Always reply 200 so Moolre is happy
+  res.status(200).send("OK");
+
+  try {
+    const payload = req.body || {};
+
+    // Example: if they send transaction status + our externalref
+    const externalref = payload.externalref || payload.reference;
+    const status = (payload.status || "").toString().toLowerCase();
+
+    // If you want, you can update your DB here when payment is confirmed
+    // (Change this query to match your real schema)
+    if (status === "success" || status === "completed") {
+      db.query(
+        "UPDATE admin_orders SET status='paid' WHERE externalref = ?",
+        [externalref],
+        (err) => {
+          if (err) {
+            return console.error("❌ Failed to update order from callback:", err);
+          }
+          console.log("✅ Order marked as paid via callback:", externalref);
+        }
+      );
+    }
+  } catch (e) {
+    console.error("❌ Error handling Moolre callback:", e);
+  }
+});
+
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
