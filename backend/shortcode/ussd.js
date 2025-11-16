@@ -81,7 +81,7 @@ db.connect((err) => {
   else console.log("✅ USSD connected securely to DigitalOcean MySQL!");
 });
 
-const dbp = db.promise();   // 👈 for async/await helper queries
+const dbp = db.promise(); // 👈 for async/await helper queries
 
 // ====== SESSION STATE ======
 const sessions = {};
@@ -420,48 +420,35 @@ function handleSession(sessionId, input, msisdn, res) {
           redirect_url: "https://example.com/callback",
         };
 
-        // ===== MOOLRE PAYMENT (USSD WITH OTP SKIP) =====
-        const MOOLRE_USER = "dataguygh";
-        const MOOLRE_PUBKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTI1MDA5OTk5fQ.x2qzFc-tmOGM0j9tqD3KEsrRzkVFZ3cxvJMukb4bfos";
-        const MOOLRE_WALLET = "10691706051041";
+        console.log("📤 Sending to TheTeller:", payload);
 
-        const moolrePayload = {
-          type: 1,
-          channel: rSwitch === "MTN" ? 13 : rSwitch === "ATL" ? 7 : 6,
-          currency: "GHS",
-          payer: momo_number.startsWith("0") ? momo_number : "0" + momo_number.slice(3),
-          amount: Number(amount),
-          externalref: transactionId,
-          otpcode: "",
-          reference: `Purchase of ${data_package}`,
-          accountnumber: MOOLRE_WALLET
-        };
-
-        console.log("📤 Sending to MOOLRE:", moolrePayload);
-
-        axios.post(
-          "https://api.moolre.com/api/v1/payment/initiate",
-          moolrePayload,
-          {
+        axios
+          .post(THETELLER.url, payload, {
             headers: {
+              Authorization: `Basic ${THETELLER.tokenBase64}`,
               "Content-Type": "application/json",
-              "X-API-USER": MOOLRE_USER,
-              "X-API-PUBKEY": MOOLRE_PUBKEY
+            },
+            timeout: 15000,
+          })
+          .then((response) => {
+            console.log("🟩 THETELLER RAW RESPONSE:", response.data || {});
+            const resp = response.data || {};
+            const code = String(resp.code || "").toUpperCase();
+            const statusText = String(resp.status || "").toLowerCase();
+
+            const success =
+              code.startsWith("000") ||
+              statusText === "success" ||
+              statusText === "approved";
+
+            if (!success) {
+              console.log("❌ THETELLER PAYMENT NOT APPROVED:", resp);
+              return;
             }
-          }
-        )
-        .then((response) => {
-          console.log("🟩 MOOLRE RAW RESPONSE:", response.data || {});
 
-          const resp = response.data || {};
-          const status = Number(resp.status);
-          const code = resp.code;
+            console.log("✅ THETELLER PAYMENT APPROVED.");
 
-          // ---- DIRECT SUCCESS (OTP SKIPPED) ----
-          if (status === 1 && code !== "TP14") {
-            console.log("✅ MOOLRE PAYMENT APPROVED WITHOUT OTP.");
-
-            // --- DB INSERTS (same as your old TheTeller code) ---
+            // --- DB INSERTS (same logic as your previous MOOLRE success) ---
             // PLAIN (*203*717#)
             if (state.isPlain) {
               db.query(
@@ -476,7 +463,7 @@ function handleSession(sessionId, input, msisdn, res) {
                  VALUES (?, ?, ?, NOW())`,
                 [1, "AdminData USSD sale", amount]
               );
-            } 
+            }
             // VENDOR MODE
             else {
               db.query(
@@ -487,13 +474,22 @@ function handleSession(sessionId, input, msisdn, res) {
 
                   const baseAmount = parseFloat(rows[0].amount);
                   const revenueAmount = baseAmount;
-                  const vendorAmount = parseFloat((amount - baseAmount).toFixed(2));
+                  const vendorAmount = parseFloat(
+                    (amount - baseAmount).toFixed(2)
+                  );
 
                   db.query(
                     `INSERT INTO admin_orders
                        (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
                      VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-                    [vendor_id, recipient_number, data_package, amount, network, package_id]
+                    [
+                      vendor_id,
+                      recipient_number,
+                      data_package,
+                      amount,
+                      network,
+                      package_id,
+                    ]
                   );
 
                   db.query(
@@ -505,29 +501,22 @@ function handleSession(sessionId, input, msisdn, res) {
                   db.query(
                     `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
                      VALUES (?, ?, ?, NOW())`,
-                    [vendor_id, `Admin base for ${network} ${data_package}`, revenueAmount]
+                    [
+                      vendor_id,
+                      `Admin base for ${network} ${data_package}`,
+                      revenueAmount,
+                    ]
                   );
                 }
               );
             }
-
-            return;
-          }
-
-          // ---- OTP REQUIRED (SHOULD NOT HAPPEN FOR USSD MERCHANTS) ----
-          if (status === 1 && code === "TP14") {
-            console.log("🟨 MOOLRE SAYS OTP REQUIRED — BUT YOUR ACCOUNT SHOULD SKIP OTP.");
-            console.log("🟨 IF THIS HAPPENS, CONTACT MOOLRE TO ENABLE OTP SKIP FOR USSD MERCHANT.");
-
-            return;
-          }
-
-          // ---- FAILURE ----
-          console.log("❌ MOOLRE PAYMENT FAILED:", resp);
-        })
-        .catch((err) => {
-          console.error("❌ MOOLRE ERROR:", err.response?.data || err.message);
-        });
+          })
+          .catch((err) => {
+            console.error(
+              "❌ THETELLER ERROR:",
+              err.response?.data || err.message
+            );
+          });
 
         return;
       }
@@ -541,7 +530,6 @@ function handleSession(sessionId, input, msisdn, res) {
   }
 }
 
-// ====== USSD ROUTE (Moolre) ======
 // ====== USSD ROUTE (Moolre) ======
 router.post("/", (req, res) => {
   console.log("📲 NEW USSD REQUEST:", req.body);
@@ -735,7 +723,6 @@ router.post("/", (req, res) => {
     );
   });
 });
-
 
 // --- HIT HELPERS ---
 
