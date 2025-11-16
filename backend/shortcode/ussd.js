@@ -59,12 +59,13 @@ if (!DB_PASSWORD) {
 // Your short code extension (from Moolre)
 const EXTENSION_EXPECTED = "717";
 
-// ✅ Moolre config
-const MOOLRE = {
-  url: "https://api.moolre.com/open/transact/payment",
-  user: "dataguygh",
-  pubKey:  "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTI1MDA5OTk5fQ.x2qzFc-tmOGM0j9tqD3KEsrRzkVFZ3cxvJMukb4bfos",
-  wallet: "10691706058432",
+// TheTeller config
+const THETELLER = {
+  url: "https://prod.theteller.net/v1.1/transaction/process",
+  merchant_id: "TTM-00010694",
+  tokenBase64: Buffer.from(
+    "sandipay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ="
+  ).toString("base64"),
 };
 
 // ====== MIDDLEWARE (scoped to this router) ======
@@ -80,7 +81,7 @@ db.connect((err) => {
   else console.log("✅ USSD connected securely to DigitalOcean MySQL!");
 });
 
-const dbp = db.promise(); // 👈 for async/await helper queries
+const dbp = db.promise();   // 👈 for async/await helper queries
 
 // ====== SESSION STATE ======
 const sessions = {};
@@ -130,21 +131,11 @@ function normalizeMsisdn(msisdn) {
   if (digits.startsWith("0")) return "233" + digits.slice(1); // 0XXXXXXXXX -> 233XXXXXXXXX
   return digits;
 }
-
 function msisdnVariants(msisdn) {
   const intl = normalizeMsisdn(msisdn); // 233XXXXXXXXX
   const local = "0" + intl.slice(3); // 0XXXXXXXXX
   const plusIntl = "+" + intl; // +233XXXXXXXXX
   return [intl, local, plusIntl];
-}
-
-// 👉 For Moolre "payer" field – MUST start with 0 and no country code
-function toLocalMsisdn(msisdn) {
-  let digits = String(msisdn || "").replace(/[^\d]/g, "");
-  if (digits.startsWith("233")) return "0" + digits.slice(3);
-  if (digits.startsWith("0")) return digits;
-  if (digits.startsWith("2330")) return digits.slice(3); // just in case
-  return digits;
 }
 
 // Access control
@@ -229,7 +220,7 @@ function handleSession(sessionId, input, msisdn, res) {
       );
     }
 
-    case "menu": {
+       case "menu": {
       if (input === "1") {
         state.step = "network";
         return reply("Network\n1) MTN\n2) AirtelTigo\n3) Telecel\n0) Back");
@@ -258,10 +249,11 @@ function handleSession(sessionId, input, msisdn, res) {
             }
 
             const phone = rows[0].phone;
+            // You can change the email part if you like – only phone is dynamic
             return end(`Contact us:\n${phone}`);
           }
         );
-        return;
+        return; // important: stop here, response will be sent in the callback
       }
 
       if (input === "0") {
@@ -271,6 +263,7 @@ function handleSession(sessionId, input, msisdn, res) {
 
       return reply("Invalid option. Choose:\n1) Buy Data\n2) Contact Us");
     }
+
 
     case "network":
       if (input === "1") state.network = "MTN";
@@ -285,38 +278,27 @@ function handleSession(sessionId, input, msisdn, res) {
         );
 
       // 🔹 Plain mode → AdminData table
-   if (state.isPlain) {
-  db.query(
-    `SELECT 
-        package_name AS data_package, 
-        price AS amount,
-        network
-     FROM AdminData
-     WHERE status = 'active' AND network = ?
-     ORDER BY FIELD(network, 'mtn', 'airteltigo', 'telecel'), id DESC`,
-    [state.network],   // <-- filter by selected network
-    (err, rows) => {
-      if (err) {
-        console.error("❌ MySQL error (AdminData):", err);
-        return end("Service temporarily unavailable. Try again later.");
-      }
+      if (state.isPlain) {
+        db.query(
+          `SELECT package_name AS data_package, price AS amount
+           FROM AdminData
+           WHERE status='active'`,
+          (err, rows) => {
+            if (err) {
+              console.error("❌ MySQL error (AdminData):", err);
+              return end("Service temporarily unavailable. Try again later.");
+            }
+            if (!rows || !rows.length)
+              return end("No data packages available.");
 
-      if (!rows || !rows.length) {
-        return end("No data packages available for this network.");
-      }
-
-      // Format packages: "1GB @ GHS6"
-      state.packageList = rows.map(
-        (r) => `${r.data_package} @ GHS${r.amount}`
-      );
-
-      state.packagePage = 0;
-      state.step = "package";
-      return reply(renderPackages(state));
-    }
-  );
-
-
+            state.packageList = rows.map(
+              (r) => `${r.data_package} @ GHS${r.amount}`
+            );
+            state.packagePage = 0;
+            state.step = "package";
+            return reply(renderPackages(state));
+          }
+        );
         return;
       }
 
@@ -346,7 +328,9 @@ function handleSession(sessionId, input, msisdn, res) {
     case "package":
       if (input === "0") {
         state.step = "network";
-        return reply("Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel");
+        return reply(
+          "Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel"
+        );
       }
       if (input === "#") {
         const totalPages = Math.ceil(state.packageList.length / 5);
@@ -406,183 +390,146 @@ function handleSession(sessionId, input, msisdn, res) {
           .slice(0, 16)
           .replace("T", " ");
 
-        // ✅ End USSD immediately, then fire payment + DB in background
+        // Close USSD immediately, then fire payment + DB in background
         end(
           "✅ Please wait while the prompt loads...\nEnter your MoMo PIN to approve."
         );
 
-        // ------- Build Moolre payload -------
-        const channel =
-          network === "mtn" ? 13 : network === "airteltigo" ? 7 : 6;
+        const rSwitch = getSwitchCode(network);
+        if (!rSwitch) {
+          console.error("❌ Unsupported network:", network);
+          return;
+        }
 
-        const txnId = `TRX${Date.now()}`;
-        const payerLocal = toLocalMsisdn(momo_number);
+        const transactionId = `TRX${Date.now()}`.slice(0, 30); // max 30 chars
+        const amountFormatted = String(Math.round(amount * 100)).padStart(
+          12,
+          "0"
+        ); // pesewas padded
+        const formattedMoMo = momo_number.startsWith("233")
+          ? momo_number
+          : momo_number.replace(/^0/, "233");
 
-        const moolrePayload = {
-          type: 1,
-          channel,
-          currency: "GHS",
-          payer: payerLocal, // MUST start with 0, no country code
-          amount: Number(amount).toFixed(2), // "0.10"
-          externalref: txnId,
-          otpcode: "", // leave empty – we rely on sessionid to skip OTP when allowed
-          reference: `Purchase of ${data_package}`,
-          sessionid: sessionId, // Moolre USSD session – used to skip OTP
-          accountnumber: MOOLRE.wallet,
+        const payload = {
+          amount: amountFormatted,
+          processing_code: "000200",
+          transaction_id: transactionId,
+          desc: `Purchase of ${data_package}`,
+          merchant_id: THETELLER.merchant_id,
+          subscriber_number: formattedMoMo,
+          "r-switch": rSwitch,
+          redirect_url: "https://example.com/callback",
         };
 
-        console.log("🟡 Using Moolre auth:", {
-          user: MOOLRE.user,
-          pubkeyStart: MOOLRE.pubKey.slice(0, 20) + "...",
-          wallet: MOOLRE.wallet,
-        });
-        console.log("📤 Sending to MOOLRE:", moolrePayload);
+        // ===== MOOLRE PAYMENT (USSD WITH OTP SKIP) =====
+const MOOLRE_USER = "dataguygh";
+const MOOLRE_PUBKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTI1MDA5OTk5fQ.x2qzFc-tmOGM0j9tqD3KEsrRzkVFZ3cxvJMukb4bfos";
+const MOOLRE_WALLET = "10691706051041";
 
-        axios
-          .post(MOOLRE.url, moolrePayload, {
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-USER": MOOLRE.user,
-              "X-API-PUBKEY": MOOLRE.pubKey,
-            },
-          })
-          .then((response) => {
-            const resp = response.data || {};
-            console.log("✅ MOOLRE payment response:", resp);
+const moolrePayload = {
+  type: 1,
+  channel: rSwitch === "MTN" ? 13 : rSwitch === "ATL" ? 7 : 6,
+  currency: "GHS",
+  payer: momo_number.startsWith("0") ? momo_number : "0" + momo_number.slice(3),
+  amount: Number(amount),
+  externalref: transactionId,
+  otpcode: "",
+  reference: `Purchase of ${data_package}`,
+  accountnumber: MOOLRE_WALLET
+};
 
-            if (resp.status !== 1) {
-              console.error("❌ Moolre reported failure:", resp);
-              return;
-            }
+console.log("📤 Sending to MOOLRE:", moolrePayload);
 
-            console.log(
-              "🟢 Moolre accepted request (status=1, code=" +
-                resp.code +
-                "). Logging order..."
-            );
+axios.post(
+  "https://api.moolre.com/api/v1/payment/initiate",
+  moolrePayload,
+  {
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-USER": MOOLRE_USER,
+      "X-API-PUBKEY": MOOLRE_PUBKEY
+    }
+  }
+)
+.then((response) => {
+  console.log("🟩 MOOLRE RAW RESPONSE:", response.data || {});
 
-            // ------- LOGGING INTO DB (same logic as before) -------
+  const resp = response.data || {};
+  const status = Number(resp.status);
+  const code = resp.code;
 
-            if (state.isPlain) {
-              // ------- PLAIN MODE: *203*717# (AdminData) -------
-              db.query(
-                `INSERT INTO admin_orders
-                   (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-                 VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-                [1, recipient_number, data_package, amount, network, package_id],
-                (err) => {
-                  if (err)
-                    return console.error(
-                      "❌ Failed to log AdminData order:",
-                      err
-                    );
-                  console.log("✅ AdminData order logged.");
+  // ---- DIRECT SUCCESS (OTP SKIPPED) ----
+  if (status === 1 && code !== "TP14") {
+    console.log("✅ MOOLRE PAYMENT APPROVED WITHOUT OTP.");
 
-                  db.query(
-                    `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-                     VALUES (?, ?, ?, NOW())`,
-                    [1, "AdminData USSD sale", amount],
-                    (e) =>
-                      e
-                        ? console.error("❌ Revenue insert:", e)
-                        : console.log("✅ Full revenue logged.")
-                  );
-                }
-              );
-            } else {
-              // ------- VENDOR MODE: *203*717*ID# with admin_data_packages cost -------
-              db.query(
-                `SELECT amount
-                   FROM admin_data_packages
-                  WHERE data_package = ?
-                  LIMIT 1`,
-                [data_package],
-                (err, rows) => {
-                  if (err) {
-                    console.error("❌ admin_data_packages lookup error:", err);
-                    return;
-                  }
+    // --- DB INSERTS (same as your old TheTeller code) ---
+    // PLAIN (*203*717#)
+    if (state.isPlain) {
+      db.query(
+        `INSERT INTO admin_orders
+           (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+         VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+        [1, recipient_number, data_package, amount, network, package_id]
+      );
 
-                  if (!rows || !rows.length) {
-                    console.error(
-                      "❌ Package doesn't match admin_data_packages for:",
-                      data_package
-                    );
-                    return;
-                  }
+      db.query(
+        `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+         VALUES (?, ?, ?, NOW())`,
+        [1, "AdminData USSD sale", amount]
+      );
+    } 
+    // VENDOR MODE
+    else {
+      db.query(
+        `SELECT amount FROM admin_data_packages WHERE data_package = ? LIMIT 1`,
+        [data_package],
+        (err, rows) => {
+          if (err || !rows || !rows.length) return;
 
-                  const baseAmount = parseFloat(rows[0].amount); // admin cost
-                  const revenueAmount = baseAmount;
-                  const vendorAmount = parseFloat(
-                    (amount - baseAmount).toFixed(2)
-                  );
+          const baseAmount = parseFloat(rows[0].amount);
+          const revenueAmount = baseAmount;
+          const vendorAmount = parseFloat((amount - baseAmount).toFixed(2));
 
-                  if (vendorAmount < 0) {
-                    console.warn(
-                      "⚠️ Vendor amount is negative. Check pricing.",
-                      { data_package, amount, baseAmount }
-                    );
-                  }
+          db.query(
+            `INSERT INTO admin_orders
+               (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+             VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+            [vendor_id, recipient_number, data_package, amount, network, package_id]
+          );
 
-                  // Insert order for tracking (full customer amount)
-                  db.query(
-                    `INSERT INTO admin_orders
-                       (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-                     VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-                    [
-                      vendor_id,
-                      recipient_number,
-                      data_package,
-                      amount,
-                      network,
-                      package_id,
-                    ],
-                    (err2) => {
-                      if (err2) {
-                        return console.error(
-                          "❌ Failed to log vendor admin_order:",
-                          err2
-                        );
-                      }
-                      console.log("✅ Vendor admin_order logged.");
+          db.query(
+            `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
+             VALUES (?, ?, ?, NOW())`,
+            [vendor_id, momo_number, vendorAmount]
+          );
 
-                      // Vendor's share (selling price - base cost)
-                      db.query(
-                        `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
-                         VALUES (?, ?, ?, NOW())`,
-                        [vendor_id, momo_number, vendorAmount],
-                        (e) =>
-                          e
-                            ? console.error("❌ Wallet load insert:", e)
-                            : console.log("✅ Vendor wallet share logged.")
-                      );
+          db.query(
+            `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+             VALUES (?, ?, ?, NOW())`,
+            [vendor_id, `Admin base for ${network} ${data_package}`, revenueAmount]
+          );
+        }
+      );
+    }
 
-                      // Admin/base cost into total_revenue
-                      db.query(
-                        `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-                         VALUES (?, ?, ?, NOW())`,
-                        [
-                          vendor_id,
-                          `Admin base for ${network} ${data_package}`,
-                          revenueAmount,
-                        ],
-                        (e) =>
-                          e
-                            ? console.error("❌ Revenue insert:", e)
-                            : console.log("✅ Admin base revenue logged.")
-                      );
-                    }
-                  );
-                }
-              );
-            }
-          })
-          .catch((err) => {
-            console.error(
-              "❌ MOOLRE ERROR:",
-              err.response?.data || err.message
-            );
-          });
+    return;
+  }
+
+  // ---- OTP REQUIRED (SHOULD NOT HAPPEN FOR USSD MERCHANTS) ----
+  if (status === 1 && code === "TP14") {
+    console.log("🟨 MOOLRE SAYS OTP REQUIRED — BUT YOUR ACCOUNT SHOULD SKIP OTP.");
+    console.log("🟨 IF THIS HAPPENS, CONTACT MOOLRE TO ENABLE OTP SKIP FOR USSD MERCHANT.");
+
+    return;
+  }
+
+  // ---- FAILURE ----
+  console.log("❌ MOOLRE PAYMENT FAILED:", resp);
+})
+.catch((err) => {
+  console.error("❌ MOOLRE ERROR:", err.response?.data || err.message);
+});
+
 
         return;
       }
@@ -596,6 +543,7 @@ function handleSession(sessionId, input, msisdn, res) {
   }
 }
 
+// ====== USSD ROUTE (Moolre) ======
 // ====== USSD ROUTE (Moolre) ======
 router.post("/", (req, res) => {
   console.log("📲 NEW USSD REQUEST:", req.body);
@@ -628,7 +576,10 @@ router.post("/", (req, res) => {
 
   // 🔹 CASE 1: NEW PLAIN MODE SESSION → *203*717# (no ID)
   if (isNewSession && !inputFromUser) {
-    console.log("🟦 NEW PLAIN MODE SESSION DETECTED (*203*717#) for:", msisdn);
+    console.log(
+      "🟦 NEW PLAIN MODE SESSION DETECTED (*203*717#) for:",
+      msisdn
+    );
 
     // Check telephone_numbers table first
     const [intl, local, plusIntl] = msisdnVariants(msisdn);
@@ -673,7 +624,10 @@ router.post("/", (req, res) => {
           packagePage: 0,
         };
 
-        console.log("🟦 CREATED PLAIN SESSION OBJECT:", sessions[sessionId]);
+        console.log(
+          "🟦 CREATED PLAIN SESSION OBJECT:",
+          sessions[sessionId]
+        );
 
         // First screen – show welcome/menu
         return handleSession(sessionId, "", String(msisdn || ""), res);
@@ -766,8 +720,7 @@ router.post("/", (req, res) => {
       })().catch((e) => {
         console.error("❌ Vendor session error:", e.message);
         return res.json({
-          message:
-            "END Service temporarily unavailable. Please try again later.",
+          message: "END Service temporarily unavailable. Please try again later.",
           reply: false,
         });
       });
@@ -776,9 +729,15 @@ router.post("/", (req, res) => {
     }
 
     // 🔹 CASE 3: Existing session → continue as normal
-    return handleSession(sessionId, inputInner, String(msisdn || ""), res);
+    return handleSession(
+      sessionId,
+      inputInner,
+      String(msisdn || ""),
+      res
+    );
   });
 });
+
 
 // --- HIT HELPERS ---
 
@@ -827,5 +786,6 @@ async function incrementUssdCounter(vendorId) {
     [vendorId]
   );
 }
+
 
 module.exports = router;
