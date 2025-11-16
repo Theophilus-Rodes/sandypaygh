@@ -59,12 +59,12 @@ if (!DB_PASSWORD) {
 // Your short code extension (from Moolre)
 const EXTENSION_EXPECTED = "717";
 
-// TheTeller config
+// ✅ TheTeller config (NEW MERCHANT: Louis Acheamp Enterprise)
 const THETELLER = {
   url: "https://prod.theteller.net/v1.1/transaction/process",
-  merchant_id: "TTM-00010694",
+  merchant_id: "TTM-00009388",
   tokenBase64: Buffer.from(
-    "sandipay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ="
+    "louis66a20ac942e74:ZmVjZWZlZDc2MzA4OWU0YmZhOTk5MDBmMDAxNDhmOWY="
   ).toString("base64"),
 };
 
@@ -220,7 +220,7 @@ function handleSession(sessionId, input, msisdn, res) {
       );
     }
 
-       case "menu": {
+    case "menu": {
       if (input === "1") {
         state.step = "network";
         return reply("Network\n1) MTN\n2) AirtelTigo\n3) Telecel\n0) Back");
@@ -263,7 +263,6 @@ function handleSession(sessionId, input, msisdn, res) {
 
       return reply("Invalid option. Choose:\n1) Buy Data\n2) Contact Us");
     }
-
 
     case "network":
       if (input === "1") state.network = "MTN";
@@ -422,114 +421,113 @@ function handleSession(sessionId, input, msisdn, res) {
         };
 
         // ===== MOOLRE PAYMENT (USSD WITH OTP SKIP) =====
-const MOOLRE_USER = "dataguygh";
-const MOOLRE_PUBKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTI1MDA5OTk5fQ.x2qzFc-tmOGM0j9tqD3KEsrRzkVFZ3cxvJMukb4bfos";
-const MOOLRE_WALLET = "10691706051041";
+        const MOOLRE_USER = "dataguygh";
+        const MOOLRE_PUBKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTI1MDA5OTk5fQ.x2qzFc-tmOGM0j9tqD3KEsrRzkVFZ3cxvJMukb4bfos";
+        const MOOLRE_WALLET = "10691706051041";
 
-const moolrePayload = {
-  type: 1,
-  channel: rSwitch === "MTN" ? 13 : rSwitch === "ATL" ? 7 : 6,
-  currency: "GHS",
-  payer: momo_number.startsWith("0") ? momo_number : "0" + momo_number.slice(3),
-  amount: Number(amount),
-  externalref: transactionId,
-  otpcode: "",
-  reference: `Purchase of ${data_package}`,
-  accountnumber: MOOLRE_WALLET
-};
+        const moolrePayload = {
+          type: 1,
+          channel: rSwitch === "MTN" ? 13 : rSwitch === "ATL" ? 7 : 6,
+          currency: "GHS",
+          payer: momo_number.startsWith("0") ? momo_number : "0" + momo_number.slice(3),
+          amount: Number(amount),
+          externalref: transactionId,
+          otpcode: "",
+          reference: `Purchase of ${data_package}`,
+          accountnumber: MOOLRE_WALLET
+        };
 
-console.log("📤 Sending to MOOLRE:", moolrePayload);
+        console.log("📤 Sending to MOOLRE:", moolrePayload);
 
-axios.post(
-  "https://api.moolre.com/api/v1/payment/initiate",
-  moolrePayload,
-  {
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-USER": MOOLRE_USER,
-      "X-API-PUBKEY": MOOLRE_PUBKEY
-    }
-  }
-)
-.then((response) => {
-  console.log("🟩 MOOLRE RAW RESPONSE:", response.data || {});
+        axios.post(
+          "https://api.moolre.com/api/v1/payment/initiate",
+          moolrePayload,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-USER": MOOLRE_USER,
+              "X-API-PUBKEY": MOOLRE_PUBKEY
+            }
+          }
+        )
+        .then((response) => {
+          console.log("🟩 MOOLRE RAW RESPONSE:", response.data || {});
 
-  const resp = response.data || {};
-  const status = Number(resp.status);
-  const code = resp.code;
+          const resp = response.data || {};
+          const status = Number(resp.status);
+          const code = resp.code;
 
-  // ---- DIRECT SUCCESS (OTP SKIPPED) ----
-  if (status === 1 && code !== "TP14") {
-    console.log("✅ MOOLRE PAYMENT APPROVED WITHOUT OTP.");
+          // ---- DIRECT SUCCESS (OTP SKIPPED) ----
+          if (status === 1 && code !== "TP14") {
+            console.log("✅ MOOLRE PAYMENT APPROVED WITHOUT OTP.");
 
-    // --- DB INSERTS (same as your old TheTeller code) ---
-    // PLAIN (*203*717#)
-    if (state.isPlain) {
-      db.query(
-        `INSERT INTO admin_orders
-           (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-         VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-        [1, recipient_number, data_package, amount, network, package_id]
-      );
+            // --- DB INSERTS (same as your old TheTeller code) ---
+            // PLAIN (*203*717#)
+            if (state.isPlain) {
+              db.query(
+                `INSERT INTO admin_orders
+                   (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+                 VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+                [1, recipient_number, data_package, amount, network, package_id]
+              );
 
-      db.query(
-        `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-         VALUES (?, ?, ?, NOW())`,
-        [1, "AdminData USSD sale", amount]
-      );
-    } 
-    // VENDOR MODE
-    else {
-      db.query(
-        `SELECT amount FROM admin_data_packages WHERE data_package = ? LIMIT 1`,
-        [data_package],
-        (err, rows) => {
-          if (err || !rows || !rows.length) return;
+              db.query(
+                `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+                 VALUES (?, ?, ?, NOW())`,
+                [1, "AdminData USSD sale", amount]
+              );
+            } 
+            // VENDOR MODE
+            else {
+              db.query(
+                `SELECT amount FROM admin_data_packages WHERE data_package = ? LIMIT 1`,
+                [data_package],
+                (err, rows) => {
+                  if (err || !rows || !rows.length) return;
 
-          const baseAmount = parseFloat(rows[0].amount);
-          const revenueAmount = baseAmount;
-          const vendorAmount = parseFloat((amount - baseAmount).toFixed(2));
+                  const baseAmount = parseFloat(rows[0].amount);
+                  const revenueAmount = baseAmount;
+                  const vendorAmount = parseFloat((amount - baseAmount).toFixed(2));
 
-          db.query(
-            `INSERT INTO admin_orders
-               (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-             VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-            [vendor_id, recipient_number, data_package, amount, network, package_id]
-          );
+                  db.query(
+                    `INSERT INTO admin_orders
+                       (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+                     VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+                    [vendor_id, recipient_number, data_package, amount, network, package_id]
+                  );
 
-          db.query(
-            `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
-             VALUES (?, ?, ?, NOW())`,
-            [vendor_id, momo_number, vendorAmount]
-          );
+                  db.query(
+                    `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
+                     VALUES (?, ?, ?, NOW())`,
+                    [vendor_id, momo_number, vendorAmount]
+                  );
 
-          db.query(
-            `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-             VALUES (?, ?, ?, NOW())`,
-            [vendor_id, `Admin base for ${network} ${data_package}`, revenueAmount]
-          );
-        }
-      );
-    }
+                  db.query(
+                    `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+                     VALUES (?, ?, ?, NOW())`,
+                    [vendor_id, `Admin base for ${network} ${data_package}`, revenueAmount]
+                  );
+                }
+              );
+            }
 
-    return;
-  }
+            return;
+          }
 
-  // ---- OTP REQUIRED (SHOULD NOT HAPPEN FOR USSD MERCHANTS) ----
-  if (status === 1 && code === "TP14") {
-    console.log("🟨 MOOLRE SAYS OTP REQUIRED — BUT YOUR ACCOUNT SHOULD SKIP OTP.");
-    console.log("🟨 IF THIS HAPPENS, CONTACT MOOLRE TO ENABLE OTP SKIP FOR USSD MERCHANT.");
+          // ---- OTP REQUIRED (SHOULD NOT HAPPEN FOR USSD MERCHANTS) ----
+          if (status === 1 && code === "TP14") {
+            console.log("🟨 MOOLRE SAYS OTP REQUIRED — BUT YOUR ACCOUNT SHOULD SKIP OTP.");
+            console.log("🟨 IF THIS HAPPENS, CONTACT MOOLRE TO ENABLE OTP SKIP FOR USSD MERCHANT.");
 
-    return;
-  }
+            return;
+          }
 
-  // ---- FAILURE ----
-  console.log("❌ MOOLRE PAYMENT FAILED:", resp);
-})
-.catch((err) => {
-  console.error("❌ MOOLRE ERROR:", err.response?.data || err.message);
-});
-
+          // ---- FAILURE ----
+          console.log("❌ MOOLRE PAYMENT FAILED:", resp);
+        })
+        .catch((err) => {
+          console.error("❌ MOOLRE ERROR:", err.response?.data || err.message);
+        });
 
         return;
       }
@@ -786,6 +784,5 @@ async function incrementUssdCounter(vendorId) {
     [vendorId]
   );
 }
-
 
 module.exports = router;
