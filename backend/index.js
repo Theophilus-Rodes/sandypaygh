@@ -1030,42 +1030,61 @@ app.get("/api/total-revenue", (req, res) => {
 ///////////////////////////////////////////////////
 // ===================== ADMIN DATA PACKAGES ===================== //
 
-// Add a new data package
-app.post("/api/admin/data-packages", (req, res) => {
-  const { package_name, price } = req.body;
+app.post("/api/admin/data-packages", async (req, res) => {
+  try {
+    const { package_name, price, network } = req.body;
 
-  if (!package_name || !price) {
-    return res.status(400).json({ success: false, message: "Package name and price are required" });
-  }
-
-  const sql = `
-    INSERT INTO AdminData (package_name, price)
-    VALUES (?, ?)
-  `;
-  db.query(sql, [package_name, price], (err, result) => {
-    if (err) {
-      console.error("Error inserting package:", err);
-      return res.status(500).json({ success: false, message: "Database error" });
+    if (!package_name || !price || !network) {
+      return res.json({
+        success: false,
+        message: "Package name, price and network are required.",
+      });
     }
-    return res.json({ success: true, message: "Package added", id: result.insertId });
-  });
+
+    // Optional: validate network
+    const allowed = ["mtn", "airteltigo", "telecel"];
+    if (!allowed.includes(network.toLowerCase())) {
+      return res.json({
+        success: false,
+        message: "Invalid network. Use mtn, airteltigo or telecel.",
+      });
+    }
+
+    await db
+      .promise()
+      .query(
+        "INSERT INTO AdminData (package_name, price, network, status) VALUES (?, ?, ?, 'active')",
+        [package_name, price, network.toLowerCase()]
+      );
+
+    res.json({ success: true, message: "Package added successfully." });
+  } catch (err) {
+    console.error(err);
+    res.json({ success: false, message: "Server error while adding package." });
+  }
 });
+
 
 // Get all data packages
-app.get("/api/admin/data-packages", (req, res) => {
-  const sql = `
-    SELECT id, package_name, price, status, created_at
-    FROM AdminData
-    ORDER BY id DESC
-  `;
-  db.query(sql, (err, rows) => {
-    if (err) {
-      console.error("Error fetching packages:", err);
-      return res.status(500).json({ success: false, message: "Database error" });
-    }
-    return res.json({ success: true, data: rows });
-  });
+app.get("/api/admin/data-packages", async (req, res) => {
+  try {
+    const [rows] = await db
+      .promise()
+      .query(`
+        SELECT id, package_name, price, network, status, created_at
+        FROM AdminData
+        ORDER BY 
+          FIELD(network, 'mtn', 'airteltigo', 'telecel'),  -- MTN first, then AirtelTigo, then Telecel
+          id DESC                                           -- newest first inside each network
+      `);
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error(err);
+    res.json({ success: false, message: "Failed to fetch packages." });
+  }
 });
+
 
 // Activate / Deactivate a package
 app.patch("/api/admin/data-packages/:id/status", (req, res) => {
