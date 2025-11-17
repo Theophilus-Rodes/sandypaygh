@@ -44,7 +44,7 @@ const dbConfig = {
   database: process.env.DB_NAME,
   ssl: caContent
     ? { ca: caContent, rejectUnauthorized: true, minVersion: "TLSv1.2" }
-    : { rejectUnauthorized: false }, // last-resort fallback (not recommended long-term)
+    : { rejectUnauthorized: false },
 };
 
 if (!dbConfig.user) {
@@ -81,32 +81,14 @@ db.connect((err) => {
   else console.log("✅ USSD connected securely to DigitalOcean MySQL!");
 });
 
-const dbp = db.promise(); // 👈 for async/await helper queries
+const dbp = db.promise(); // for async/await helper queries
 
 // ====== SESSION STATE ======
 const sessions = {};
 
 // ====== HELPERS ======
 
-// (Old helper kept in case you use it somewhere else)
-function getSwitchCode(network) {
-  switch ((network || "").toLowerCase()) {
-    case "mtn":
-      return "MTN";
-    case "vodafone":
-    case "telecel":
-      return "VDF";
-    case "airteltigo":
-    case "airtel":
-      return "ATL";
-    case "tigo":
-      return "TGO";
-    default:
-      return null;
-  }
-}
-
-// 🔹 Map network name -> Moolre channel ID
+// Map network name -> Moolre channel ID
 function getChannelId(network) {
   switch ((network || "").toLowerCase()) {
     case "mtn":
@@ -148,24 +130,24 @@ Price: ${price}
 // Normalize to 233XXXXXXXXX
 function normalizeMsisdn(msisdn) {
   const digits = String(msisdn || "").replace(/[^\d]/g, "");
-  if (digits.startsWith("233")) return digits; // 233XXXXXXXXX
-  if (digits.startsWith("0")) return "233" + digits.slice(1); // 0XXXXXXXXX -> 233XXXXXXXXX
-  if (digits.startsWith("00233")) return digits.slice(2); // 00233XXXXXXXXX -> 233XXXXXXXXX
+  if (digits.startsWith("233")) return digits;
+  if (digits.startsWith("0")) return "233" + digits.slice(1);
+  if (digits.startsWith("00233")) return digits.slice(2);
   return digits;
 }
 
 // Return [233XXXXXXXXX, 0XXXXXXXXX, +233XXXXXXXXX]
 function msisdnVariants(msisdn) {
-  const intl = normalizeMsisdn(msisdn); // 233XXXXXXXXX
-  const local = "0" + intl.slice(3); // 0XXXXXXXXX
-  const plusIntl = "+" + intl; // +233XXXXXXXXX
+  const intl = normalizeMsisdn(msisdn);
+  const local = "0" + intl.slice(3);
+  const plusIntl = "+" + intl;
   return [intl, local, plusIntl];
 }
 
 // Local "0XXXXXXXXX" for Moolre payer
 function toLocalMsisdn(msisdn) {
-  const intl = normalizeMsisdn(msisdn); // 233XXXXXXXXX
-  return "0" + intl.slice(3); // 0XXXXXXXXX
+  const intl = normalizeMsisdn(msisdn);
+  return "0" + intl.slice(3);
 }
 
 // Access control
@@ -174,7 +156,6 @@ function checkAccess(msisdn, cb) {
     "SELECT `value` AS v FROM app_settings WHERE setting='access_mode' LIMIT 1",
     (e, rows) => {
       if (e && e.errno === 1054) {
-        // legacy single-column schema
         return db.query(
           "SELECT access_mode AS v FROM app_settings LIMIT 1",
           (e2, r2) => {
@@ -257,24 +238,20 @@ function handleSession(sessionId, input, msisdn, res) {
       }
 
       if (input === "2") {
-        // 🔹 Plain code or no vendor ID → use default contact
         if (!state.vendorId || state.isPlain) {
           return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
         }
 
-        // 🔹 DIALLED WITH ID → use vendor's phone from users table
         db.query(
           "SELECT phone FROM users WHERE id = ? LIMIT 1",
           [state.vendorId],
           (err, rows) => {
             if (err) {
               console.error("❌ MySQL error (Contact vendor):", err);
-              // fallback to default contact
               return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
             }
 
             if (!rows || !rows.length || !rows[0].phone) {
-              // if no phone set, also fallback
               return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
             }
 
@@ -282,7 +259,7 @@ function handleSession(sessionId, input, msisdn, res) {
             return end(`Contact us:\n${phone}`);
           }
         );
-        return; // response in callback
+        return;
       }
 
       if (input === "0") {
@@ -305,32 +282,43 @@ function handleSession(sessionId, input, msisdn, res) {
           "Invalid network. Choose:\n1) MTN\n2) AirtelTigo\n3) Telecel"
         );
 
-      // 🔹 Plain mode → AdminData table
-      if (state.isPlain) {
-        db.query(
-          `SELECT package_name AS data_package, price AS amount
-           FROM AdminData
-           WHERE status='active'`,
-          (err, rows) => {
-            if (err) {
-              console.error("❌ MySQL error (AdminData):", err);
-              return end("Service temporarily unavailable. Try again later.");
-            }
-            if (!rows || !rows.length)
-              return end("No data packages available.");
+      // PLAIN MODE → AdminData
+  if (state.isPlain) {
+  db.query(
+    `SELECT 
+        package_name AS data_package, 
+        price AS amount,
+        network
+     FROM AdminData
+     WHERE status = 'active' AND network = ?
+     ORDER BY FIELD(network, 'mtn', 'airteltigo', 'telecel'), id DESC`,
+    [state.network],   // <-- filter by selected network
+    (err, rows) => {
+      if (err) {
+        console.error("❌ MySQL error (AdminData):", err);
+        return end("Service temporarily unavailable. Try again later.");
+      }
 
-            state.packageList = rows.map(
-              (r) => `${r.data_package} @ GHS${r.amount}`
-            );
-            state.packagePage = 0;
-            state.step = "package";
-            return reply(renderPackages(state));
-          }
-        );
+      if (!rows || !rows.length) {
+        return end("No data packages available for this network.");
+      }
+
+      // Format packages: "1GB @ GHS6"
+      state.packageList = rows.map(
+        (r) => `${r.data_package} @ GHS${r.amount}`
+      );
+
+      state.packagePage = 0;
+      state.step = "package";
+      return reply(renderPackages(state));
+    }
+  );
+
+
         return;
       }
 
-      // 🔹 Vendor mode → data_packages table
+      // VENDOR MODE → data_packages
       db.query(
         `SELECT data_package, amount
          FROM data_packages
@@ -402,7 +390,7 @@ function handleSession(sessionId, input, msisdn, res) {
 
     case "confirm":
       if (input === "1") {
-        // ====== PAYMENT VIA MOOLRE (INITIATE ONLY) ======
+        // ====== INITIATE PAYMENT VIA MOOLRE (NO DB INSERT HERE) ======
         const m = state.selectedPkg.match(/@ GHS\s*(\d+(\.\d+)?)/);
         const amount = m ? parseFloat(m[1]) : 0;
         if (!amount) return end("Invalid amount in package.");
@@ -413,11 +401,9 @@ function handleSession(sessionId, input, msisdn, res) {
         const vendor_id = state.vendorId;
         const data_package = state.selectedPkg.split(" @")[0];
 
-        // You can keep this as a reference for matching in the webhook
-        const transactionId = `TRX${Date.now()}`.slice(0, 30); // max 30 chars
+        const transactionId = `TRX${Date.now()}`.slice(0, 30);
 
-        // Close USSD immediately, then fire payment in background.
-        // The REAL insertion happens in the Moolre webhook (txstatus=1).
+        // Close USSD first
         end(
           "✅ Please wait while the prompt loads...\nEnter your MoMo PIN to approve."
         );
@@ -428,21 +414,28 @@ function handleSession(sessionId, input, msisdn, res) {
           return;
         }
 
-        const payerLocal = toLocalMsisdn(momo_number); // 0XXXXXXXXX
+        const payerLocal = toLocalMsisdn(momo_number);
 
         const payload = {
           type: 1,
           channel: channelId,
           currency: "GHS",
           payer: payerLocal,
-          amount: Number(amount.toFixed(2)), // decimal, 2dp
-          externalref: transactionId, // come back in webhook
+          amount: Number(amount.toFixed(2)),
+          externalref: transactionId,
           reference: `Purchase of ${data_package}`,
           accountnumber: MOOLRE.wallet,
-          // ⭐ This is what lets them skip OTP for USSD:
           sessionid: state.moolreSessionId,
-          // Optionally, you can pass vendor/package info in thirdpartyref if supported
-          // thirdpartyref: JSON.stringify({ vendor_id, data_package, network, recipient_number }),
+
+          // 🔹 This goes back in webhook as "thirdpartyref"
+          thirdpartyref: JSON.stringify({
+            mode: state.isPlain ? "plain" : "vendor",
+            vendor_id,
+            data_package,
+            network,
+            recipient_number,
+            momo_number,
+          }),
         };
 
         console.log("🟡 Using Moolre auth:", {
@@ -463,12 +456,8 @@ function handleSession(sessionId, input, msisdn, res) {
           .then((response) => {
             const resp = response.data || {};
             console.log("✅ MOOLRE payment INIT response:", resp);
-
-            // ❗ VERY IMPORTANT:
-            // DO NOT INSERT ANYTHING HERE.
-            // We only trust the webhook (txstatus = 1) to create orders.
             console.log(
-              "⏳ Payment request sent. Waiting for Moolre webhook (txstatus=1) to log the order."
+              "⏳ Payment request sent. Waiting for webhook (txstatus=1) to log the order."
             );
           })
           .catch((err) => {
@@ -520,14 +509,10 @@ router.post("/", (req, res) => {
     inputFromUser,
   });
 
-  // 🔹 CASE 1: NEW PLAIN MODE SESSION → *203*717# (no ID)
+  // CASE 1: NEW PLAIN SESSION (*203*717#)
   if (isNewSession && !inputFromUser) {
-    console.log(
-      "🟦 NEW PLAIN MODE SESSION DETECTED (*203*717#) for:",
-      msisdn
-    );
+    console.log("🟦 NEW PLAIN SESSION for:", msisdn);
 
-    // Check telephone_numbers table first
     const [intl, local, plusIntl] = msisdnVariants(msisdn);
 
     db.query(
@@ -557,7 +542,6 @@ router.post("/", (req, res) => {
           });
         }
 
-        // Allowed: create plain session
         sessions[sessionId] = {
           step: "start",
           vendorId: 1,
@@ -568,21 +552,18 @@ router.post("/", (req, res) => {
           recipient: "",
           packageList: [],
           packagePage: 0,
-          // ⭐ Save original Moolre USSD sessionId so we can skip OTP
           moolreSessionId: sessionId,
         };
 
-        console.log("🟦 CREATED PLAIN SESSION OBJECT:", sessions[sessionId]);
-
-        // First screen – show welcome/menu
+        console.log("🟦 CREATED PLAIN SESSION:", sessions[sessionId]);
         return handleSession(sessionId, "", String(msisdn || ""), res);
       }
     );
 
-    return; // important: don't fall through to vendor logic
+    return;
   }
 
-  // 🔹 All other cases (vendor ID mode & existing sessions)
+  // CASE 2: Vendor sessions & existing sessions
   checkAccess(msisdn, (allowed) => {
     if (!allowed) {
       return res.json({
@@ -594,7 +575,7 @@ router.post("/", (req, res) => {
     const isNewSessionInner = isNew === true || !sessions[sessionId];
     const inputInner = inputFromUser;
 
-    // 🔹 CASE 2: New vendor session → *203*717*ID#
+    // New vendor session *203*717*ID#
     if (isNewSessionInner) {
       console.log(
         "🟨 NEW VENDOR SESSION (ID MODE). Raw first data:",
@@ -609,7 +590,6 @@ router.post("/", (req, res) => {
             ? vendorIdFromDial
             : 1;
 
-        // ✅ 1. Check remaining hits
         const remaining = await getRemainingHits(vendorId);
         console.log("📊 Remaining hits for vendor", vendorId, "=", remaining);
         if (remaining <= 0) {
@@ -619,7 +599,6 @@ router.post("/", (req, res) => {
           });
         }
 
-        // ✅ 2. Deduct exactly 1 hit
         const ok = await consumeOneHit(vendorId);
         if (!ok) {
           return res.json({
@@ -628,10 +607,8 @@ router.post("/", (req, res) => {
           });
         }
 
-        // ✅ 3. Increment USSD counter for dashboard
         await incrementUssdCounter(vendorId);
 
-        // ✅ 4. Fetch vendor username for brand name
         db.query(
           "SELECT username FROM users WHERE id = ? LIMIT 1",
           [vendorId],
@@ -651,16 +628,10 @@ router.post("/", (req, res) => {
               recipient: "",
               packageList: [],
               packagePage: 0,
-              // ⭐ Save Moolre USSD session id for OTP skip
               moolreSessionId: sessionId,
             };
 
-            console.log(
-              "🟩 CREATED SESSION OBJECT FOR ID MODE (WITH HIT DEDUCTION):",
-              sessions[sessionId]
-            );
-
-            // First screen – ignore the ID as input, just show menu
+            console.log("🟩 CREATED VENDOR SESSION:", sessions[sessionId]);
             return handleSession(sessionId, "", String(msisdn || ""), res);
           }
         );
@@ -675,14 +646,12 @@ router.post("/", (req, res) => {
       return;
     }
 
-    // 🔹 CASE 3: Existing session → continue as normal
+    // Existing session – continue
     return handleSession(sessionId, inputInner, String(msisdn || ""), res);
   });
 });
 
-// --- HIT HELPERS ---
-
-// Total remaining hits for a vendor (only 'completed' rows count)
+// HIT HELPERS
 async function getRemainingHits(vendorId) {
   const [rows] = await dbp.query(
     `SELECT COALESCE(SUM(CASE WHEN status='completed' THEN hits ELSE 0 END), 0) AS total_hits
@@ -693,7 +662,6 @@ async function getRemainingHits(vendorId) {
   return Number(rows?.[0]?.total_hits || 0);
 }
 
-// Deduct 1 hit from the most recent row with hits > 0
 async function consumeOneHit(vendorId) {
   const [pick] = await dbp.query(
     `SELECT id, hits
@@ -703,22 +671,16 @@ async function consumeOneHit(vendorId) {
        LIMIT 1`,
     [vendorId]
   );
-
   if (!pick || !pick.length) return false;
-
   const row = pick[0];
   const newHits = Math.max(0, Number(row.hits) - 1);
-
   await dbp.query(
-    `UPDATE session_purchases
-       SET hits = ?
-     WHERE id = ?`,
+    `UPDATE session_purchases SET hits = ? WHERE id = ?`,
     [newHits, row.id]
   );
   return true;
 }
 
-// Increment visible USSD session counter for dashboard
 async function incrementUssdCounter(vendorId) {
   await dbp.query(
     `INSERT INTO ussd_session_counters (vendor_id, hits_used)
