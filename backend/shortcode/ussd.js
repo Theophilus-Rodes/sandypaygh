@@ -221,6 +221,7 @@ function handleSession(sessionId, input, msisdn, res) {
 
   const reply = (msg) => res.json({ message: msg, reply: true });
   const end = (msg) => res.json({ message: msg, reply: false });
+try {
 
   switch (state.step) {
     case "start": {
@@ -391,6 +392,7 @@ case "package":
       "Invalid selection. Choose a valid number or press # for more."
     );
   }
+  
 
 
 // ================== RECIPIENT STEP ==================
@@ -412,7 +414,11 @@ case "recipient":
     "Invalid option. Choose:\n1) Buy for self\n2) Buy for others\n0) Back"
   );
 
+  
+  
 
+
+  
     case "other_number":
       state.recipient = input;
       state.step = "confirm";
@@ -508,6 +514,12 @@ case "recipient":
       return reply("Restarting...\n1. Buy Data\n2. Contact Us");
   }
 }
+
+ catch (err) {
+    console.error("❌ USSD runtime error:", err);
+    return end("Service temporarily unavailable. Try again later.");
+  }}
+
 
 // ====== USSD ROUTE (Moolre) ======
 router.post("/", (req, res) => {
