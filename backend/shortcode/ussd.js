@@ -320,68 +320,92 @@ function handleSession(sessionId, input, msisdn, res) {
 
       // VENDOR MODE → data_packages
       db.query(
-        `SELECT data_package, amount
-         FROM data_packages
-         WHERE vendor_id = ? AND network = ? AND status = 'available'`,
-        [state.vendorId, state.network],
-        (err, rows) => {
-          if (err) {
-            console.error("❌ MySQL error:", err);
-            return end("Service temporarily unavailable. Try again later.");
-          }
-          if (!rows || !rows.length) return end("No data packages available.");
+  `SELECT data_package, amount
+   FROM data_packages
+   WHERE vendor_id = ? AND network = ? AND status = 'available'`,
+  [state.vendorId, state.network],
+  (err, rows) => {
+    if (err) {
+      console.error("❌ MySQL error:", err);
+      return end("Service temporarily unavailable. Try again later.");
+    }
+    if (!rows || !rows.length) return end("No data packages available.");
 
-          state.packageList = rows.map(
-            (r) => `${r.data_package} @ GHS${r.amount}`
-          );
-          state.packagePage = 0;
-          state.step = "package";
-          return reply(renderPackages(state));
-        }
-      );
-      return;
+    state.packageList = rows.map(
+      (r) => `${r.data_package} @ GHS${r.amount}`
+    );
+    state.packagePage = 0;          // ✅ always start at page 0
+    state.step = "package";
+    return reply(renderPackages(state));
+  }
+);
+return;
 
-    case "package":
-      if (input === "0") {
-        state.step = "network";
-        return reply("Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel");
-      }
-      if (input === "#") {
-        const totalPages = Math.ceil(state.packageList.length / 5);
-        state.packagePage = (state.packagePage + 1) % Math.max(totalPages, 1);
-        return reply(renderPackages(state));
-      }
-      {
-        const index = parseInt(input, 10) - 1 + state.packagePage * 5;
-        if (state.packageList[index]) {
-          state.selectedPkg = state.packageList[index];
-          state.step = "recipient";
-          return reply(
-            "Recipient\n1) Buy for self\n2) Buy for others\n0) Back"
-          );
-        }
-        return reply(
-          "Invalid selection. Choose a valid number or type # for more."
-        );
-      }
+// ================== PACKAGE STEP ==================
+case "package":
+  if (input === "0") {
+    state.step = "network";
+    return reply("Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel");
+  }
 
-    case "recipient":
-      if (input === "1") {
-        state.recipient = msisdn;
-        state.step = "confirm";
-        return reply(confirmMessage(state));
-      }
-      if (input === "2") {
-        state.step = "other_number";
-        return reply("Enter recipient number:");
-      }
-      if (input === "0") {
-        state.step = "package";
-        return reply(renderPackages(state));
-      }
+  if (input === "#") {
+    // ✅ make sure packageList exists
+    if (!state.packageList || !state.packageList.length) {
+      return end("No data packages available.");
+    }
+
+    const totalPages = Math.ceil(state.packageList.length / 5);
+    const safeCurrentPage =
+      Number.isInteger(state.packagePage) && state.packagePage >= 0
+        ? state.packagePage
+        : 0;
+
+    state.packagePage =
+      (safeCurrentPage + 1) % Math.max(totalPages, 1);
+
+    return reply(renderPackages(state));
+  }
+
+  // normal numeric selection
+  {
+    const page = Number.isInteger(state.packagePage) && state.packagePage >= 0
+      ? state.packagePage
+      : 0;
+
+    const index = parseInt(input, 10) - 1 + page * 5;
+
+    if (state.packageList && state.packageList[index]) {
+      state.selectedPkg = state.packageList[index];
+      state.step = "recipient";
       return reply(
-        "Invalid option. Choose:\n1) Buy for self\n2) Buy for others\n0) Back"
+        "Recipient\n1) Buy for self\n2) Buy for others\n0) Back"
       );
+    }
+
+    return reply(
+      "Invalid selection. Choose a valid number or type # for more."
+    );
+  }
+
+// ================== RECIPIENT STEP ==================
+case "recipient":
+  if (input === "1") {
+    state.recipient = msisdn;
+    state.step = "confirm";
+    return reply(confirmMessage(state));
+  }
+  if (input === "2") {
+    state.step = "other_number";
+    return reply("Enter recipient number:");
+  }
+  if (input === "0") {
+    state.step = "package";
+    return reply(renderPackages(state));
+  }
+  return reply(
+    "Invalid option. Choose:\n1) Buy for self\n2) Buy for others\n0) Back"
+  );
+
 
     case "other_number":
       state.recipient = input;
