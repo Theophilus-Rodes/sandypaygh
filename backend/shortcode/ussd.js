@@ -124,6 +124,26 @@ function getChannelId(network) {
   }
 }
 
+// 🔹 NEW: Decide if Moolre payment is really APPROVED (not just accepted)
+//
+// ⚠️ VERY IMPORTANT:
+// Check your actual Moolre response in the logs and adjust the field name
+// + approved value below. Common patterns might be:
+//   resp.tx_status / resp.transactionstatus / resp.payment_status
+//   values like "APPROVED", "SUCCESS", "SUCCESSFUL"
+function isMoolrePaymentApproved(resp) {
+  const status = Number(resp.status || 0);
+  const code = String(resp.code || "").trim().toUpperCase();
+
+  // Moolre success pattern based on your real logs
+  // status = 1  AND code = TR099  → APPROVED
+  if (status === 1 && code === "TR099") {
+    return true;
+  }
+
+  return false; // anything else → not approved
+}
+
 function renderPackages(state) {
   const start = state.packagePage * 5;
   const end = start + 5;
@@ -463,23 +483,17 @@ function handleSession(sessionId, input, msisdn, res) {
             const resp = response.data || {};
             console.log("✅ MOOLRE payment response:", resp);
 
-            const status = Number(resp.status || 0);
-            const code = String(resp.code || "").trim();
-
-            // status=1 means request accepted.
-            // With sessionid, OTP should be skipped and MoMo prompt should appear.
-            if (status !== 1) {
+            // ⛔ DO NOTHING if payment is not yet approved / failed
+            if (!isMoolrePaymentApproved(resp)) {
               console.log(
-                "❌ Moolre reported failure:",
-                resp.status,
-                code,
-                resp.message
+                "⏳ Payment not approved yet or failed. No DB insertion.\nResponse:",
+                resp
               );
               return;
             }
 
             console.log(
-              "✅ Moolre accepted request (status=1, code=" + code + "). Logging order..."
+              "✅ Payment APPROVED by Moolre. Logging order & revenue..."
             );
 
             if (state.isPlain) {
