@@ -411,38 +411,56 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 });
 
 
-// ===== MOOLRE CALLBACK (matches Wallet Settings URL) =====
-app.post("/api/moolre-callback", (req, res) => {
-  console.log("📥 Incoming Moolre callback:", req.body);
+app.post("/api/moolre/webhook", (req, res) => {
+  console.log("🔔 MOOLRE WEBHOOK RECEIVED:", req.body);
 
-  // Always reply 200 so Moolre is happy
-  res.status(200).send("OK");
+  const {
+    txstatus,
+    payer,
+    accountnumber,
+    amount,
+    externalref,
+    thirdpartyref,
+    name,
+    transactionid,
+    ts
+  } = req.body;
 
-  try {
-    const payload = req.body || {};
-
-    // Example: if they send transaction status + our externalref
-    const externalref = payload.externalref || payload.reference;
-    const status = (payload.status || "").toString().toLowerCase();
-
-    // If you want, you can update your DB here when payment is confirmed
-    // (Change this query to match your real schema)
-    if (status === "success" || status === "completed") {
-      db.query(
-        "UPDATE admin_orders SET status='paid' WHERE externalref = ?",
-        [externalref],
-        (err) => {
-          if (err) {
-            return console.error("❌ Failed to update order from callback:", err);
-          }
-          console.log("✅ Order marked as paid via callback:", externalref);
-        }
-      );
-    }
-  } catch (e) {
-    console.error("❌ Error handling Moolre callback:", e);
+  // Validate secret if provided
+  if (req.body.secret !== "YOUR_WEBHOOK_SECRET") {
+    console.log("❌ Invalid webhook secret");
+    return res.status(403).send("Forbidden");
   }
+
+  // Only process successful payments
+  if (Number(txstatus) !== 1) {
+    console.log("⏳ Payment not approved yet:", req.body);
+    return res.status(200).send("OK");
+  }
+
+  // Payment SUCCESS – now insert into admin_orders
+  const data_package = thirdpartyref;   // or map it depending on how you sent externalref
+  const network = "mtn";                // you must map this too
+  const vendor_id = 1;                  // Get from saved transaction table
+  const package_id = ts;
+
+  const sql = `
+    INSERT INTO admin_orders 
+    (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+    VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)
+  `;
+
+  db.query(sql, [vendor_id, payer, data_package, amount, network, package_id], (err) => {
+    if (err) {
+      console.error("❌ Error inserting admin_order:", err);
+      return res.status(500).send("DB Error");
+    }
+
+    console.log("✅ PAYMENT APPROVED via webhook – Order inserted successfully");
+    res.status(200).send("OK");
+  });
 });
+
 
 
 
