@@ -411,56 +411,174 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 });
 
 
-app.post("/api/moolre/webhook", (req, res) => {
+// ========== MOOLRE PAYMENT WEBHOOK ==========
+app.post("/api/moolre/webhook", express.json(), (req, res) => {
   console.log("🔔 MOOLRE WEBHOOK RECEIVED:", req.body);
 
   const {
-    txstatus,
-    payer,
-    accountnumber,
-    amount,
-    externalref,
-    thirdpartyref,
-    name,
-    transactionid,
-    ts
+    txstatus,       // 1 = success, 0 = pending, 2 = failed
+    payer,          // the number that paid
+    amount,         // e.g. "10.50"
+    externalref,    // TRX...
+    thirdpartyref,  // JSON string we sent from USSD
+    ts,             // timestamp
+    secret,         // webhook secret
   } = req.body;
 
-  // Validate secret if provided
-  if (req.body.secret !== "YOUR_WEBHOOK_SECRET") {
+  // 1) Validate secret (set this in Moolre + your env)
+  const expectedSecret = process.env.MOOLRE_WEBHOOK_SECRET || "";
+  if (expectedSecret && secret !== expectedSecret) {
     console.log("❌ Invalid webhook secret");
     return res.status(403).send("Forbidden");
   }
 
-  // Only process successful payments
+  // 2) Only process successful payments
   if (Number(txstatus) !== 1) {
-    console.log("⏳ Payment not approved yet:", req.body);
+    console.log("⏳ Payment not approved (txstatus =", txstatus, ") – ignoring.");
     return res.status(200).send("OK");
   }
 
-  // Payment SUCCESS – now insert into admin_orders
-  const data_package = thirdpartyref;   // or map it depending on how you sent externalref
-  const network = "mtn";                // you must map this too
-  const vendor_id = 1;                  // Get from saved transaction table
-  const package_id = ts;
+  // 3) Decode metadata from thirdpartyref
+  let meta;
+  try {
+    meta = JSON.parse(thirdpartyref || "{}");
+  } catch (e) {
+    console.error("❌ Failed to parse thirdpartyref JSON:", e.message);
+    return res.status(400).send("Bad thirdpartyref");
+  }
 
-  const sql = `
-    INSERT INTO admin_orders 
-    (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-    VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)
-  `;
+  const mode = meta.mode || "vendor";          // "plain" or "vendor"
+  const vendor_id = Number(meta.vendor_id || 1);
+  const data_package = meta.data_package;
+  const network = (meta.network || "").toLowerCase();
+  const recipient_number = meta.recipient_number || payer;
+  const momo_number = meta.momo_number || payer;
+  const amt = parseFloat(amount);
+  const package_id =
+    ts || new Date().toISOString().slice(0, 16).replace("T", " ");
 
-  db.query(sql, [vendor_id, payer, data_package, amount, network, package_id], (err) => {
-    if (err) {
-      console.error("❌ Error inserting admin_order:", err);
-      return res.status(500).send("DB Error");
+  if (!data_package || !network || isNaN(amt)) {
+    console.error("❌ Missing fields in webhook meta:", { meta, amount });
+    return res.status(400).send("Missing fields");
+  }
+
+  // 4) Run your original insertion logic here
+
+  // ---------- PLAIN MODE (*203*717#) ----------
+  if (mode === "plain") {
+    db.query(
+      `INSERT INTO admin_orders
+         (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+       VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+      [1, recipient_number, data_package, amt, network, package_id],
+      (err) => {
+        if (err) {
+          console.error("❌ Error inserting plain admin_order:", err);
+          // we still respond 200 so Moolre doesn't keep retrying forever
+        } else {
+          console.log("✅ Plain-mode admin_order logged.");
+        }
+
+        // total_revenue for plain mode
+        db.query(
+          `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+           VALUES (?, ?, ?, NOW())`,
+          [1, "AdminData USSD sale", amt],
+          (err2) => {
+            if (err2) {
+              console.error("❌ Error inserting plain total_revenue:", err2);
+            } else {
+              console.log("✅ Plain-mode revenue logged.");
+            }
+            return res.status(200).send("OK");
+          }
+        );
+      }
+    );
+
+    return; // important: don't fall through
+  }
+
+  // ---------- VENDOR MODE (*203*717*ID#) ----------
+  db.query(
+    `SELECT amount FROM admin_data_packages WHERE data_package = ? LIMIT 1`,
+    [data_package],
+    (err, rows) => {
+      if (err || !rows || !rows.length) {
+        console.error(
+          "❌ admin_data_packages lookup error:",
+          err || "no rows"
+        );
+        return res.status(500).send("Package lookup error");
+      }
+
+      const baseAmount = parseFloat(rows[0].amount); // admin cost
+      const revenueAmount = baseAmount;              // goes to total_revenue
+      const vendorAmount = parseFloat(
+        (amt - baseAmount).toFixed(2)                 // vendor’s share
+      );
+
+      if (vendorAmount < 0) {
+        console.warn("⚠️ Vendor amount is negative. Check pricing.", {
+          data_package,
+          amt,
+          baseAmount,
+        });
+      }
+
+      // Insert into admin_orders
+      db.query(
+        `INSERT INTO admin_orders
+           (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+         VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+        [vendor_id, recipient_number, data_package, amt, network, package_id],
+        (err1) => {
+          if (err1) {
+            console.error("❌ Error inserting vendor admin_order:", err1);
+          } else {
+            console.log("✅ Vendor admin_order logged.");
+          }
+
+          // Insert vendor wallet share
+          db.query(
+            `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
+             VALUES (?, ?, ?, NOW())`,
+            [vendor_id, momo_number, vendorAmount],
+            (err2) => {
+              if (err2) {
+                console.error("❌ Error inserting wallet_loads:", err2);
+              } else {
+                console.log("✅ Vendor wallet share logged.");
+              }
+
+              // Insert admin revenue
+              db.query(
+                `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+                 VALUES (?, ?, ?, NOW())`,
+                [
+                  vendor_id,
+                  `Admin base for ${network} ${data_package}`,
+                  revenueAmount,
+                ],
+                (err3) => {
+                  if (err3) {
+                    console.error(
+                      "❌ Error inserting vendor total_revenue:",
+                      err3
+                    );
+                  } else {
+                    console.log("✅ Vendor revenue logged.");
+                  }
+                  return res.status(200).send("OK");
+                }
+              );
+            }
+          );
+        }
+      );
     }
-
-    console.log("✅ PAYMENT APPROVED via webhook – Order inserted successfully");
-    res.status(200).send("OK");
-  });
+  );
 });
-
 
 
 
