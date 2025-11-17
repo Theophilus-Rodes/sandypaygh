@@ -124,26 +124,6 @@ function getChannelId(network) {
   }
 }
 
-// 🔹 NEW: Decide if Moolre payment is really APPROVED (not just accepted)
-//
-// ⚠️ VERY IMPORTANT:
-// Check your actual Moolre response in the logs and adjust the field name
-// + approved value below. Common patterns might be:
-//   resp.tx_status / resp.transactionstatus / resp.payment_status
-//   values like "APPROVED", "SUCCESS", "SUCCESSFUL"
-function isMoolrePaymentApproved(resp) {
-  const status = Number(resp.status || 0);
-  const code = String(resp.code || "").trim().toUpperCase();
-
-  // Moolre success pattern based on your real logs
-  // status = 1  AND code = TR099  → APPROVED
-  if (status === 1 && code === "TR099") {
-    return true;
-  }
-
-  return false; // anything else → not approved
-}
-
 function renderPackages(state) {
   const start = state.packagePage * 5;
   const end = start + 5;
@@ -422,7 +402,7 @@ function handleSession(sessionId, input, msisdn, res) {
 
     case "confirm":
       if (input === "1") {
-        // ====== PAYMENT VIA MOOLRE ======
+        // ====== PAYMENT VIA MOOLRE (INITIATE ONLY) ======
         const m = state.selectedPkg.match(/@ GHS\s*(\d+(\.\d+)?)/);
         const amount = m ? parseFloat(m[1]) : 0;
         if (!amount) return end("Invalid amount in package.");
@@ -432,12 +412,12 @@ function handleSession(sessionId, input, msisdn, res) {
         const momo_number = msisdn;
         const vendor_id = state.vendorId;
         const data_package = state.selectedPkg.split(" @")[0];
-        const package_id = new Date()
-          .toISOString()
-          .slice(0, 16)
-          .replace("T", " ");
 
-        // Close USSD immediately, then fire payment + DB in background
+        // You can keep this as a reference for matching in the webhook
+        const transactionId = `TRX${Date.now()}`.slice(0, 30); // max 30 chars
+
+        // Close USSD immediately, then fire payment in background.
+        // The REAL insertion happens in the Moolre webhook (txstatus=1).
         end(
           "✅ Please wait while the prompt loads...\nEnter your MoMo PIN to approve."
         );
@@ -448,7 +428,6 @@ function handleSession(sessionId, input, msisdn, res) {
           return;
         }
 
-        const transactionId = `TRX${Date.now()}`.slice(0, 30); // max 30 chars
         const payerLocal = toLocalMsisdn(momo_number); // 0XXXXXXXXX
 
         const payload = {
@@ -457,11 +436,13 @@ function handleSession(sessionId, input, msisdn, res) {
           currency: "GHS",
           payer: payerLocal,
           amount: Number(amount.toFixed(2)), // decimal, 2dp
-          externalref: transactionId,
+          externalref: transactionId, // come back in webhook
           reference: `Purchase of ${data_package}`,
           accountnumber: MOOLRE.wallet,
           // ⭐ This is what lets them skip OTP for USSD:
           sessionid: state.moolreSessionId,
+          // Optionally, you can pass vendor/package info in thirdpartyref if supported
+          // thirdpartyref: JSON.stringify({ vendor_id, data_package, network, recipient_number }),
         };
 
         console.log("🟡 Using Moolre auth:", {
@@ -481,136 +462,14 @@ function handleSession(sessionId, input, msisdn, res) {
           })
           .then((response) => {
             const resp = response.data || {};
-            console.log("✅ MOOLRE payment response:", resp);
+            console.log("✅ MOOLRE payment INIT response:", resp);
 
-            // ⛔ DO NOTHING if payment is not yet approved / failed
-            if (!isMoolrePaymentApproved(resp)) {
-              console.log(
-                "⏳ Payment not approved yet or failed. No DB insertion.\nResponse:",
-                resp
-              );
-              return;
-            }
-
+            // ❗ VERY IMPORTANT:
+            // DO NOT INSERT ANYTHING HERE.
+            // We only trust the webhook (txstatus = 1) to create orders.
             console.log(
-              "✅ Payment APPROVED by Moolre. Logging order & revenue..."
+              "⏳ Payment request sent. Waiting for Moolre webhook (txstatus=1) to log the order."
             );
-
-            if (state.isPlain) {
-              // ------- PLAIN MODE: *203*717# (AdminData) -------
-              db.query(
-                `INSERT INTO admin_orders
-                   (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-                 VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-                [1, recipient_number, data_package, amount, network, package_id],
-                (err) => {
-                  if (err)
-                    return console.error(
-                      "❌ Failed to log AdminData order:",
-                      err
-                    );
-                  console.log("✅ AdminData order logged.");
-
-                  db.query(
-                    `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-                     VALUES (?, ?, ?, NOW())`,
-                    [1, "AdminData USSD sale", amount],
-                    (e) =>
-                      e
-                        ? console.error("❌ Revenue insert:", e)
-                        : console.log("✅ Full revenue logged.")
-                  );
-                }
-              );
-            } else {
-              // ------- VENDOR MODE: *203*717*ID# with admin_data_packages cost -------
-
-              // First, look up the base cost in admin_data_packages
-              db.query(
-                `SELECT amount
-                   FROM admin_data_packages
-                  WHERE data_package = ?
-                  LIMIT 1`,
-                [data_package],
-                (err, rows) => {
-                  if (err) {
-                    console.error("❌ admin_data_packages lookup error:", err);
-                    return;
-                  }
-
-                  if (!rows || !rows.length) {
-                    console.error(
-                      "❌ Package doesn't match admin_data_packages for:",
-                      data_package
-                    );
-                    return;
-                  }
-
-                  const baseAmount = parseFloat(rows[0].amount); // admin cost
-                  const revenueAmount = baseAmount; // goes to total_revenue
-                  const vendorAmount = parseFloat(
-                    (amount - baseAmount).toFixed(2) // remainder goes to vendor
-                  );
-
-                  if (vendorAmount < 0) {
-                    console.warn(
-                      "⚠️ Vendor amount is negative. Check pricing.",
-                      { data_package, amount, baseAmount }
-                    );
-                  }
-
-                  // Insert order for tracking (full customer amount)
-                  db.query(
-                    `INSERT INTO admin_orders
-                       (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-                     VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-                    [
-                      vendor_id,
-                      recipient_number,
-                      data_package,
-                      amount,
-                      network,
-                      package_id,
-                    ],
-                    (err2) => {
-                      if (err2) {
-                        return console.error(
-                          "❌ Failed to log vendor admin_order:",
-                          err2
-                        );
-                      }
-                      console.log("✅ Vendor admin_order logged.");
-
-                      // Vendor's share (selling price - base cost)
-                      db.query(
-                        `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
-                         VALUES (?, ?, ?, NOW())`,
-                        [vendor_id, momo_number, vendorAmount],
-                        (e) =>
-                          e
-                            ? console.error("❌ Wallet load insert:", e)
-                            : console.log("✅ Vendor wallet share logged.")
-                      );
-
-                      // Admin/base cost into total_revenue
-                      db.query(
-                        `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-                         VALUES (?, ?, ?, NOW())`,
-                        [
-                          vendor_id,
-                          `Admin base for ${network} ${data_package}`,
-                          revenueAmount,
-                        ],
-                        (e) =>
-                          e
-                            ? console.error("❌ Revenue insert:", e)
-                            : console.log("✅ Admin base revenue logged.")
-                      );
-                    }
-                  );
-                }
-              );
-            }
           })
           .catch((err) => {
             console.error(
