@@ -343,39 +343,44 @@ return;
 
 // ================== PACKAGE STEP ==================
 case "package":
-  if (input === "0") {
+  // Treat empty input from Moolre as "#"
+  const trimmed = (input || "").trim();
+
+  // 0 = go back to network menu
+  if (trimmed === "0") {
     state.step = "network";
     return reply("Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel");
   }
 
-  if (input === "#") {
-    // ✅ make sure packageList exists
+  // "#" or ""  = next page
+  if (trimmed === "#" || trimmed === "") {
     if (!state.packageList || !state.packageList.length) {
       return end("No data packages available.");
     }
 
     const totalPages = Math.ceil(state.packageList.length / 5);
-    const safeCurrentPage =
+    const currentPage =
       Number.isInteger(state.packagePage) && state.packagePage >= 0
         ? state.packagePage
         : 0;
 
     state.packagePage =
-      (safeCurrentPage + 1) % Math.max(totalPages, 1);
+      (currentPage + 1) % Math.max(totalPages, 1);
 
     return reply(renderPackages(state));
   }
 
-  // normal numeric selection
+  // Any other number = select package
   {
-    const page = Number.isInteger(state.packagePage) && state.packagePage >= 0
-      ? state.packagePage
-      : 0;
+    const page =
+      Number.isInteger(state.packagePage) && state.packagePage >= 0
+        ? state.packagePage
+        : 0;
 
-    const index = parseInt(input, 10) - 1 + page * 5;
+    const idx = parseInt(trimmed, 10) - 1 + page * 5;
 
-    if (state.packageList && state.packageList[index]) {
-      state.selectedPkg = state.packageList[index];
+    if (state.packageList && state.packageList[idx]) {
+      state.selectedPkg = state.packageList[idx];
       state.step = "recipient";
       return reply(
         "Recipient\n1) Buy for self\n2) Buy for others\n0) Back"
@@ -383,9 +388,10 @@ case "package":
     }
 
     return reply(
-      "Invalid selection. Choose a valid number or type # for more."
+      "Invalid selection. Choose a valid number or press # for more."
     );
   }
+
 
 // ================== RECIPIENT STEP ==================
 case "recipient":
