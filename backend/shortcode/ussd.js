@@ -106,14 +106,13 @@ function getChannelId(network) {
   }
 }
 
+// ✅ Show ALL packages in one list, no "#. More"
 function renderPackages(state) {
-  const start = (state.packagePage || 0) * 5;
-  const end = start + 5;
   const list = Array.isArray(state.packageList) ? state.packageList : [];
-  const sliced = list.slice(start, end);
-  const pkgList = sliced.map((p, i) => `${i + 1}) ${p}`).join("\n") || "No packages.";
-  const moreOption = end < list.length ? "\n#. More" : "";
-  return `Packages (${(state.network || "").toUpperCase()})\n${pkgList}${moreOption}\n0) Back`;
+  const pkgList =
+    list.map((p, i) => `${i + 1}) ${p}`).join("\n") || "No packages.";
+
+  return `Packages (${(state.network || "").toUpperCase()})\n${pkgList}\n0) Back`;
 }
 
 function confirmMessage(state) {
@@ -326,7 +325,7 @@ function handleSession(sessionId, input, msisdn, res) {
                 state.packageList = rows.map(
                   (r) => `${r.data_package} @ GHS${r.amount}`
                 );
-                state.packagePage = 0;
+                state.packagePage = 0; // not used now but harmless
                 state.step = "package";
                 return reply(renderPackages(state));
               } catch (cbErr) {
@@ -362,7 +361,7 @@ function handleSession(sessionId, input, msisdn, res) {
               state.packageList = rows.map(
                 (r) => `${r.data_package} @ GHS${r.amount}`
               );
-              state.packagePage = 0;
+              state.packagePage = 0; // not used now but harmless
               state.step = "package";
               return reply(renderPackages(state));
             } catch (cbErr) {
@@ -379,9 +378,8 @@ function handleSession(sessionId, input, msisdn, res) {
         return;
       }
 
-      // ================== PACKAGE STEP ==================
+      // ================== PACKAGE STEP (NO PAGINATION) ==================
       case "package": {
-        // Moolre sends "" when you press # → treat "" as "#"
         const trimmed = (input || "").trim();
 
         // 0 = go back to network menu
@@ -390,31 +388,14 @@ function handleSession(sessionId, input, msisdn, res) {
           return reply("Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel");
         }
 
-        // "#" or ""  = next page
-        if (trimmed === "#" || trimmed === "") {
-          if (!state.packageList || !state.packageList.length) {
-            return end("No data packages available.");
-          }
-
-          const totalPages = Math.ceil(state.packageList.length / 5);
-          const currentPage =
-            Number.isInteger(state.packagePage) && state.packagePage >= 0
-              ? state.packagePage
-              : 0;
-
-          state.packagePage =
-            (currentPage + 1) % Math.max(totalPages, 1);
-
-          return reply(renderPackages(state));
+        // If user presses # or blank, just re-show list with hint
+        if (trimmed === "" || trimmed === "#") {
+          return reply(
+            "Please enter a number from the list.\n" + renderPackages(state)
+          );
         }
 
-        // Any other number = select package
-        const page =
-          Number.isInteger(state.packagePage) && state.packagePage >= 0
-            ? state.packagePage
-            : 0;
-
-        const idx = parseInt(trimmed, 10) - 1 + page * 5;
+        const idx = parseInt(trimmed, 10) - 1;
 
         if (
           Number.isInteger(idx) &&
@@ -430,7 +411,8 @@ function handleSession(sessionId, input, msisdn, res) {
         }
 
         return reply(
-          "Invalid selection. Choose a valid number or press # for more."
+          "Invalid selection. Choose a valid number from the list.\n" +
+            renderPackages(state)
         );
       }
 
