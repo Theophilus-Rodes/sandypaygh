@@ -107,21 +107,22 @@ function getChannelId(network) {
 }
 
 function renderPackages(state) {
-  const start = state.packagePage * 5;
+  const start = (state.packagePage || 0) * 5;
   const end = start + 5;
-  const sliced = state.packageList.slice(start, end);
-  const pkgList = sliced.map((p, i) => `${i + 1}) ${p}`).join("\n");
-  const moreOption = end < state.packageList.length ? "\n#. More" : "";
-  return `Packages (${state.network})\n${pkgList}${moreOption}\n0) Back`;
+  const list = Array.isArray(state.packageList) ? state.packageList : [];
+  const sliced = list.slice(start, end);
+  const pkgList = sliced.map((p, i) => `${i + 1}) ${p}`).join("\n") || "No packages.";
+  const moreOption = end < list.length ? "\n#. More" : "";
+  return `Packages (${(state.network || "").toUpperCase()})\n${pkgList}${moreOption}\n0) Back`;
 }
 
 function confirmMessage(state) {
-  const [packageName, price] = state.selectedPkg.split(" @ ");
+  const [packageName, price] = String(state.selectedPkg || "").split(" @ ");
   return `Confirm Purchase
 Recipient: ${state.recipient}
-Network: ${state.network}
-Package: ${packageName}
-Price: ${price}
+Network: ${(state.network || "").toUpperCase()}
+Package: ${packageName || ""}
+Price: ${price || ""}
 
 1) Confirm
 2) Cancel`;
@@ -219,307 +220,354 @@ function handleSession(sessionId, input, msisdn, res) {
     isPlain: state.isPlain,
   });
 
-  const reply = (msg) => res.json({ message: msg, reply: true });
-  const end = (msg) => res.json({ message: msg, reply: false });
-try {
+  const reply = (msg) => {
+    console.log("📤 USSD reply:", { sessionId, step: state.step, msg });
+    return res.json({ message: msg, reply: true });
+  };
+  const end = (msg) => {
+    console.log("📤 USSD end:", { sessionId, step: state.step, msg });
+    return res.json({ message: msg, reply: false });
+  };
 
-  switch (state.step) {
-    case "start": {
-      state.step = "menu";
-      const brand = state.brandName || "SandyPay";
-      return reply(
-        `${brand}.\nNB: The Data Is NOT INSTANT.\n It takes between 5min to 24hrs to deliver\n0. Cancel\n\n1. Buy Data\n2. Contact Us`
-      );
-    }
-
-    case "menu": {
-      if (input === "1") {
-        state.step = "network";
-        return reply("Network\n1) MTN\n2) AirtelTigo\n3) Telecel\n0) Back");
+  try {
+    switch (state.step) {
+      // ================== START ==================
+      case "start": {
+        state.step = "menu";
+        const brand = state.brandName || "SandyPay";
+        return reply(
+          `${brand}.\nNB: The Data Is NOT INSTANT.\n It takes between 5min to 24hrs to deliver\n0. Cancel\n\n1. Buy Data\n2. Contact Us`
+        );
       }
 
-      if (input === "2") {
-        if (!state.vendorId || state.isPlain) {
-          return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
+      // ================== MENU ==================
+      case "menu": {
+        const choice = (input || "").trim();
+
+        if (choice === "1") {
+          state.step = "network";
+          return reply("Network\n1) MTN\n2) AirtelTigo\n3) Telecel\n0) Back");
         }
 
+        if (choice === "2") {
+          if (!state.vendorId || state.isPlain) {
+            return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
+          }
+
+          db.query(
+            "SELECT phone FROM users WHERE id = ? LIMIT 1",
+            [state.vendorId],
+            (err, rows) => {
+              if (err) {
+                console.error("❌ MySQL error (Contact vendor):", err);
+                return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
+              }
+
+              if (!rows || !rows.length || !rows[0].phone) {
+                return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
+              }
+
+              const phone = rows[0].phone;
+              return end(`Contact us:\n${phone}`);
+            }
+          );
+          return;
+        }
+
+        if (choice === "0") {
+          state.step = "start";
+          return reply("Cancelled.\n1. Buy Data\n2. Contact Us");
+        }
+
+        return reply("Invalid option. Choose:\n1) Buy Data\n2) Contact Us");
+      }
+
+      // ================== NETWORK ==================
+      case "network": {
+        const choice = (input || "").trim();
+
+        if (choice === "1") state.network = "mtn";
+        else if (choice === "2") state.network = "airteltigo";
+        else if (choice === "3") state.network = "telecel";
+        else if (choice === "0") {
+          state.step = "menu";
+          return reply("Back to menu:\n1. Buy Data\n2. Contact Us");
+        } else {
+          return reply(
+            "Invalid network. Choose:\n1) MTN\n2) AirtelTigo\n3) Telecel"
+          );
+        }
+
+        // PLAIN MODE → AdminData
+        if (state.isPlain) {
+          const net = state.network.toLowerCase();
+          db.query(
+            `SELECT 
+               package_name AS data_package, 
+               price AS amount,
+               network
+             FROM AdminData
+             WHERE status = 'active' AND network = ?
+             ORDER BY FIELD(network, 'mtn', 'airteltigo', 'telecel'), id DESC`,
+            [net],
+            (err, rows) => {
+              try {
+                if (err) {
+                  console.error("❌ MySQL error (AdminData):", err);
+                  return end(
+                    "Service temporarily unavailable. Try again later."
+                  );
+                }
+
+                if (!rows || !rows.length) {
+                  return end("No data packages available for this network.");
+                }
+
+                state.packageList = rows.map(
+                  (r) => `${r.data_package} @ GHS${r.amount}`
+                );
+                state.packagePage = 0;
+                state.step = "package";
+                return reply(renderPackages(state));
+              } catch (cbErr) {
+                console.error(
+                  "❌ USSD callback error (AdminData packages):",
+                  cbErr
+                );
+                return end(
+                  "Service temporarily unavailable. Try again later."
+                );
+              }
+            }
+          );
+          return;
+        }
+
+        // VENDOR MODE → data_packages
+        const net = state.network.toLowerCase();
         db.query(
-          "SELECT phone FROM users WHERE id = ? LIMIT 1",
-          [state.vendorId],
+          `SELECT data_package, amount
+           FROM data_packages
+           WHERE vendor_id = ? AND network = ? AND status = 'available'`,
+          [state.vendorId, net],
           (err, rows) => {
-            if (err) {
-              console.error("❌ MySQL error (Contact vendor):", err);
-              return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
-            }
+            try {
+              if (err) {
+                console.error("❌ MySQL error (data_packages):", err);
+                return end("Service temporarily unavailable. Try again later.");
+              }
+              if (!rows || !rows.length)
+                return end("No data packages available.");
 
-            if (!rows || !rows.length || !rows[0].phone) {
-              return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
+              state.packageList = rows.map(
+                (r) => `${r.data_package} @ GHS${r.amount}`
+              );
+              state.packagePage = 0;
+              state.step = "package";
+              return reply(renderPackages(state));
+            } catch (cbErr) {
+              console.error(
+                "❌ USSD callback error (vendor packages):",
+                cbErr
+              );
+              return end(
+                "Service temporarily unavailable. Try again later."
+              );
             }
-
-            const phone = rows[0].phone;
-            return end(`Contact us:\n${phone}`);
           }
         );
         return;
       }
 
-      if (input === "0") {
-        state.step = "start";
-        return reply("Cancelled.\n1. Buy Data\n2. Contact Us");
-      }
+      // ================== PACKAGE STEP ==================
+      case "package": {
+        // Moolre sends "" when you press # → treat "" as "#"
+        const trimmed = (input || "").trim();
 
-      return reply("Invalid option. Choose:\n1) Buy Data\n2) Contact Us");
-    }
+        // 0 = go back to network menu
+        if (trimmed === "0") {
+          state.step = "network";
+          return reply("Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel");
+        }
 
-    case "network":
-      if (input === "1") state.network = "MTN";
-      else if (input === "2") state.network = "AirtelTigo";
-      else if (input === "3") state.network = "Telecel";
-      else if (input === "0") {
-        state.step = "menu";
-        return reply("Back to menu:\n1. Buy Data\n2. Contact Us");
-      } else
+        // "#" or ""  = next page
+        if (trimmed === "#" || trimmed === "") {
+          if (!state.packageList || !state.packageList.length) {
+            return end("No data packages available.");
+          }
+
+          const totalPages = Math.ceil(state.packageList.length / 5);
+          const currentPage =
+            Number.isInteger(state.packagePage) && state.packagePage >= 0
+              ? state.packagePage
+              : 0;
+
+          state.packagePage =
+            (currentPage + 1) % Math.max(totalPages, 1);
+
+          return reply(renderPackages(state));
+        }
+
+        // Any other number = select package
+        const page =
+          Number.isInteger(state.packagePage) && state.packagePage >= 0
+            ? state.packagePage
+            : 0;
+
+        const idx = parseInt(trimmed, 10) - 1 + page * 5;
+
+        if (
+          Number.isInteger(idx) &&
+          idx >= 0 &&
+          state.packageList &&
+          state.packageList[idx]
+        ) {
+          state.selectedPkg = state.packageList[idx];
+          state.step = "recipient";
+          return reply(
+            "Recipient\n1) Buy for self\n2) Buy for others\n0) Back"
+          );
+        }
+
         return reply(
-          "Invalid network. Choose:\n1) MTN\n2) AirtelTigo\n3) Telecel"
+          "Invalid selection. Choose a valid number or press # for more."
         );
-
-      // PLAIN MODE → AdminData
-  if (state.isPlain) {
-  db.query(
-    `SELECT 
-        package_name AS data_package, 
-        price AS amount,
-        network
-     FROM AdminData
-     WHERE status = 'active' AND network = ?
-     ORDER BY FIELD(network, 'mtn', 'airteltigo', 'telecel'), id DESC`,
-    [state.network],   // <-- filter by selected network
-    (err, rows) => {
-      if (err) {
-        console.error("❌ MySQL error (AdminData):", err);
-        return end("Service temporarily unavailable. Try again later.");
       }
 
-      if (!rows || !rows.length) {
-        return end("No data packages available for this network.");
-      }
+      // ================== RECIPIENT STEP ==================
+      case "recipient": {
+        const choice = (input || "").trim();
 
-      // Format packages: "1GB @ GHS6"
-      state.packageList = rows.map(
-        (r) => `${r.data_package} @ GHS${r.amount}`
-      );
-
-      state.packagePage = 0;
-      state.step = "package";
-      return reply(renderPackages(state));
-    }
-  );
-
-
-        return;
-      }
-
-      // VENDOR MODE → data_packages
-      db.query(
-  `SELECT data_package, amount
-   FROM data_packages
-   WHERE vendor_id = ? AND network = ? AND status = 'available'`,
-  [state.vendorId, state.network],
-  (err, rows) => {
-    if (err) {
-      console.error("❌ MySQL error:", err);
-      return end("Service temporarily unavailable. Try again later.");
-    }
-    if (!rows || !rows.length) return end("No data packages available.");
-
-    state.packageList = rows.map(
-      (r) => `${r.data_package} @ GHS${r.amount}`
-    );
-    state.packagePage = 0;          // ✅ always start at page 0
-    state.step = "package";
-    return reply(renderPackages(state));
-  }
-);
-return;
-
-// ================== PACKAGE STEP ==================
-case "package":
-  // Treat empty input from Moolre as "#"
-  const trimmed = (input || "").trim();
-
-  // 0 = go back to network menu
-  if (trimmed === "0") {
-    state.step = "network";
-    return reply("Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel");
-  }
-
-  // "#" or ""  = next page
-  if (trimmed === "#" || trimmed === "") {
-    if (!state.packageList || !state.packageList.length) {
-      return end("No data packages available.");
-    }
-
-    const totalPages = Math.ceil(state.packageList.length / 5);
-    const currentPage =
-      Number.isInteger(state.packagePage) && state.packagePage >= 0
-        ? state.packagePage
-        : 0;
-
-    state.packagePage =
-      (currentPage + 1) % Math.max(totalPages, 1);
-
-    return reply(renderPackages(state));
-  }
-
-  // Any other number = select package
-  {
-    const page =
-      Number.isInteger(state.packagePage) && state.packagePage >= 0
-        ? state.packagePage
-        : 0;
-
-    const idx = parseInt(trimmed, 10) - 1 + page * 5;
-
-    if (state.packageList && state.packageList[idx]) {
-      state.selectedPkg = state.packageList[idx];
-      state.step = "recipient";
-      return reply(
-        "Recipient\n1) Buy for self\n2) Buy for others\n0) Back"
-      );
-    }
-
-    return reply(
-      "Invalid selection. Choose a valid number or press # for more."
-    );
-  }
-  
-
-
-// ================== RECIPIENT STEP ==================
-case "recipient":
-  if (input === "1") {
-    state.recipient = msisdn;
-    state.step = "confirm";
-    return reply(confirmMessage(state));
-  }
-  if (input === "2") {
-    state.step = "other_number";
-    return reply("Enter recipient number:");
-  }
-  if (input === "0") {
-    state.step = "package";
-    return reply(renderPackages(state));
-  }
-  return reply(
-    "Invalid option. Choose:\n1) Buy for self\n2) Buy for others\n0) Back"
-  );
-
-  
-  
-
-
-  
-    case "other_number":
-      state.recipient = input;
-      state.step = "confirm";
-      return reply(confirmMessage(state));
-
-    case "confirm":
-      if (input === "1") {
-        // ====== INITIATE PAYMENT VIA MOOLRE (NO DB INSERT HERE) ======
-        const m = state.selectedPkg.match(/@ GHS\s*(\d+(\.\d+)?)/);
-        const amount = m ? parseFloat(m[1]) : 0;
-        if (!amount) return end("Invalid amount in package.");
-
-        const network = state.network.toLowerCase();
-        const recipient_number = state.recipient;
-        const momo_number = msisdn;
-        const vendor_id = state.vendorId;
-        const data_package = state.selectedPkg.split(" @")[0];
-
-        const transactionId = `TRX${Date.now()}`.slice(0, 30);
-
-        // Close USSD first
-        end(
-          "✅ Please wait while the prompt loads...\nEnter your MoMo PIN to approve."
+        if (choice === "1") {
+          state.recipient = msisdn;
+          state.step = "confirm";
+          return reply(confirmMessage(state));
+        }
+        if (choice === "2") {
+          state.step = "other_number";
+          return reply("Enter recipient number:");
+        }
+        if (choice === "0") {
+          state.step = "package";
+          return reply(renderPackages(state));
+        }
+        return reply(
+          "Invalid option. Choose:\n1) Buy for self\n2) Buy for others\n0) Back"
         );
+      }
 
-        const channelId = getChannelId(network);
-        if (!channelId) {
-          console.error("❌ Unsupported network for Moolre channel:", network);
+      // ================== OTHER NUMBER ==================
+      case "other_number": {
+        state.recipient = input;
+        state.step = "confirm";
+        return reply(confirmMessage(state));
+      }
+
+      // ================== CONFIRM (PAYMENT) ==================
+      case "confirm": {
+        const choice = (input || "").trim();
+
+        if (choice === "1") {
+          // ====== INITIATE PAYMENT VIA MOOLRE (NO DB INSERT HERE) ======
+          const m = String(state.selectedPkg || "").match(
+            /@ GHS\s*(\d+(\.\d+)?)/i
+          );
+          const amount = m ? parseFloat(m[1]) : 0;
+          if (!amount) return end("Invalid amount in package.");
+
+          const network = (state.network || "").toLowerCase();
+          const recipient_number = state.recipient;
+          const momo_number = msisdn;
+          const vendor_id = state.vendorId;
+          const data_package = String(state.selectedPkg || "").split(" @")[0];
+
+          const transactionId = `TRX${Date.now()}`.slice(0, 30);
+
+          // Close USSD first
+          end(
+            "✅ Please wait while the prompt loads...\nEnter your MoMo PIN to approve."
+          );
+
+          const channelId = getChannelId(network);
+          if (!channelId) {
+            console.error(
+              "❌ Unsupported network for Moolre channel:",
+              network
+            );
+            return;
+          }
+
+          const payerLocal = toLocalMsisdn(momo_number);
+
+          const payload = {
+            type: 1,
+            channel: channelId,
+            currency: "GHS",
+            payer: payerLocal,
+            amount: Number(amount.toFixed(2)),
+            externalref: transactionId,
+            reference: `Purchase of ${data_package}`,
+            accountnumber: MOOLRE.wallet,
+            sessionid: state.moolreSessionId,
+
+            // 🔹 This goes back in webhook as "thirdpartyref"
+            thirdpartyref: JSON.stringify({
+              mode: state.isPlain ? "plain" : "vendor",
+              vendor_id,
+              data_package,
+              network,
+              recipient_number,
+              momo_number,
+            }),
+          };
+
+          console.log("🟡 Using Moolre auth:", {
+            user: MOOLRE.user,
+            pubkeyStart: MOOLRE.pubkey.slice(0, 20) + "...",
+            wallet: MOOLRE.wallet,
+          });
+          console.log("📤 Sending to MOOLRE:", payload);
+
+          axios
+            .post(MOOLRE.url, payload, {
+              headers: {
+                "Content-Type": "application/json",
+                "X-API-USER": MOOLRE.user,
+                "X-API-PUBKEY": MOOLRE.pubkey,
+              },
+            })
+            .then((response) => {
+              const resp = response.data || {};
+              console.log("✅ MOOLRE payment INIT response:", resp);
+              console.log(
+                "⏳ Payment request sent. Waiting for webhook (txstatus=1) to log the order."
+              );
+            })
+            .catch((err) => {
+              console.error(
+                "❌ MOOLRE error:",
+                err.response?.data || err.message
+              );
+            });
+
           return;
         }
 
-        const payerLocal = toLocalMsisdn(momo_number);
-
-        const payload = {
-          type: 1,
-          channel: channelId,
-          currency: "GHS",
-          payer: payerLocal,
-          amount: Number(amount.toFixed(2)),
-          externalref: transactionId,
-          reference: `Purchase of ${data_package}`,
-          accountnumber: MOOLRE.wallet,
-          sessionid: state.moolreSessionId,
-
-          // 🔹 This goes back in webhook as "thirdpartyref"
-          thirdpartyref: JSON.stringify({
-            mode: state.isPlain ? "plain" : "vendor",
-            vendor_id,
-            data_package,
-            network,
-            recipient_number,
-            momo_number,
-          }),
-        };
-
-        console.log("🟡 Using Moolre auth:", {
-          user: MOOLRE.user,
-          pubkeyStart: MOOLRE.pubkey.slice(0, 20) + "...",
-          wallet: MOOLRE.wallet,
-        });
-        console.log("📤 Sending to MOOLRE:", payload);
-
-        axios
-          .post(MOOLRE.url, payload, {
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-USER": MOOLRE.user,
-              "X-API-PUBKEY": MOOLRE.pubkey,
-            },
-          })
-          .then((response) => {
-            const resp = response.data || {};
-            console.log("✅ MOOLRE payment INIT response:", resp);
-            console.log(
-              "⏳ Payment request sent. Waiting for webhook (txstatus=1) to log the order."
-            );
-          })
-          .catch((err) => {
-            console.error(
-              "❌ MOOLRE error:",
-              err.response?.data || err.message
-            );
-          });
-
-        return;
+        if (choice === "2") return end("Transaction cancelled.");
+        return reply("Invalid input.\n1) Confirm\n2) Cancel");
       }
 
-      if (input === "2") return end("Transaction cancelled.");
-      return reply("Invalid input.\n1) Confirm\n2) Cancel");
-
-    default:
-      state.step = "start";
-      return reply("Restarting...\n1. Buy Data\n2. Contact Us");
-  }
-}
-
- catch (err) {
+      // ================== DEFAULT ==================
+      default: {
+        state.step = "start";
+        return reply("Restarting...\n1. Buy Data\n2. Contact Us");
+      }
+    }
+  } catch (err) {
     console.error("❌ USSD runtime error:", err);
     return end("Service temporarily unavailable. Try again later.");
-  }}
-
+  }
+}
 
 // ====== USSD ROUTE (Moolre) ======
 router.post("/", (req, res) => {
