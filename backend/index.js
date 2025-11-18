@@ -412,44 +412,44 @@ async function confirmMomoHandler(req, res) {
     let lastStatus = null;
 
     for (let i = 0; i < 5 && !approved; i++) {
-      const statusPayload = {
-        type: 1,
-        idtype: 3,                 // using externalref
-        id: reference,
-        accountnumber: MOOLRE_SESSIONS.wallet,
-      };
+  const statusPayload = {
+    type: 1,                          // 1 = payment
+    idtype: 1,                        // ✅ 1 = use external reference
+    id: reference,                    // the same reference you used as externalref
+    accountnumber: MOOLRE_SESSIONS.wallet,
+  };
 
-      const statusRes = await axios.post(
-        MOOLRE_SESSIONS.statusUrl,
-        statusPayload,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-API-USER": MOOLRE_SESSIONS.user,
-            // 🔑 Use SAME public key as INIT (exactly like docs example)
-            "X-API-PUBKEY": MOOLRE_SESSIONS.pubkey,
-          },
-          timeout: 15000,
-        }
-      );
-
-      lastStatus = statusRes.data;
-      console.log(`🕒 Moolre status check for ${reference}:`, lastStatus);
-
-      const tx =
-        Number(
-          lastStatus?.data?.txstatus != null
-            ? lastStatus.data.txstatus
-            : lastStatus.txstatus
-        ) || 0;
-
-      if (tx === 1) {
-        approved = true;
-        break;
-      }
-
-      await sleep(3000);
+  const statusRes = await axios.post(
+    MOOLRE_SESSIONS.statusUrl,
+    statusPayload,
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-USER": MOOLRE_SESSIONS.user,
+        "X-API-PUBKEY": MOOLRE_SESSIONS.pubkey,   // same as INIT
+      },
+      timeout: 15000,
     }
+  );
+
+  lastStatus = statusRes.data;
+  console.log(`🕒 Moolre status check for ${reference}:`, lastStatus);
+
+  const tx =
+    Number(
+      lastStatus?.data?.txstatus != null
+        ? lastStatus.data.txstatus
+        : lastStatus.txstatus
+    ) || 0;
+
+  if (tx === 1) {
+    approved = true;
+    break;
+  }
+
+  await sleep(3000);
+}
+
 
     if (!approved) {
       return res.status(400).json({
