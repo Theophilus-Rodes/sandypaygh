@@ -465,6 +465,32 @@ function handleSession(sessionId, input, msisdn, res) {
 
           const transactionId = `TRX${Date.now()}`.slice(0, 30);
 
+
+           // 👉 Save pending order in DB using this externalref
+          db.query(
+            `INSERT INTO moolre_temp_orders
+               (externalref, mode, vendor_id, data_package, network,
+                recipient_number, momo_number, amount)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              transactionId,
+              state.isPlain ? "plain" : "vendor",
+              vendor_id,
+              data_package,
+              network,
+              recipient_number,
+              momo_number,
+              amount,
+            ],
+            (err) => {
+              if (err) {
+                console.error("❌ moolre_temp_orders insert error:", err);
+              } else {
+                console.log("✅ Temp order saved for externalref:", transactionId);
+              }
+            }
+          );
+
           // Close USSD first
           end(
             "✅ Please wait while the prompt loads...\nEnter your MoMo PIN to approve."
