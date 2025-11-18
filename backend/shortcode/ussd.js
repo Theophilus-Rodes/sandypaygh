@@ -300,14 +300,14 @@ function handleSession(sessionId, input, msisdn, res) {
         // PLAIN MODE → AdminData
         if (state.isPlain) {
           const net = state.network.toLowerCase();
-        db.query(
+ db.query(
   `SELECT 
      package_name AS data_package, 
      price AS amount,
      network
    FROM AdminData
    WHERE status = 'active' AND network = ?
-   ORDER BY price ASC`,
+   ORDER BY package_name ASC`,
   [net],
             (err, rows) => {
               try {
@@ -344,11 +344,11 @@ function handleSession(sessionId, input, msisdn, res) {
 
         // VENDOR MODE → data_packages
         const net = state.network.toLowerCase();
-       db.query(
+  db.query(
   `SELECT data_package, amount
    FROM data_packages
    WHERE vendor_id = ? AND network = ? AND status = 'available'
-   ORDER BY amount ASC`,
+   ORDER BY data_package ASC`,
   [state.vendorId, net],
           (err, rows) => {
             try {
