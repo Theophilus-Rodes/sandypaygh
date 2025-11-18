@@ -640,6 +640,139 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
         return;
       }
 
+
+
+
+
+// ==== CONFIRM PAYMENT & CREDIT HITS: /api/sessions/confirm-momo ====
+async function confirmMomoHandler(req, res) {
+  try {
+    const {
+      vendor_id,
+      reference,
+      amount,
+      momo_number,
+      network,
+      computed_hits,
+    } = req.body;
+
+    if (!vendor_id || !reference) {
+      return res
+        .status(400)
+        .json({ error: "vendor_id and reference are required" });
+    }
+
+    const HIT_COST = 0.02;
+    const hits = Number.isFinite(Number(computed_hits))
+      ? Math.max(0, Math.floor(Number(computed_hits)))
+      : Math.floor(Number(amount || 0) / HIT_COST);
+
+    let approved = false;
+    let lastStatus = null;
+
+    for (let i = 0; i < 5 && !approved; i++) {
+      const statusPayload = {
+        type: 1,
+        idtype: 3,
+        id: reference,
+        accountnumber: MOOLRE_SESSIONS.wallet,
+      };
+
+      const statusRes = await axios.post(
+        MOOLRE_SESSIONS.statusUrl,
+        statusPayload,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-USER": MOOLRE_SESSIONS.user,
+            "X-API-KEY": MOOLRE_SESSIONS.apiKey,
+          },
+          timeout: 15000,
+        }
+      );
+
+      lastStatus = statusRes.data || {};
+      console.log(
+        `🕒 Moolre status check for ${reference}:`,
+        lastStatus
+      );
+
+      const tx =
+        Number(
+          lastStatus?.data?.txstatus != null
+            ? lastStatus.data.txstatus
+            : lastStatus.txstatus
+        ) || 0;
+
+      if (tx === 1) {
+        approved = true;
+        break;
+      }
+
+      await sleep(3000);
+    }
+
+    if (!approved) {
+      console.log(
+        "❌ Moolre payment for sessions NOT approved. No DB insert. Last status:",
+        lastStatus
+      );
+      return res.status(400).json({
+        error:
+          "Payment not approved yet. Complete the OTP verification on your phone and try again.",
+        status: lastStatus,
+      });
+    }
+
+    const [result] = await db
+      .promise()
+      .query(
+        `INSERT INTO session_purchases
+           (vendor_id, source, amount, hits, reference, status, meta_json)
+         VALUES (?, 'momo', ?, ?, ?, 'completed',
+           JSON_OBJECT('network', ?, 'momo', ?, 'verified', true))`,
+        [
+          vendor_id,
+          amount || 0,
+          hits,
+          reference,
+          network || "",
+          momo_number || "",
+        ]
+      );
+
+    console.log("✅ Session purchase credited:", {
+      vendor_id,
+      hits,
+      reference,
+    });
+
+    return res.json({
+      id: result.insertId,
+      reference,
+      status: "completed",
+      hits,
+    });
+  } catch (err) {
+    console.error(
+      "❌ /api/sessions/confirm-momo error:",
+      err.response?.data || err.message
+    );
+    return res.status(500).json({
+      error: "Confirmation error",
+      details: err.response?.data || err.message,
+    });
+  }
+}
+
+// expose both routes if you want
+app.post("/sessions/confirm-momo", confirmMomoHandler);
+app.post("/api/sessions/confirm-momo", confirmMomoHandler);
+
+
+
+
+
       // ---------- VENDOR MODE (*203*717*ID#) ----------
       db.query(
         `SELECT amount FROM admin_data_packages WHERE data_package = ? LIMIT 1`,
@@ -892,7 +1025,7 @@ app.post("/api/register", async (req, res) => {
             if (insertErr) return res.status(500).send("Registration failed.");
 
             const userId = result.insertId;
-           const ussdCode = generateUssdCode("*203*717#", userId);
+           const ussdCode = generateUssdCode("*203*888#", userId);
            const publicLink = `https://sandipay.co/index1.html?id=${userId}`;
 
 
