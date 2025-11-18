@@ -300,15 +300,15 @@ function handleSession(sessionId, input, msisdn, res) {
         // PLAIN MODE → AdminData
         if (state.isPlain) {
           const net = state.network.toLowerCase();
-          db.query(
-            `SELECT 
-               package_name AS data_package, 
-               price AS amount,
-               network
-             FROM AdminData
-             WHERE status = 'active' AND network = ?
-             ORDER BY FIELD(network, 'mtn', 'airteltigo', 'telecel'), id DESC`,
-            [net],
+        db.query(
+  `SELECT 
+     package_name AS data_package, 
+     price AS amount,
+     network
+   FROM AdminData
+   WHERE status = 'active' AND network = ?
+   ORDER BY price ASC`,
+  [net],
             (err, rows) => {
               try {
                 if (err) {
@@ -344,11 +344,12 @@ function handleSession(sessionId, input, msisdn, res) {
 
         // VENDOR MODE → data_packages
         const net = state.network.toLowerCase();
-        db.query(
-          `SELECT data_package, amount
-           FROM data_packages
-           WHERE vendor_id = ? AND network = ? AND status = 'available'`,
-          [state.vendorId, net],
+       db.query(
+  `SELECT data_package, amount
+   FROM data_packages
+   WHERE vendor_id = ? AND network = ? AND status = 'available'
+   ORDER BY amount ASC`,
+  [state.vendorId, net],
           (err, rows) => {
             try {
               if (err) {
