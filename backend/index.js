@@ -271,7 +271,7 @@ const MOOLRE_SESSIONS = {
   statusUrl: "https://api.moolre.com/open/transact/status",
   user: process.env.MOOLRE_USER   || "acheamp",
   pubkey: process.env.MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjU0OSwiZXhwIjoxOTI1MDA5OTk5fQ.YNoLN19xWWZRyr2Gdy_2DexpGLZv4V9yATnyYSFef2M",      // for INIT
-  apiKey: process.env.MOOLRE_API_KEY || "9ILLNsdyPt6deXM1YWjpFzd1XIOPwDYXDHJKN930kGuw1Ndt2o4tF8uNUi5IhGzG",    // for STATUS
+  apiKey: process.env.MOOLRE_API_KEY || "9ILLNsdyPt6deXM1YWjpFzd1XIOPwDYXDHJKN930kGuw1Ndt2o4tF8uNUi5IhGzG",   
   wallet: process.env.MOOLRE_WALLET  || "10654906056819"
 };
 
@@ -398,11 +398,11 @@ app.post("/api/sessions/confirm-momo", async (req, res) => {
         { reference },
         {
           headers: {
-            "Content-Type": "application/json",
-            "X-API-USER": MOOLRE_SESSIONS.user,
-            "X-API-PUBKEY": MOOLRE_SESSIONS.pubkey
-          },
-          timeout: 15000
+      "Content-Type": "application/json",
+      "X-API-USER": MOOLRE_SESSIONS.user,
+      "X-API-KEY":  MOOLRE_SESSIONS.apiKey     // ✅ USE API KEY HERE
+    },
+    timeout: 15000
         }
       );
 
