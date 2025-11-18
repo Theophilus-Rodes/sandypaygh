@@ -266,47 +266,69 @@ app.post("/api/sessions/purchase", async (req, res) => {
 // ========= HELPERS FOR SESSION PURCHASE (MOOLRE VERSION) =========
 
 // ==== MOOLRE CONFIG FOR SESSION PURCHASES ====
+// ============ Moolre config for Session Purchases ============
 const MOOLRE_SESSIONS = {
   payUrl: "https://api.moolre.com/open/transact/payment",
   statusUrl: "https://api.moolre.com/open/transact/status",
-  user: process.env.MOOLRE_USER   || "acheamp",
-  pubkey: process.env.MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjU0OSwiZXhwIjoxOTI1MDA5OTk5fQ.YNoLN19xWWZRyr2Gdy_2DexpGLZv4V9yATnyYSFef2M",      // for INIT
-  apiKey: process.env.MOOLRE_API_KEY || "9ILLNsdyPt6deXM1YWjpFzd1XIOPwDYXDHJKN930kGuw1Ndt2o4tF8uNUi5IhGzG",   
-  wallet: process.env.MOOLRE_WALLET  || "10654906056819"
+  user: process.env.MOOLRE_USER || "acheamp",
+  // Used for INIT (sending OTP / payment request)
+  pubkey:
+    process.env.MOOLRE_PUBKEY ||
+    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjU0OSwiZXhwIjoxOTI1MDA5OTk5fQ.YNoLN19xWWZRyr2Gdy_2DexpGLZv4V9yATnyYSFef2M",
+  // Used for STATUS checks
+  apiKey:
+    process.env.MOOLRE_API_KEY ||
+    "9ILLNsdyPt6deXM1YWjpFzd1XIOPwDYXDHJKN930kGuw1Ndt2o4tF8uNUi5IhGzG",
+  // Your GHS wallet number
+  wallet: process.env.MOOLRE_WALLET || "10654906056819",
 };
 
 function moolreChannelId(network) {
   switch (String(network || "").toLowerCase()) {
-    case "mtn":       return 13;
+    case "mtn":
+      return 13;
     case "airteltigo":
     case "airtel":
-    case "at":        return 7;
+    case "at":
+      return 7;
     case "vodafone":
     case "telecel":
-    case "voda":      return 6;
-    default:          return null;
+    case "voda":
+      return 6;
+    default:
+      return null;
   }
 }
 
 function normalizeLocalMomo(msisdn) {
   const digits = String(msisdn || "").replace(/[^\d]/g, "");
   if (digits.startsWith("0") && digits.length >= 9) return digits;
-  if (digits.startsWith("233") && digits.length >= 12) return "0" + digits.slice(3);
-  if (digits.startsWith("00233") && digits.length >= 14) return "0" + digits.slice(5);
+  if (digits.startsWith("233") && digits.length >= 12)
+    return "0" + digits.slice(3);
+  if (digits.startsWith("00233") && digits.length >= 14)
+    return "0" + digits.slice(5);
   return digits; // fallback
 }
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ==== INIT PAYMENT: /api/sessions/purchase-momo ====
 app.post("/api/sessions/purchase-momo", async (req, res) => {
   try {
     const { vendor_id, amount, momo_number, network, computed_hits } = req.body;
 
-    if (!vendor_id || !amount || Number(amount) <= 0 || !momo_number || !network) {
+    if (
+      !vendor_id ||
+      !amount ||
+      Number(amount) <= 0 ||
+      !momo_number ||
+      !network
+    ) {
       return res
         .status(400)
-        .json({ error: "vendor_id, amount, momo_number, network are required" });
+        .json({
+          error: "vendor_id, amount, momo_number, network are required",
+        });
     }
 
     const HIT_COST = 0.02;
@@ -314,11 +336,15 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
       ? Math.max(0, Math.floor(Number(computed_hits)))
       : Math.floor(Number(amount) / HIT_COST);
 
-    const reference = `SM${Date.now()}${Math.floor(Math.random() * 1000)}`.slice(0, 30);
+    const reference = `SM${Date.now()}${Math.floor(
+      Math.random() * 1000
+    )}`.slice(0, 30);
 
     const channelId = moolreChannelId(network);
     if (!channelId) {
-      return res.status(400).json({ error: "Unsupported network for Moolre" });
+      return res
+        .status(400)
+        .json({ error: "Unsupported network for Moolre" });
     }
 
     const payerLocal = normalizeLocalMomo(momo_number);
@@ -331,52 +357,63 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
       amount: Number(Number(amount).toFixed(2)), // decimal, 2dp
       externalref: reference,
       reference: `Purchase of USSD sessions (GHS ${amount})`,
-      accountnumber: MOOLRE_SESSIONS.wallet
+      accountnumber: MOOLRE_SESSIONS.wallet,
     };
 
     console.log("🟡 Moolre session payment payload:", payload);
 
+    // ✅ INIT uses PUBKEY
     const initRes = await axios.post(MOOLRE_SESSIONS.payUrl, payload, {
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-USER": MOOLRE_SESSIONS.user,
-      "X-API-KEY":  MOOLRE_SESSIONS.apiKey     // ✅ USE API KEY HERE
-    },
-    timeout: 15000
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-USER": MOOLRE_SESSIONS.user,
+        "X-API-PUBKEY": MOOLRE_SESSIONS.pubkey,
+      },
+      timeout: 15000,
     });
 
     const initData = initRes.data || {};
     console.log("✅ MOOLRE session payment INIT response:", initData);
 
-    // According to docs, status=1 just means "request accepted".
+    // status=1 means request accepted, OTP sent
     if (Number(initData.status) !== 1) {
       return res.status(400).json({
-        error: initData.message || "Moolre did not accept the payment request",
-        moolre: initData
+        error:
+          initData.message ||
+          "Moolre did not accept the payment request",
+        moolre: initData,
       });
     }
 
-    // No DB insert here – we only return reference so frontend can do OTP + confirm
+    // No DB insert here – fronts gets reference, then user enters OTP & confirm
     return res.json({
       ok: true,
       reference,
-      hits
+      hits,
     });
   } catch (err) {
     console.error(
       "❌ /api/sessions/purchase-momo error:",
       err.response?.data || err.message
     );
-    return res
-      .status(500)
-      .json({ error: "Payment init error", details: err.response?.data || err.message });
+    return res.status(500).json({
+      error: "Payment init error",
+      details: err.response?.data || err.message,
+    });
   }
 });
 
 // ==== CONFIRM PAYMENT & CREDIT HITS: /api/sessions/confirm-momo ====
 app.post("/api/sessions/confirm-momo", async (req, res) => {
   try {
-    const { vendor_id, reference, amount, momo_number, network, computed_hits } = req.body;
+    const {
+      vendor_id,
+      reference,
+      amount,
+      momo_number,
+      network,
+      computed_hits,
+    } = req.body;
 
     if (!vendor_id || !reference) {
       return res
@@ -392,17 +429,23 @@ app.post("/api/sessions/confirm-momo", async (req, res) => {
     let approved = false;
     let lastStatus = null;
 
+    // Poll status up to 5 times (user may just have entered OTP)
     for (let i = 0; i < 5 && !approved; i++) {
       const statusRes = await axios.post(
         MOOLRE_SESSIONS.statusUrl,
-        { reference },
+        {
+          // 🔴 Moolre was complaining "accountnumber is required"
+          // so we send BOTH reference + accountnumber
+          reference,
+          accountnumber: MOOLRE_SESSIONS.wallet,
+        },
         {
           headers: {
-      "Content-Type": "application/json",
-      "X-API-USER": MOOLRE_SESSIONS.user,
-      "X-API-KEY":  MOOLRE_SESSIONS.apiKey     // ✅ USE API KEY HERE
-    },
-    timeout: 15000
+            "Content-Type": "application/json",
+            "X-API-USER": MOOLRE_SESSIONS.user,
+            "X-API-KEY": MOOLRE_SESSIONS.apiKey, // ✅ STATUS uses API KEY
+          },
+          timeout: 15000,
         }
       );
 
@@ -435,11 +478,11 @@ app.post("/api/sessions/confirm-momo", async (req, res) => {
       return res.status(400).json({
         error:
           "Payment not approved yet. Complete the OTP verification on your phone and try again.",
-        status: lastStatus
+        status: lastStatus,
       });
     }
 
-    // Payment APPROVED – now credit sessions
+    // ✅ Payment APPROVED – now credit sessions
     const [result] = await db
       .promise()
       .query(
@@ -453,7 +496,7 @@ app.post("/api/sessions/confirm-momo", async (req, res) => {
           hits,
           reference,
           network || "",
-          momo_number || ""
+          momo_number || "",
         ]
       );
 
@@ -466,19 +509,19 @@ app.post("/api/sessions/confirm-momo", async (req, res) => {
       id: result.insertId,
       reference,
       status: "completed",
-      hits
+      hits,
     });
   } catch (err) {
     console.error(
       "❌ /api/sessions/confirm-momo error:",
       err.response?.data || err.message
     );
-    return res
-      .status(500)
-      .json({ error: "Confirmation error", details: err.response?.data || err.message });
+    return res.status(500).json({
+      error: "Confirmation error",
+      details: err.response?.data || err.message,
+    });
   }
 });
-
 
 
 // ========== MOOLRE PAYMENT WEBHOOK ==========
