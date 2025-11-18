@@ -353,11 +353,11 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 
     // INIT uses PUBKEY
     const initRes = await axios.post(MOOLRE_SESSIONS.payUrl, payload, {
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-USER": MOOLRE_SESSIONS.user,
-        "X-API-PUBKEY": MOOLRE_SESSIONS.pubkey,
-      },
+     headers: {
+  "Content-Type": "application/json",
+  "X-API-USER": MOOLRE_SESSIONS.user,
+  "X-API-KEY": MOOLRE_SESSIONS.apiKey,   // ✅ CORRECT FOR STATUS
+},
       timeout: 15000,
     });
 
