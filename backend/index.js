@@ -374,21 +374,22 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
      // ⬇️⬇️⬇️ ADD THIS BLOCK (TEMP ORDER FOR WEBHOOK) ⬇️⬇️⬇️
     try {
       await db
-        .promise()
-        .query(
-          `INSERT INTO moolre_temp_orders
-             (mode, vendor_id, data_package, network,
-              recipient_number, momo_number, amount, externalref, hits)
-           VALUES ('sessions', ?, NULL, ?, NULL, ?, ?, ?, ?)`,
-          [
-            vendor_id,
-            (network || "").toLowerCase(),
-            payerLocal,          // store the payer momo
-            Number(amount),
-            reference,
-            hits,
-          ]
-        );
+  .promise()
+  .query(
+    `INSERT INTO moolre_temp_orders
+       (mode, vendor_id, data_package, network,
+        recipient_number, momo_number, amount, externalref, hits)
+     VALUES ('sessions', ?, '', ?, '', ?, ?, ?, ?)`,
+    [
+      vendor_id,
+      (network || "").toLowerCase(),
+      payerLocal,          // momo_number
+      Number(amount),
+      reference,
+      hits,
+    ]
+  );
+
       console.log("📝 Temp sessions order saved for webhook:", {
         vendor_id,
         amount,
