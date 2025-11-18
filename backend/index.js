@@ -258,25 +258,17 @@ app.post("/api/sessions/purchase", async (req, res) => {
 
 
 
-
-
-// ✅ Start a MoMo payment and record a session purchase
-// --- helper: make short unique refs ---
-// --- helpers ---
-// ========= HELPERS FOR SESSION PURCHASE (MOOLRE VERSION) =========
-
-// ==== MOOLRE CONFIG FOR SESSION PURCHASES ====
-// ============ Moolre config for Session Purchases ============
-
-
-
 // ========================================================
 //               MOOLRE SESSION PAYMENT CONFIG
 // ========================================================
 const MOOLRE_SESSIONS = {
+  // INIT endpoint
   payUrl: "https://api.moolre.com/open/transact/payment",
-  statusUrl: "https://api.moolre.com/open/transact/payment-status",
 
+  // ✅ Correct Payment Status endpoint from official docs
+  statusUrl: "https://api.moolre.com/open/transact/status",
+
+  // Moolre username
   user: process.env.MOOLRE_USER || "acheamp",
 
   // Used for INIT (sending OTP / payment request)
@@ -284,11 +276,12 @@ const MOOLRE_SESSIONS = {
     process.env.MOOLRE_PUBKEY ||
     "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjU0OSwiZXhwIjoxOTI1MDA5OTk5fQ.YNoLN19xWWZRyr2Gdy_2DexpGLZv4V9yATnyYSFef2M",
 
-  // Used for STATUS checks
+  // Used for STATUS checks (Moolre Public API Key)
   apiKey:
     process.env.MOOLRE_API_KEY ||
     "9ILLNsdyPt6deXM1YWjpFzd1XIOPwDYXDHJKN930kGuw1Ndt2o4tF8uNUi5IhGzG",
 
+  // Your GHS wallet number
   wallet: process.env.MOOLRE_WALLET || "10654906056819",
 };
 
@@ -314,6 +307,7 @@ function normalizeLocalMomo(msisdn) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 
 
 // ========================================================
@@ -357,7 +351,7 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 
     console.log("🟡 Moolre session payment payload:", payload);
 
-    // INIT uses pubkey
+    // INIT uses PUBKEY
     const initRes = await axios.post(MOOLRE_SESSIONS.payUrl, payload, {
       headers: {
         "Content-Type": "application/json",
@@ -372,8 +366,7 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 
     if (Number(initData.status) !== 1) {
       return res.status(400).json({
-        error:
-          initData.message || "Moolre did not accept the payment request",
+        error: initData.message || "Moolre did not accept the payment request",
         moolre: initData,
       });
     }
@@ -383,6 +376,7 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
       reference,
       hits,
     });
+
   } catch (err) {
     console.error(
       "❌ /api/sessions/purchase-momo error:",
@@ -396,8 +390,9 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 });
 
 
+
 // ========================================================
-//           CONFIRM PAYMENT (STATUS CHECK)
+//           CONFIRM PAYMENT (STATUS CHECK + CREDIT)
 // ========================================================
 async function confirmMomoHandler(req, res) {
   try {
@@ -431,7 +426,8 @@ async function confirmMomoHandler(req, res) {
           headers: {
             "Content-Type": "application/json",
             "X-API-USER": MOOLRE_SESSIONS.user,
-            "X-API-KEY": MOOLRE_SESSIONS.apiKey,
+            // 🟢 Correct header from docs
+            "X-API-PUBKEY": MOOLRE_SESSIONS.apiKey,
           },
           timeout: 15000,
         }
@@ -491,6 +487,7 @@ async function confirmMomoHandler(req, res) {
       status: "completed",
       hits,
     });
+
   } catch (err) {
     console.error(
       "❌ /api/sessions/confirm-momo error:",
@@ -503,7 +500,7 @@ async function confirmMomoHandler(req, res) {
   }
 }
 
-// Expose both paths
+// Expose both routes
 app.post("/sessions/confirm-momo", confirmMomoHandler);
 app.post("/api/sessions/confirm-momo", confirmMomoHandler);
 
@@ -511,8 +508,12 @@ app.post("/api/sessions/confirm-momo", confirmMomoHandler);
 
 
 
+
+
+
+
+
 ////////////////////////////////////////////////////////////////////////////////////////////
-// ========== MOOLRE PAYMENT WEBHOOK ==========
 // ========== MOOLRE PAYMENT WEBHOOK ==========
 app.post("/api/moolre/webhook", express.json(), (req, res) => {
   console.log("🔔 MOOLRE WEBHOOK RECEIVED:", req.body);
