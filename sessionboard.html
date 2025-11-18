@@ -152,19 +152,45 @@
   updateMomoHits();
 
   // ---------- helper to safely read JSON ONCE ----------
-  async function safeJson(res) {
+// ---------- helper to safely read JSON or plain text ----------
+async function safeJson(res) {
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
+
+  // If server says it's JSON, try to parse once
+  if (ct.includes("application/json")) {
     try {
       const data = await res.json();
       return { data, ok: true };
     } catch (e) {
-      // do NOT call res.text() here – the stream is already used
       return {
-        data: { error: "Invalid response from server" },
-        ok: false,
-        parseError: e.message
+        data: {
+          error: `Invalid JSON from server (status ${res.status}).`,
+          _parseError: e.message
+        },
+        ok: false
       };
     }
   }
+
+  // Not JSON: read text from a CLONE so we don't hit "body stream already read"
+  const clone = res.clone();
+  let text = "";
+  try {
+    text = await clone.text();
+  } catch (e) {
+    text = "";
+  }
+
+  return {
+    data: {
+      error: text
+        ? `Server error (status ${res.status}): ${text.slice(0, 200)}`
+        : `Server returned status ${res.status} with non-JSON body`
+    },
+    ok: false
+  };
+}
+
 
   // --- Wallet purchase (Main Account) ---
   walletBtn?.addEventListener("click", async () => {
