@@ -416,159 +416,202 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 app.post("/api/moolre/webhook", express.json(), (req, res) => {
   console.log("🔔 MOOLRE WEBHOOK RECEIVED:", req.body);
 
-  // The real payload is nested inside req.body.data
   const wrapper = req.body || {};
   const data = wrapper.data || {};
 
-  const txstatus     = Number(data.txstatus || 0);   // 1 = success
-  const payer        = data.payer;                   // payer msisdn
-  const amountStr    = data.amount;                  // e.g. "0.10"
-  const externalref  = data.externalref;             // TRX...
-  const thirdpartyref = data.thirdpartyref;          // JSON/string from USSD
-  const ts           = data.ts;                      // timestamp
-  const secret       = data.secret;                  // webhook secret
+  const txstatus    = Number(data.txstatus || 0);   // 1 = success
+  const payer       = data.payer;
+  const amountStr   = data.amount;
+  const externalref = data.externalref;             // 👈 this is our key
+  const ts          = data.ts;
+  const secret      = data.secret;
 
   const amt = parseFloat(amountStr);
 
-  // 1) Validate secret (set same value in Moolre + env)
+  // 1) Validate secret
   const expectedSecret = process.env.MOOLRE_WEBHOOK_SECRET || "";
   if (expectedSecret && secret !== expectedSecret) {
     console.log("❌ Invalid webhook secret");
     return res.status(403).send("Forbidden");
   }
 
-  // 2) Only process successful payments
+  // 2) Only successful payments
   if (txstatus !== 1) {
     console.log("⏳ Payment not approved (txstatus =", txstatus, ") – ignoring.");
     return res.status(200).send("OK");
   }
 
-  // 3) Decode metadata from thirdpartyref
-  let meta = {};
-  try {
-    meta = JSON.parse(thirdpartyref || "{}");
-  } catch (e) {
-    console.warn("⚠️ thirdpartyref is not JSON, using plain defaults:", thirdpartyref);
+  if (!externalref) {
+    console.error("❌ No externalref in webhook data.");
+    return res.status(400).send("Missing externalref");
   }
 
-  const mode             = meta.mode || "plain";   // "plain" or "vendor"
-  const vendor_id        = Number(meta.vendor_id || 1);
-  const data_package     = meta.data_package || thirdpartyref; // fallback: use raw thirdpartyref
-  const network          = (meta.network || "mtn").toLowerCase();
-  const recipient_number = meta.recipient_number || payer;
-  const momo_number      = meta.momo_number || payer;
-  const package_id =
-    ts || new Date().toISOString().slice(0, 16).replace("T", " ");
-
-  if (!data_package || isNaN(amt)) {
-    console.error("❌ Missing fields in webhook meta:", { meta, amount: amt });
-    return res.status(400).send("Missing fields");
-  }
-
-  // 4) Your original insertion logic
-
-  // ---------- PLAIN MODE (*203*717#) ----------
-  if (mode === "plain") {
-    db.query(
-      `INSERT INTO admin_orders
-         (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-       VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-      [1, recipient_number, data_package, amt, network, package_id],
-      (err) => {
-        if (err) {
-          console.error("❌ Error inserting plain admin_order:", err);
-        } else {
-          console.log("✅ Plain-mode admin_order logged.");
-        }
-
-        db.query(
-          `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-           VALUES (?, ?, ?, NOW())`,
-          [1, "AdminData USSD sale", amt],
-          (err2) => {
-            if (err2) {
-              console.error("❌ Error inserting plain total_revenue:", err2);
-            } else {
-              console.log("✅ Plain-mode revenue logged.");
-            }
-            return res.status(200).send("OK");
-          }
-        );
-      }
-    );
-
-    return;
-  }
-
-  // ---------- VENDOR MODE (*203*717*ID#) ----------
+  // 3) Look up the temp order by externalref
   db.query(
-    `SELECT amount FROM admin_data_packages WHERE data_package = ? LIMIT 1`,
-    [data_package],
+    `SELECT *
+       FROM moolre_temp_orders
+      WHERE externalref = ?
+      LIMIT 1`,
+    [externalref],
     (err, rows) => {
-      if (err || !rows || !rows.length) {
-        console.error(
-          "❌ admin_data_packages lookup error:",
-          err || "no rows"
+      if (err) {
+        console.error("❌ moolre_temp_orders lookup error:", err);
+        return res.status(500).send("Lookup error");
+      }
+      if (!rows || !rows.length) {
+        console.warn("⚠️ No temp order found for externalref:", externalref);
+        return res.status(200).send("No matching temp order");
+      }
+
+      const meta = rows[0];
+
+      const mode             = meta.mode;                 // 'plain' or 'vendor'
+      const vendor_id        = Number(meta.vendor_id);
+      const data_package     = meta.data_package;
+      const network          = (meta.network || "").toLowerCase();
+      const recipient_number = meta.recipient_number || payer;
+      const momo_number      = meta.momo_number || payer;
+      const amountPaid       = Number(meta.amount);
+      const package_id =
+        ts || new Date().toISOString().slice(0, 16).replace("T", " ");
+
+      console.log("🧾 Resolved temp order from DB:", {
+        mode,
+        vendor_id,
+        data_package,
+        network,
+        recipient_number,
+        momo_number,
+        amountPaid,
+      });
+
+      // ---------- PLAIN MODE (*203*717#) ----------
+      if (mode === "plain") {
+        db.query(
+          `INSERT INTO admin_orders
+             (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+           VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+          [1, recipient_number, data_package, amountPaid, network, package_id],
+          (err1) => {
+            if (err1) {
+              console.error("❌ Error inserting plain admin_order:", err1);
+            } else {
+              console.log("✅ Plain-mode admin_order logged.");
+            }
+
+            db.query(
+              `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+               VALUES (?, ?, ?, NOW())`,
+              [1, "AdminData USSD sale", amountPaid],
+              (err2) => {
+                if (err2) {
+                  console.error("❌ Error inserting plain total_revenue:", err2);
+                } else {
+                  console.log("✅ Plain-mode revenue logged.");
+                }
+
+                // Optionally clean up temp row
+                db.query(
+                  "DELETE FROM moolre_temp_orders WHERE externalref = ?",
+                  [externalref]
+                );
+
+                return res.status(200).send("OK");
+              }
+            );
+          }
         );
-        return res.status(500).send("Package lookup error");
+
+        return;
       }
 
-      const baseAmount    = parseFloat(rows[0].amount); // admin cost
-      const revenueAmount = baseAmount;
-      const vendorAmount  = parseFloat((amt - baseAmount).toFixed(2));
-
-      if (vendorAmount < 0) {
-        console.warn("⚠️ Vendor amount is negative. Check pricing.", {
-          data_package,
-          amt,
-          baseAmount,
-        });
-      }
-
-      // admin_orders
+      // ---------- VENDOR MODE (*203*717*ID#) ----------
       db.query(
-        `INSERT INTO admin_orders
-           (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-         VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-        [vendor_id, recipient_number, data_package, amt, network, package_id],
-        (err1) => {
-          if (err1) {
-            console.error("❌ Error inserting vendor admin_order:", err1);
-          } else {
-            console.log("✅ Vendor admin_order logged.");
+        `SELECT amount FROM admin_data_packages WHERE data_package = ? LIMIT 1`,
+        [data_package],
+        (err3, rows2) => {
+          if (err3 || !rows2 || !rows2.length) {
+            console.error(
+              "❌ admin_data_packages lookup error:",
+              err3 || "no rows"
+            );
+            return res.status(500).send("Package lookup error");
           }
 
-          // wallet_loads
+          const baseAmount    = parseFloat(rows2[0].amount); // admin cost
+          const revenueAmount = baseAmount;
+          const vendorAmount  = parseFloat(
+            (amountPaid - baseAmount).toFixed(2)
+          );
+
+          if (vendorAmount < 0) {
+            console.warn("⚠️ Vendor amount is negative. Check pricing.", {
+              data_package,
+              amountPaid,
+              baseAmount,
+            });
+          }
+
+          // admin_orders
           db.query(
-            `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
-             VALUES (?, ?, ?, NOW())`,
-            [vendor_id, momo_number, vendorAmount],
-            (err2) => {
-              if (err2) {
-                console.error("❌ Error inserting wallet_loads:", err2);
+            `INSERT INTO admin_orders
+               (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+             VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+            [
+              vendor_id,
+              recipient_number,
+              data_package,
+              amountPaid,
+              network,
+              package_id,
+            ],
+            (err4) => {
+              if (err4) {
+                console.error("❌ Error inserting vendor admin_order:", err4);
               } else {
-                console.log("✅ Vendor wallet share logged.");
+                console.log("✅ Vendor admin_order logged.");
               }
 
-              // total_revenue
+              // wallet_loads
               db.query(
-                `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+                `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
                  VALUES (?, ?, ?, NOW())`,
-                [
-                  vendor_id,
-                  `Admin base for ${network} ${data_package}`,
-                  revenueAmount,
-                ],
-                (err3) => {
-                  if (err3) {
-                    console.error(
-                      "❌ Error inserting vendor total_revenue:",
-                      err3
-                    );
+                [vendor_id, momo_number, vendorAmount],
+                (err5) => {
+                  if (err5) {
+                    console.error("❌ Error inserting wallet_loads:", err5);
                   } else {
-                    console.log("✅ Vendor revenue logged.");
+                    console.log("✅ Vendor wallet share logged.");
                   }
-                  return res.status(200).send("OK");
+
+                  // total_revenue
+                  db.query(
+                    `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+                     VALUES (?, ?, ?, NOW())`,
+                    [
+                      vendor_id,
+                      `Admin base for ${network} ${data_package}`,
+                      revenueAmount,
+                    ],
+                    (err6) => {
+                      if (err6) {
+                        console.error(
+                          "❌ Error inserting vendor total_revenue:",
+                          err6
+                        );
+                      } else {
+                        console.log("✅ Vendor revenue logged.");
+                      }
+
+                      // Clean up temp row
+                      db.query(
+                        "DELETE FROM moolre_temp_orders WHERE externalref = ?",
+                        [externalref]
+                      );
+
+                      return res.status(200).send("OK");
+                    }
+                  );
                 }
               );
             }
