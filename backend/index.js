@@ -269,9 +269,10 @@ app.post("/api/sessions/purchase", async (req, res) => {
 const MOOLRE_SESSIONS = {
   payUrl: "https://api.moolre.com/open/transact/payment",
   statusUrl: "https://api.moolre.com/open/transact/status",
-  user: process.env.MOOLRE_USER || "acheamp", // change to env later
-  pubkey: process.env.MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjU0OSwiZXhwIjoxOTI1MDA5OTk5fQ.YNoLN19xWWZRyr2Gdy_2DexpGLZv4V9yATnyYSFef2M",
-  wallet: process.env.MOOLRE_WALLET || "10654906056819"
+  user: process.env.MOOLRE_USER   || "acheamp",
+  pubkey: process.env.MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjU0OSwiZXhwIjoxOTI1MDA5OTk5fQ.YNoLN19xWWZRyr2Gdy_2DexpGLZv4V9yATnyYSFef2M",      // for INIT
+  apiKey: process.env.MOOLRE_API_KEY || "9ILLNsdyPt6deXM1YWjpFzd1XIOPwDYXDHJKN930kGuw1Ndt2o4tF8uNUi5IhGzG",    // for STATUS
+  wallet: process.env.MOOLRE_WALLET  || "10654906056819"
 };
 
 function moolreChannelId(network) {
@@ -336,12 +337,12 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
     console.log("🟡 Moolre session payment payload:", payload);
 
     const initRes = await axios.post(MOOLRE_SESSIONS.payUrl, payload, {
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-USER": MOOLRE_SESSIONS.user,
-        "X-API-PUBKEY": MOOLRE_SESSIONS.pubkey
-      },
-      timeout: 20000
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-USER": MOOLRE_SESSIONS.user,
+      "X-API-KEY":  MOOLRE_SESSIONS.apiKey     // ✅ USE API KEY HERE
+    },
+    timeout: 15000
     });
 
     const initData = initRes.data || {};
