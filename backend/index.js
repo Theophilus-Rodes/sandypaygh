@@ -412,20 +412,25 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 
 
 // ========== MOOLRE PAYMENT WEBHOOK ==========
+// ========== MOOLRE PAYMENT WEBHOOK ==========
 app.post("/api/moolre/webhook", express.json(), (req, res) => {
   console.log("🔔 MOOLRE WEBHOOK RECEIVED:", req.body);
 
-  const {
-    txstatus,       // 1 = success, 0 = pending, 2 = failed
-    payer,          // the number that paid
-    amount,         // e.g. "10.50"
-    externalref,    // TRX...
-    thirdpartyref,  // JSON string we sent from USSD
-    ts,             // timestamp
-    secret,         // webhook secret
-  } = req.body;
+  // The real payload is nested inside req.body.data
+  const wrapper = req.body || {};
+  const data = wrapper.data || {};
 
-  // 1) Validate secret (set this in Moolre + your env)
+  const txstatus     = Number(data.txstatus || 0);   // 1 = success
+  const payer        = data.payer;                   // payer msisdn
+  const amountStr    = data.amount;                  // e.g. "0.10"
+  const externalref  = data.externalref;             // TRX...
+  const thirdpartyref = data.thirdpartyref;          // JSON/string from USSD
+  const ts           = data.ts;                      // timestamp
+  const secret       = data.secret;                  // webhook secret
+
+  const amt = parseFloat(amountStr);
+
+  // 1) Validate secret (set same value in Moolre + env)
   const expectedSecret = process.env.MOOLRE_WEBHOOK_SECRET || "";
   if (expectedSecret && secret !== expectedSecret) {
     console.log("❌ Invalid webhook secret");
@@ -433,36 +438,34 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
   }
 
   // 2) Only process successful payments
-  if (Number(txstatus) !== 1) {
+  if (txstatus !== 1) {
     console.log("⏳ Payment not approved (txstatus =", txstatus, ") – ignoring.");
     return res.status(200).send("OK");
   }
 
   // 3) Decode metadata from thirdpartyref
-  let meta;
+  let meta = {};
   try {
     meta = JSON.parse(thirdpartyref || "{}");
   } catch (e) {
-    console.error("❌ Failed to parse thirdpartyref JSON:", e.message);
-    return res.status(400).send("Bad thirdpartyref");
+    console.warn("⚠️ thirdpartyref is not JSON, using plain defaults:", thirdpartyref);
   }
 
-  const mode = meta.mode || "vendor";          // "plain" or "vendor"
-  const vendor_id = Number(meta.vendor_id || 1);
-  const data_package = meta.data_package;
-  const network = (meta.network || "").toLowerCase();
+  const mode             = meta.mode || "plain";   // "plain" or "vendor"
+  const vendor_id        = Number(meta.vendor_id || 1);
+  const data_package     = meta.data_package || thirdpartyref; // fallback: use raw thirdpartyref
+  const network          = (meta.network || "mtn").toLowerCase();
   const recipient_number = meta.recipient_number || payer;
-  const momo_number = meta.momo_number || payer;
-  const amt = parseFloat(amount);
+  const momo_number      = meta.momo_number || payer;
   const package_id =
     ts || new Date().toISOString().slice(0, 16).replace("T", " ");
 
-  if (!data_package || !network || isNaN(amt)) {
-    console.error("❌ Missing fields in webhook meta:", { meta, amount });
+  if (!data_package || isNaN(amt)) {
+    console.error("❌ Missing fields in webhook meta:", { meta, amount: amt });
     return res.status(400).send("Missing fields");
   }
 
-  // 4) Run your original insertion logic here
+  // 4) Your original insertion logic
 
   // ---------- PLAIN MODE (*203*717#) ----------
   if (mode === "plain") {
@@ -474,12 +477,10 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
       (err) => {
         if (err) {
           console.error("❌ Error inserting plain admin_order:", err);
-          // we still respond 200 so Moolre doesn't keep retrying forever
         } else {
           console.log("✅ Plain-mode admin_order logged.");
         }
 
-        // total_revenue for plain mode
         db.query(
           `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
            VALUES (?, ?, ?, NOW())`,
@@ -496,7 +497,7 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
       }
     );
 
-    return; // important: don't fall through
+    return;
   }
 
   // ---------- VENDOR MODE (*203*717*ID#) ----------
@@ -512,11 +513,9 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
         return res.status(500).send("Package lookup error");
       }
 
-      const baseAmount = parseFloat(rows[0].amount); // admin cost
-      const revenueAmount = baseAmount;              // goes to total_revenue
-      const vendorAmount = parseFloat(
-        (amt - baseAmount).toFixed(2)                 // vendor’s share
-      );
+      const baseAmount    = parseFloat(rows[0].amount); // admin cost
+      const revenueAmount = baseAmount;
+      const vendorAmount  = parseFloat((amt - baseAmount).toFixed(2));
 
       if (vendorAmount < 0) {
         console.warn("⚠️ Vendor amount is negative. Check pricing.", {
@@ -526,7 +525,7 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
         });
       }
 
-      // Insert into admin_orders
+      // admin_orders
       db.query(
         `INSERT INTO admin_orders
            (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
@@ -539,7 +538,7 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
             console.log("✅ Vendor admin_order logged.");
           }
 
-          // Insert vendor wallet share
+          // wallet_loads
           db.query(
             `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
              VALUES (?, ?, ?, NOW())`,
@@ -551,7 +550,7 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
                 console.log("✅ Vendor wallet share logged.");
               }
 
-              // Insert admin revenue
+              // total_revenue
               db.query(
                 `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
                  VALUES (?, ?, ?, NOW())`,
@@ -579,7 +578,6 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
     }
   );
 });
-
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
