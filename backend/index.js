@@ -414,7 +414,7 @@ async function confirmMomoHandler(req, res) {
     for (let i = 0; i < 5 && !approved; i++) {
       const statusPayload = {
         type: 1,
-        idtype: 3,
+        idtype: 3,                 // using externalref
         id: reference,
         accountnumber: MOOLRE_SESSIONS.wallet,
       };
@@ -426,8 +426,8 @@ async function confirmMomoHandler(req, res) {
           headers: {
             "Content-Type": "application/json",
             "X-API-USER": MOOLRE_SESSIONS.user,
-            // 🟢 Correct header from docs
-            "X-API-PUBKEY": MOOLRE_SESSIONS.apiKey,
+            // 🔑 Use SAME public key as INIT (exactly like docs example)
+            "X-API-PUBKEY": MOOLRE_SESSIONS.pubkey,
           },
           timeout: 15000,
         }
