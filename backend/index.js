@@ -263,152 +263,234 @@ app.post("/api/sessions/purchase", async (req, res) => {
 // ✅ Start a MoMo payment and record a session purchase
 // --- helper: make short unique refs ---
 // --- helpers ---
+// ========= HELPERS FOR SESSION PURCHASE (MOOLRE VERSION) =========
+
+// Generate a unique reference (max 30 chars)
 function newRef(prefix = "SM") {
   return `${prefix}${Date.now()}${Math.floor(Math.random() * 1000)}`.slice(0, 30);
 }
-function getSwitchCode(network) {
+
+// Simple sleep helper for polling
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Convert to "0XXXXXXXXX" local format for Moolre payer
+function toLocalMsisdn(msisdn) {
+  const digits = String(msisdn || "").replace(/[^\d]/g, "");
+  if (digits.startsWith("233")) return "0" + digits.slice(3);
+  if (digits.startsWith("0")) return digits;
+  if (digits.startsWith("00233")) return "0" + digits.slice(5);
+  return digits;
+}
+
+// Map network name -> Moolre channel ID
+function getMoolreChannelId(network) {
   switch (String(network || "").toLowerCase()) {
-    case "mtn":        return "MTN";
-    case "vodafone":
-    case "telecel":    return "VDF";
+    case "mtn":
+      return 13;
     case "airteltigo":
-    case "airtel":     return "ATL";
-    case "tigo":       return "TGO";
-    default:           return null;
+    case "airtel":
+    case "at":
+      return 7;
+    case "vodafone":
+    case "telecel":
+    case "voda":
+      return 6;
+    default:
+      return null;
   }
 }
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// TheTeller verify helper: returns { approved: boolean, raw: any }
-async function verifyTeller(merchantId, transactionId, basicToken) {
+// Moolre config (same credentials you use in ussd.js)
+const MOOLRE = {
+  paymentUrl: "https://api.moolre.com/open/transact/payment",
+  statusUrl: "https://api.moolre.com/open/transact/status",
+  user: "acheamp",
+  pubkey:
+    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjU0OSwiZXhwIjoxOTI1MDA5OTk5fQ.YNoLN19xWWZRyr2Gdy_2DexpGLZv4V9yATnyYSFef2M",
+  wallet: "10654906056819",
+};
+
+// ✅ Check final status of a payment using Moolre "Payment Status" endpoint
+async function verifyMoolrePayment(externalref) {
   try {
-    const url = `https://prod.theteller.net/v1.1/transaction/verify/${merchantId}/${transactionId}`;
-    const v = await axios.get(url, {
-      headers: {
-        Authorization: `Basic ${basicToken}`,
-        "Cache-Control": "no-cache"
-      },
-      timeout: 15000
-    });
-    const data = v.data || {};
-    const approved =
-      String(data.code || data.status || "").startsWith("0") ||
-      String(data.status || "").toLowerCase() === "approved";
-    return { approved, raw: data };
+    const resp = await axios.post(
+      MOOLRE.statusUrl,
+      { externalref }, // 👈 this is the same externalref we used when initiating
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-USER": MOOLRE.user,
+          "X-API-PUBKEY": MOOLRE.pubkey,
+        },
+        timeout: 15000,
+      }
+    );
+
+    const body = resp.data || {};
+    const data = body.data || {};
+    const txstatus = Number(data.txstatus || 0); // 1 = Successful, 0 = Pending, 2 = Failed (per docs)
+
+    const approved = txstatus === 1;
+    return { approved, raw: body };
   } catch (e) {
+    console.error(
+      "verifyMoolrePayment error:",
+      e.response?.data || e.message
+    );
     return { approved: false, raw: e.response?.data || e.message };
   }
 }
 
-// ✅ Purchase sessions via MoMo (insert ONLY after payment approved)
+// ✅ Purchase sessions via Moolre MoMo (insert ONLY after payment approved)
 app.post("/api/sessions/purchase-momo", async (req, res) => {
   try {
     const { vendor_id, amount, momo_number, network, computed_hits } = req.body;
+
     if (!vendor_id || !amount || Number(amount) <= 0 || !momo_number || !network) {
-      return res.status(400).json({ error: "vendor_id, amount, momo_number, network are required" });
+      return res
+        .status(400)
+        .json({ error: "vendor_id, amount, momo_number, network are required" });
     }
 
-    // compute hits server-side
+    // Compute hits server-side (each hit = 0.02 GHS)
     const HIT_COST = 0.02;
     const hits = Number.isFinite(Number(computed_hits))
       ? Math.max(0, Math.floor(Number(computed_hits)))
       : Math.floor(Number(amount) / HIT_COST);
 
-    // build transaction details
-    const reference       = newRef("SM"); // also used as transaction_id
-    const amountFormatted = String(Math.round(Number(amount) * 100)).padStart(12, "0");
-    const formattedMoMo   = String(momo_number).replace(/^0/, "233");
-    const rSwitch         = getSwitchCode(network);
-    if (!rSwitch) return res.status(400).send("❌ Invalid or unsupported network selected.");
+    if (hits <= 0) {
+      return res
+        .status(400)
+        .json({ error: "Amount too small to buy any sessions." });
+    }
 
-    // TheTeller payload
+    // Build transaction details
+    const reference = newRef("SM"); // used as externalref for Moolre
+    const amtNumber = Number(amount);
+    const channelId = getMoolreChannelId(network);
+    if (!channelId) {
+      return res.status(400).json({ error: "Invalid or unsupported network." });
+    }
+
+    // Moolre expects local "0XXXXXXXXX"
+    const payerLocal = toLocalMsisdn(momo_number);
+
     const payload = {
-      amount: amountFormatted,
-      processing_code: "000200",
-      transaction_id: reference,
-      desc: `Purchase of USSD sessions (GHS ${amount})`,
-      merchant_id: "TTM-00010694",
-      subscriber_number: formattedMoMo,
-      "r-switch": rSwitch,
-      redirect_url: "https://example.com/callback"
+      type: 1,
+      channel: channelId,
+      currency: "GHS",
+      payer: payerLocal,
+      amount: Number(amtNumber.toFixed(2)), // decimal, 2dp
+      externalref: reference,
+      reference: `Purchase of USSD sessions (GHS ${amtNumber})`,
+      accountnumber: MOOLRE.wallet,
+      // No OTP – this sends a MoMo prompt where the user only enters PIN on phone.
     };
 
-    // Basic token exactly like your working pattern
-    const basicToken = Buffer
-      .from("sandipay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ=")
-      .toString("base64");
+    console.log("🟡 Moolre session purchase INIT payload:", payload);
 
-    // 1) Call process
-    const ttRes = await axios.post(
-      "https://prod.theteller.net/v1.1/transaction/process",
-      payload,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Basic ${basicToken}`,
-          "Cache-Control": "no-cache"
-        },
-        timeout: 20000
-      }
-    );
+    // 1) Initiate payment
+    const initRes = await axios.post(MOOLRE.paymentUrl, payload, {
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-USER": MOOLRE.user,
+        "X-API-PUBKEY": MOOLRE.pubkey,
+      },
+      timeout: 20000,
+    });
 
-    const tt = ttRes.data || {};
-    const immediateApproved =
-      String(tt.code || tt.status || "").startsWith("0") ||
-      String(tt.status || "").toLowerCase() === "approved";
+    const init = initRes.data || {};
+    console.log("✅ MOOLRE session payment INIT response:", init);
 
-    let approved = immediateApproved;
+    // Moolre "status" here just means request accepted, not that user entered PIN.
+    if (Number(init.status || 0) !== 1) {
+      return res.status(400).json({
+        error: "Moolre did not accept payment request",
+        moolre: init,
+      });
+    }
+
+    // 2) Poll Moolre Payment Status until txstatus = 1 or it fails
+    let approved = false;
     let verifyPayload = null;
 
-    // 2) If not clearly approved, verify a few times (user might still be entering PIN)
-    if (!approved) {
-      for (let i = 0; i < 3 && !approved; i++) {
-        await sleep(3000); // wait 3s between checks
-        const v = await verifyTeller("TTM-00010694", reference, basicToken);
-        verifyPayload = v.raw;
-        approved = v.approved;
-      }
+    for (let i = 0; i < 5 && !approved; i++) {
+      await sleep(3000); // wait 3 seconds between checks
+      const v = await verifyMoolrePayment(reference);
+      verifyPayload = v.raw;
+      approved = v.approved;
+
+      console.log(
+        `🔁 Moolre status check ${i + 1}/5 for ${reference}: approved=${approved}`
+      );
     }
 
     // 3) Only insert WHEN approved
     if (!approved) {
+      console.log(
+        "❌ Moolre payment for sessions NOT approved. No DB insert.",
+        { reference, verifyPayload }
+      );
       return res.status(400).json({
         error: "Payment not approved/cancelled",
         reference,
-        teller: tt,
-        verify: verifyPayload || null
+        verify: verifyPayload || null,
       });
     }
 
-    // 4) Insert COMPLETED row now (no row existed before this point)
-    const [result] = await db.promise().query(
-      "INSERT INTO session_purchases (vendor_id, source, amount, hits, reference, status, meta_json) VALUES (?,?,?,?,?, 'completed', JSON_OBJECT('network', ?, 'momo', ?, 'verified', ?, 'computed_hits', ?))",
-      [vendor_id, "momo", amount, hits, reference, network, momo_number, true, hits]
+    console.log(
+      "✅ Moolre payment APPROVED for sessions. Inserting into session_purchases…"
     );
+
+    // 4) Insert COMPLETED row now (no row existed before this point)
+    const [result] = await db
+      .promise()
+      .query(
+        `INSERT INTO session_purchases 
+           (vendor_id, source, amount, hits, reference, status, meta_json)
+         VALUES 
+           (?, ?, ?, ?, ?, 'completed',
+            JSON_OBJECT('network', ?, 'momo', ?, 'verified', ?, 'computed_hits', ?)
+           )`,
+        [
+          vendor_id,
+          "moolre",
+          amtNumber,
+          hits,
+          reference,
+          network,
+          momo_number,
+          true,
+          hits,
+        ]
+      );
 
     return res.json({
       id: result.insertId,
       reference,
       status: "completed",
       hits,
-      teller: tt,
-      verify: verifyPayload || null
+      verify: verifyPayload || null,
     });
   } catch (err) {
-  if (err.response) {
-    console.error("sessions/purchase-momo error:",
-      err.response.status,
-      err.response.headers["content-type"],
-      typeof err.response.data === "string" ? err.response.data.slice(0,300) : err.response.data
-    );
-  } else {
-    console.error("sessions/purchase-momo network error:", err.message);
+    if (err.response) {
+      console.error(
+        "sessions/purchase-momo Moolre error:",
+        err.response.status,
+        err.response.headers?.["content-type"],
+        typeof err.response.data === "string"
+          ? err.response.data.slice(0, 300)
+          : err.response.data
+      );
+    } else {
+      console.error("sessions/purchase-momo network error:", err.message);
+    }
+    return res
+      .status(500)
+      .json({ error: "Payment error", details: err.response?.status || err.message });
   }
-  return res.status(500).json({ error: "Payment error", details: err.response?.status || err.message });
-}
-
-  
 });
+
 
 
 // ========== MOOLRE PAYMENT WEBHOOK ==========
