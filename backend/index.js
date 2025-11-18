@@ -396,70 +396,95 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 // ========================================================
 async function confirmMomoHandler(req, res) {
   try {
-    const { vendor_id, reference, amount, momo_number, network, computed_hits } = req.body;
+    const {
+      vendor_id,
+      reference,
+      amount,
+      momo_number,
+      network,
+      computed_hits,
+    } = req.body;
 
     if (!vendor_id || !reference) {
-      return res.status(400).json({ error: "vendor_id and reference are required" });
+      return res
+        .status(400)
+        .json({ error: "vendor_id and reference are required" });
     }
 
     const HIT_COST = 0.02;
-    const hits =
-      Number.isFinite(Number(computed_hits))
-        ? Math.max(0, Math.floor(Number(computed_hits)))
-        : Math.floor(Number(amount || 0) / HIT_COST);
+    const hits = Number.isFinite(Number(computed_hits))
+      ? Math.max(0, Math.floor(Number(computed_hits)))
+      : Math.floor(Number(amount || 0) / HIT_COST);
 
     let approved = false;
     let lastStatus = null;
 
-await sleep(3000);
+    // 🔹 Give Moolre a bit of time to register the transaction
+    await sleep(3000);
 
-for (let i = 0; i < 5 && !approved; i++) {
-  const statusPayload = {
-    type: 1,                          // 1 = payment
-    idtype: 1,                        // ✅ 1 = use external reference
-    id: reference,                    // the same reference you used as externalref
-    accountnumber: MOOLRE_SESSIONS.wallet,
-  };
+    // We'll try multiple times, and for each attempt we try idtype 1 and 2
+    for (let attempt = 0; attempt < 5 && !approved; attempt++) {
+      for (const idtype of [1, 2]) {
+        const statusPayload = {
+          type: 1,
+          idtype,                      // 1 or 2 (Moolre supports both)
+          id: reference,               // our externalref from INIT
+          accountnumber: MOOLRE_SESSIONS.wallet,
+        };
 
-  const statusRes = await axios.post(
-    MOOLRE_SESSIONS.statusUrl,
-    statusPayload,
-    {
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-USER": MOOLRE_SESSIONS.user,
-        "X-API-PUBKEY": MOOLRE_SESSIONS.pubkey,   // same as INIT
-      },
-      timeout: 15000,
+        const statusRes = await axios.post(
+          MOOLRE_SESSIONS.statusUrl,
+          statusPayload,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-USER": MOOLRE_SESSIONS.user,
+              // ✅ docs show Payment Status uses the same public key header
+              "X-API-PUBKEY": MOOLRE_SESSIONS.pubkey,
+            },
+            timeout: 15000,
+          }
+        );
+
+        lastStatus = statusRes.data || {};
+        console.log(
+          `🕒 Moolre status check (attempt ${attempt + 1}, idtype ${idtype}) for ${reference}:`,
+          lastStatus
+        );
+
+        const tx = Number(
+          lastStatus?.data?.txstatus != null
+            ? lastStatus.data.txstatus
+            : lastStatus.txstatus
+        ) || 0;
+
+        // 1 = success, 3 = pending
+        if (tx === 1) {
+          approved = true;
+          break;
+        }
+      }
+
+      if (approved) break;
+
+      // wait 3s before the next outer attempt
+      await sleep(3000);
     }
-  );
-
-  lastStatus = statusRes.data;
-  console.log(`🕒 Moolre status check for ${reference}:`, lastStatus);
-
-  const tx =
-    Number(
-      lastStatus?.data?.txstatus != null
-        ? lastStatus.data.txstatus
-        : lastStatus.txstatus
-    ) || 0;
-
-  if (tx === 1) {
-    approved = true;
-    break;
-  }
-
-  await sleep(3000);
-}
-
 
     if (!approved) {
+      console.log(
+        "❌ Moolre payment for sessions NOT approved/complete. No DB insert. Last status:",
+        lastStatus
+      );
       return res.status(400).json({
-        error: "Payment not approved yet. Complete OTP and try again.",
+        error:
+          lastStatus?.message ||
+          "Payment not approved yet. Complete the OTP / PIN on your phone and try again.",
         status: lastStatus,
       });
     }
 
+    // ✅ Payment APPROVED – now credit sessions
     const [result] = await db
       .promise()
       .query(
@@ -489,7 +514,6 @@ for (let i = 0; i < 5 && !approved; i++) {
       status: "completed",
       hits,
     });
-
   } catch (err) {
     console.error(
       "❌ /api/sessions/confirm-momo error:",
@@ -505,7 +529,6 @@ for (let i = 0; i < 5 && !approved; i++) {
 // Expose both routes
 app.post("/sessions/confirm-momo", confirmMomoHandler);
 app.post("/api/sessions/confirm-momo", confirmMomoHandler);
-
 
 
 
