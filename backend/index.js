@@ -403,7 +403,7 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 });
 
 // ==== CONFIRM PAYMENT & CREDIT HITS: /api/sessions/confirm-momo ====
-app.post("/api/sessions/confirm-momo", async (req, res) => {
+app.post("/sessions/confirm-momo", async (req, res) => {
   try {
     const {
       vendor_id,
