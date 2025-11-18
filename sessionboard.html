@@ -151,6 +151,21 @@
   updateWalletHits();
   updateMomoHits();
 
+  // ---------- helper to safely read JSON ONCE ----------
+  async function safeJson(res) {
+    try {
+      const data = await res.json();
+      return { data, ok: true };
+    } catch (e) {
+      // do NOT call res.text() here – the stream is already used
+      return {
+        data: { error: "Invalid response from server" },
+        ok: false,
+        parseError: e.message
+      };
+    }
+  }
+
   // --- Wallet purchase (Main Account) ---
   walletBtn?.addEventListener("click", async () => {
     const amount = Number(walletAmtEl.value);
@@ -158,6 +173,8 @@
 
     if (!vendorId)   return walletMsg.innerHTML = '<span class="err">Missing vendor id.</span>';
     if (!amount || amount < 1) return walletMsg.innerHTML = '<span class="err">Enter a valid amount.</span>';
+
+    const computed_hits = calcHitsFromAmount(amount);
 
     try {
       walletBtn.disabled = true;
@@ -167,19 +184,18 @@
         body: JSON.stringify({
           vendor_id: vendorId,
           amount,
-          computed_hits: calcHitsFromAmount(amount)
+          computed_hits
         })
       });
 
-      let data;
-      try { data = await res.json(); }
-      catch { data = { error: `Invalid JSON: ${await res.text()}` }; }
+      const { data } = await safeJson(res);
 
       if (res.ok) {
         walletMsg.innerHTML =
-          `<span class="ok">Saved! Ref: ${data.reference || data.id}. Credited: ${data.hits ?? calcHitsFromAmount(amount)} hits.</span>`;
+          `<span class="ok">Saved! Ref: ${data.reference || data.id}. Credited: ${data.hits ?? computed_hits} hits.</span>`;
       } else {
-        walletMsg.innerHTML = `<span class="err">${data.error || "Could not save."}</span>`;
+        walletMsg.innerHTML =
+          `<span class="err">${data.error || "Could not save."}</span>`;
       }
     } catch (e) {
       walletMsg.innerHTML = `<span class="err">${e.message}</span>`;
@@ -198,10 +214,12 @@
     currentMoolreRef = null;
     otpSection.classList.add("hidden");
 
-    if (!vendorId)        return momoMsg.innerHTML = '<span class="err">Missing vendor id.</span>';
+    if (!vendorId)             return momoMsg.innerHTML = '<span class="err">Missing vendor id.</span>';
     if (!amount || amount < 1) return momoMsg.innerHTML = '<span class="err">Enter a valid amount.</span>';
-    if (!momo_number)     return momoMsg.innerHTML = '<span class="err">Enter a MoMo number.</span>';
-    if (!network)         return momoMsg.innerHTML = '<span class="err">Select a network.</span>';
+    if (!momo_number)          return momoMsg.innerHTML = '<span class="err">Enter a MoMo number.</span>';
+    if (!network)              return momoMsg.innerHTML = '<span class="err">Select a network.</span>';
+
+    const computed_hits = calcHitsFromAmount(amount);
 
     try {
       momoBtn.disabled = true;
@@ -215,15 +233,13 @@
           amount,
           momo_number,
           network,
-          computed_hits: calcHitsFromAmount(amount)
+          computed_hits
         })
       });
 
-      let data;
-      try { data = await res.json(); }
-      catch { data = { error: `Invalid JSON: ${await res.text()}` }; }
+      const { data } = await safeJson(res);
 
-      if (res.ok) {
+      if (res.ok && data.ok !== false) {
         currentMoolreRef = data.reference;
         momoMsg.innerHTML =
           `<span class="ok">
@@ -234,10 +250,13 @@
         otpInput.value = "";
         otpSection.classList.remove("hidden");
       } else {
+        currentMoolreRef = null;
         otpSection.classList.add("hidden");
-        momoMsg.innerHTML = `<span class="err">${data.error || "Payment failed to start."}</span>`;
+        momoMsg.innerHTML =
+          `<span class="err">${data.error || "Payment failed to start."}</span>`;
       }
     } catch (e) {
+      currentMoolreRef = null;
       otpSection.classList.add("hidden");
       momoMsg.innerHTML = `<span class="err">${e.message}</span>`;
     } finally {
@@ -250,7 +269,7 @@
     const amount      = Number(momoAmtEl.value);
     const momo_number = momoNumberEl.value.trim();
     const network     = momoNetEl.value;
-    const otp         = otpInput.value.trim(); // not sent to Moolre, just UX
+    const otp         = otpInput.value.trim(); // for UX/logging
 
     if (!currentMoolreRef) {
       return momoMsg.innerHTML = '<span class="err">No active payment to verify. Start again.</span>';
@@ -258,6 +277,8 @@
     if (!otp) {
       return momoMsg.innerHTML = '<span class="err">Enter the OTP code sent to your phone.</span>';
     }
+
+    const computed_hits = calcHitsFromAmount(amount);
 
     try {
       otpBtn.disabled = true;
@@ -272,22 +293,19 @@
           amount,
           momo_number,
           network,
-          computed_hits: calcHitsFromAmount(amount),
-          otp // only for logging/info on backend if you want
+          computed_hits,
+          otp
         })
       });
 
-      let data;
-      try { data = await res.json(); }
-      catch { data = { error: `Invalid JSON: ${await res.text()}` }; }
+      const { data } = await safeJson(res);
 
       if (res.ok) {
         momoMsg.innerHTML =
           `<span class="ok">
             Payment approved! Ref: ${data.reference}. 
-            Credited: ${data.hits ?? calcHitsFromAmount(amount)} hits.
+            Credited: ${data.hits ?? computed_hits} hits.
           </span>`;
-        // you can optionally disable buttons here
       } else {
         momoMsg.innerHTML =
           `<span class="err">${data.error || "Payment not approved yet. Try again after completing OTP."}</span>`;
