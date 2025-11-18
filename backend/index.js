@@ -269,7 +269,8 @@ app.post("/api/sessions/purchase", async (req, res) => {
 // ============ Moolre config for Session Purchases ============
 const MOOLRE_SESSIONS = {
   payUrl: "https://api.moolre.com/open/transact/payment",
-  statusUrl: "https://api.moolre.com/open/transact/status",
+  // ✅ Use the "Payment Status" endpoint from docs
+  statusUrl: "https://api.moolre.com/open/transact/payment-status",
   user: process.env.MOOLRE_USER || "acheamp",
   // Used for INIT (sending OTP / payment request)
   pubkey:
@@ -324,11 +325,9 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
       !momo_number ||
       !network
     ) {
-      return res
-        .status(400)
-        .json({
-          error: "vendor_id, amount, momo_number, network are required",
-        });
+      return res.status(400).json({
+        error: "vendor_id, amount, momo_number, network are required",
+      });
     }
 
     const HIT_COST = 0.02;
@@ -385,7 +384,7 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
       });
     }
 
-    // No DB insert here – fronts gets reference, then user enters OTP & confirm
+    // No DB insert here – FE gets reference, user enters OTP then confirms
     return res.json({
       ok: true,
       reference,
@@ -431,14 +430,17 @@ app.post("/api/sessions/confirm-momo", async (req, res) => {
 
     // Poll status up to 5 times (user may just have entered OTP)
     for (let i = 0; i < 5 && !approved; i++) {
+      const statusPayload = {
+        // 👇 Adjust these to match your docs exactly if needed
+        type: 1, // 1 = payment
+        idtype: 3, // 3 = externalref (change if your docs say otherwise)
+        id: reference,
+        accountnumber: MOOLRE_SESSIONS.wallet,
+      };
+
       const statusRes = await axios.post(
         MOOLRE_SESSIONS.statusUrl,
-        {
-          // 🔴 Moolre was complaining "accountnumber is required"
-          // so we send BOTH reference + accountnumber
-          reference,
-          accountnumber: MOOLRE_SESSIONS.wallet,
-        },
+        statusPayload,
         {
           headers: {
             "Content-Type": "application/json",
