@@ -481,25 +481,25 @@ function handleSession(sessionId, input, msisdn, res) {
 
           const payerLocal = toLocalMsisdn(momo_number);
 
-          const payload = {
-            type: 1,
-            channel: channelId,
-            currency: "GHS",
-            payer: payerLocal,
-            amount: Number(amount.toFixed(2)),
-            externalref: transactionId,
-            reference: `Purchase of ${data_package}`,
-            accountnumber: MOOLRE.wallet,
-            sessionid: state.moolreSessionId,
+        const payload = {
+  type: 1,
+  channel: channelId,
+  currency: "GHS",
+  payer: payerLocal,
+  amount: Number(amount.toFixed(2)),          // decimal, 2dp
+  externalref: transactionId,                 // comes back in webhook
+  reference: `Purchase of ${data_package}`,
+  accountnumber: MOOLRE.wallet,
+  sessionid: state.moolreSessionId,
 
-            // 🔹 This goes back in webhook as "thirdpartyref"
-            thirdpartyref: JSON.stringify({
-              mode: state.isPlain ? "plain" : "vendor",
-              vendor_id,
-              data_package,
-              network,
-              recipient_number,
-              momo_number,
+  // 🔴 This is what the webhook will see as data.thirdpartyref
+  thirdpartyref: JSON.stringify({
+    mode: state.isPlain ? "plain" : "vendor", // plain = *203*717#, vendor = *203*717*ID#
+    vendor_id,
+    data_package,
+    network,
+    recipient_number,
+    momo_number,
             }),
           };
 
