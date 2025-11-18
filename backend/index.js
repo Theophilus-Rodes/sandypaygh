@@ -411,7 +411,9 @@ async function confirmMomoHandler(req, res) {
     let approved = false;
     let lastStatus = null;
 
-    for (let i = 0; i < 5 && !approved; i++) {
+await sleep(3000);
+
+for (let i = 0; i < 5 && !approved; i++) {
   const statusPayload = {
     type: 1,                          // 1 = payment
     idtype: 1,                        // ✅ 1 = use external reference
