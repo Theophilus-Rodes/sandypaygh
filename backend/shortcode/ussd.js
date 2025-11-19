@@ -118,26 +118,21 @@ function renderPackages(state) {
 
   if (!total) return "No packages.";
 
-  const title = `Packages (${(state.network || "").toUpperCase()})`;
-  const lines = [title];
+  const lines = [`Packages (${(state.network || "").toUpperCase()})`];
 
-  // show items for this page
+  // Items in this page
   for (let i = start; i < end; i++) {
     lines.push(`${i + 1}) ${list[i]}`);
   }
 
-  // options
+  // ONLY show “More” — NO BACK
   if (end < total) {
-    // there is another page after this
     lines.push("0) More");
-    lines.push("00) Back");
-  } else {
-    // last page – only back
-    lines.push("0) Back");
   }
 
   return lines.join("\n");
 }
+
 
 function confirmMessage(state) {
   const [packageName, price] = String(state.selectedPkg || "").split(" @ ");
@@ -274,7 +269,7 @@ function handleSession(sessionId, input, msisdn, res) {
 
         if (choice === "2") {
           if (!state.vendorId || state.isPlain) {
-            return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
+            return end("Contact us:\n0502888235");
           }
 
           db.query(
@@ -283,11 +278,11 @@ function handleSession(sessionId, input, msisdn, res) {
             (err, rows) => {
               if (err) {
                 console.error("❌ MySQL error (Contact vendor):", err);
-                return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
+                return end("Contact us:\n0502888235");
               }
 
               if (!rows || !rows.length || !rows[0].phone) {
-                return end("Contact us:\n0559126985\nsupport@sandypaygh.com");
+                return end("Contact us:\n0502888235");
               }
 
               const phone = rows[0].phone;
@@ -411,13 +406,6 @@ function handleSession(sessionId, input, msisdn, res) {
         const page = state.packagePage || 0;
         const start = page * PAGE_SIZE;
         const end = Math.min(start + PAGE_SIZE, total);
-
-        // 00 = go back to network menu (from any page)
-        if (trimmed === "00") {
-          state.packagePage = 0;
-          state.step = "network";
-          return reply("Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel");
-        }
 
         // 0 = "More" if there is another page, otherwise "Back"
         if (trimmed === "0") {
