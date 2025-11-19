@@ -315,152 +315,150 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 
 
-/////////////////////////////////////////////////////////////
-//  TheTeller CONFIG + getSwitchCode()  ← PASTE THIS HERE
-/////////////////////////////////////////////////////////////
-
-function getSwitchCode(net) {
-  switch (String(net || "").toLowerCase()) {
-    case "mtn":
-      return "MTN";
-    case "telecel":
-    case "vodafone":
-      return "VDF";
-    case "airteltigo":
-    case "airtel":
-      return "ATL";
-    case "tigo":
-      return "TGO";
-    default:
-      return null;
-  }
-}
-
-const THETELLER_URL =
-  "https://prod.theteller.net/v1.1/transaction/process";
-
-const THETELLER_MERCHANT_ID = "TM-00010694";
-
-const THETELLER_AUTH_PAIR =
-  "sandypay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmM1MzM1MGE1YzQ=";
-
-const THETELLER_TOKEN = Buffer.from(THETELLER_AUTH_PAIR).toString("base64");
-
 
 
 // ========================================================
 //     SESSIONS PURCHASE VIA THETELLER (MO MO PROMPT)
 // ========================================================
 app.post("/api/sessions/purchase-momo", async (req, res) => {
-  try {
-    const { vendor_id, amount, momo_number, network, computed_hits } = req.body;
+  const { vendor_id, amount, momo_number, network, computed_hits } = req.body;
 
-    if (!vendor_id || !amount || Number(amount) <= 0 || !momo_number || !network) {
-      return res.status(400).json({
-        error: "vendor_id, amount, momo_number and network are required",
-      });
+  // Basic validation
+  if (!vendor_id || !amount || !momo_number || !network) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing fields: vendor_id, amount, momo_number, network are required." });
+  }
+
+  const numericAmount = parseFloat(amount);
+  if (isNaN(numericAmount) || numericAmount <= 0) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Invalid amount." });
+  }
+
+  // Local helper – same style as AFA
+  function getSwitchCode(net) {
+    switch (net.toLowerCase()) {
+      case "mtn":
+        return "MTN";
+      case "vodafone":
+      case "telecel":
+        return "VDF";
+      case "airteltigo":
+      case "airtel":
+        return "ATL";
+      case "tigo":
+        return "TGO";
+      default:
+        return null;
     }
+  }
 
-    // 1️⃣ Calculate hits
-    const HIT_COST = 0.02; // 1 GHS = 50 hits
-    const hits = Number.isFinite(Number(computed_hits))
-      ? Math.max(0, Math.floor(Number(computed_hits)))
-      : Math.floor(Number(amount) / HIT_COST);
-
-    // 2️⃣ Prepare TheTeller fields
+  try {
     const rSwitch = getSwitchCode(network);
     if (!rSwitch) {
-      return res.status(400).json({ error: "Unsupported network for TheTeller" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Unsupported network." });
     }
 
-    // For TheTeller, number must be 233XXXXXXXXX
-    const formattedMoMo = String(momo_number).replace(/^0/, "233");
+    // Format MoMo as 233XXXXXXXXX (same idea as AFA)
+    const formattedMoMo = momo_number.replace(/^0/, "233");
 
+    // Unique transaction ID and reference
     const transactionId = `TRX-SES-${Date.now()}`.slice(0, 30);
-    const amountFormatted = String(Math.round(Number(amount) * 100)).padStart(12, "0");
+    const reference = transactionId; // we also use this as "reference" in DB
+
+    // TheTeller wants amount in "pesewas" padded to 12 digits
+    const amountFormatted = String(Math.round(numericAmount * 100)).padStart(12, "0");
 
     const payload = {
       amount: amountFormatted,
-      processing_code: "000200",            // same as AFA (MoMo debit)
+      processing_code: "000200",
       transaction_id: transactionId,
       desc: "USSD Session Purchase",
-      merchant_id: THETELLER_MERCHANT_ID,
+      merchant_id: "TTM-00010694",
       subscriber_number: formattedMoMo,
       "r-switch": rSwitch,
-      redirect_url: "https://sandipay.co/sessions/callback", // can be any URL you want
+      redirect_url: "https://example.com/sessions-callback" // placeholder
     };
 
-    console.log("🟡 TheTeller session payload:", payload);
+    // Same auth style as your AFA code
+    const token = Buffer.from(
+      "sandipay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ="
+    ).toString("base64");
 
-    // 3️⃣ Call TheTeller – this is what triggers the MoMo PROMPT
-    const response = await axios.post(THETELLER_URL, payload, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Basic ${THETELLER_TOKEN}`,
-        "Cache-Control": "no-cache",
-      },
-      timeout: 30000,
-    });
+    // Call TheTeller
+    const response = await axios.post(
+      "https://prod.theteller.net/v1.1/transaction/process",
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Basic ${token}`,
+          "Cache-Control": "no-cache"
+        }
+      }
+    );
 
-    const data = response.data || {};
-    console.log("✅ TheTeller session response:", data);
+    const status = response.data.status?.toLowerCase();
+    const code = response.data.code;
 
-    // NOTE: check the field that indicates success in YOUR existing AFA / wallet code.
-    // Often it's data.code === '0000' or data.status === '0000'.
-    const statusCode =
-      data.status || data.code || data.response_code || data.reason_code;
+    // Decide if payment is successful
+    if (status === "approved" || status === "successful" || code === "000") {
+      const HIT_COST = 0.02;
 
-    if (String(statusCode) !== "0000") {
-      // TheTeller accepted the request? If not, return error
-      return res.status(400).json({
-        error: data.reason || data.message || "TheTeller did not accept the payment",
-        raw: data,
-      });
-    }
+      // If frontend sends computed_hits use it, otherwise derive from amount
+      const hits =
+        Number.isFinite(Number(computed_hits)) && Number(computed_hits) > 0
+          ? Math.floor(Number(computed_hits))
+          : Math.floor(numericAmount / HIT_COST);
 
-    // 4️⃣ If we reach here: TheTeller has accepted & prompt should be on the phone.
-    // We go ahead and store the sessions as "pending" or "completed"
-    const [result] = await db
-      .promise()
-      .query(
+      // Insert into session_purchases
+      db.query(
         `INSERT INTO session_purchases
            (vendor_id, source, amount, hits, reference, status, meta_json)
          VALUES (?, 'momo', ?, ?, ?, 'completed',
-           JSON_OBJECT('network', ?, 'momo', ?, 'provider', 'theteller'))`,
+           JSON_OBJECT('network', ?, 'momo', ?, 'verified', true))`,
         [
           vendor_id,
-          Number(amount),
+          numericAmount,
           hits,
-          transactionId,
-          (network || "").toLowerCase(),
-          momo_number,
-        ]
+          reference,
+          network.toLowerCase(),
+          momo_number
+        ],
+        (err, result) => {
+          if (err) {
+            console.error("❌ Error inserting session_purchases:", err);
+            return res
+              .status(500)
+              .json({ success: false, message: "Payment went through but could not save sessions." });
+          }
+
+          return res.json({
+            success: true,
+            message: "Payment successful, sessions credited.",
+            hits,
+            reference
+          });
+        }
       );
-
-    console.log("✅ Session purchase saved (TheTeller):", {
-      vendor_id,
-      hits,
-      transactionId,
-      insertId: result.insertId,
-    });
-
-    // 5️⃣ Respond to frontend
-    return res.json({
-      ok: true,
-      message:
-        "Payment request sent. Approve the prompt on your phone to complete purchase.",
-      reference: transactionId,
-      hits,
-    });
-  } catch (err) {
+    } else {
+      console.error("❌ TheTeller sessions payment declined:", response.data);
+      return res
+        .status(400)
+        .json({ success: false, message: "Payment declined.", raw: response.data });
+    }
+  } catch (error) {
     console.error(
       "❌ /api/sessions/purchase-momo (TheTeller) error:",
-      err.response?.data || err.message
+      error.response?.data || error.message
     );
-    return res.status(500).json({
-      error: "Payment init error",
-      details: err.response?.data || err.message,
-    });
+    return res
+      .status(500)
+      .json({ success: false, message: "Payment failed or cancelled." });
   }
 });
 
