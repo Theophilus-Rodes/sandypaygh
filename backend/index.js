@@ -195,8 +195,7 @@ transporter.verify((error, success) => {
 
 
 
-// ✅ Save a session purchase paid from Main Account (wallet)
-// NOTE: per your instruction this only INSERTS a record.
+
 // helper to make short refs (reuse if already defined)
 function newRef(prefix = "SW") {
   return `${prefix}${Date.now()}${Math.floor(Math.random()*1000)}`.slice(0, 30);
@@ -313,6 +312,39 @@ function normalizeLocalMomo(msisdn) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+
+
+/////////////////////////////////////////////////////////////
+//  TheTeller CONFIG + getSwitchCode()  ← PASTE THIS HERE
+/////////////////////////////////////////////////////////////
+
+function getSwitchCode(net) {
+  switch (String(net || "").toLowerCase()) {
+    case "mtn":
+      return "MTN";
+    case "telecel":
+    case "vodafone":
+      return "VDF";
+    case "airteltigo":
+    case "airtel":
+      return "ATL";
+    case "tigo":
+      return "TGO";
+    default:
+      return null;
+  }
+}
+
+const THETELLER_URL =
+  "https://prod.theteller.net/v1.1/transaction/process";
+
+const THETELLER_MERCHANT_ID = "TM-00010694";
+
+const THETELLER_AUTH_PAIR =
+  "sandypay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmM1MzM1MGE1YzQ=";
+
+const THETELLER_TOKEN = Buffer.from(THETELLER_AUTH_PAIR).toString("base64");
 
 
 
