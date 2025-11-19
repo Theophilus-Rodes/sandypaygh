@@ -317,7 +317,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 
 // ========================================================
-//                    INIT PAYMENT (OTP SEND)
+//     SESSIONS PURCHASE VIA THETELLER (MO MO PROMPT)
 // ========================================================
 app.post("/api/sessions/purchase-momo", async (req, res) => {
   try {
@@ -325,97 +325,104 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 
     if (!vendor_id || !amount || Number(amount) <= 0 || !momo_number || !network) {
       return res.status(400).json({
-        error: "vendor_id, amount, momo_number, network are required",
+        error: "vendor_id, amount, momo_number and network are required",
       });
     }
 
-    const HIT_COST = 0.02;
+    // 1️⃣ Calculate hits
+    const HIT_COST = 0.02; // 1 GHS = 50 hits
     const hits = Number.isFinite(Number(computed_hits))
       ? Math.max(0, Math.floor(Number(computed_hits)))
       : Math.floor(Number(amount) / HIT_COST);
 
-    const reference = `SM${Date.now()}${Math.floor(
-      Math.random() * 1000
-    )}`.slice(0, 30);
-
-    const channelId = moolreChannelId(network);
-    if (!channelId) {
-      return res.status(400).json({ error: "Unsupported network for Moolre" });
+    // 2️⃣ Prepare TheTeller fields
+    const rSwitch = getSwitchCode(network);
+    if (!rSwitch) {
+      return res.status(400).json({ error: "Unsupported network for TheTeller" });
     }
 
-    const payerLocal = normalizeLocalMomo(momo_number);
+    // For TheTeller, number must be 233XXXXXXXXX
+    const formattedMoMo = String(momo_number).replace(/^0/, "233");
+
+    const transactionId = `TRX-SES-${Date.now()}`.slice(0, 30);
+    const amountFormatted = String(Math.round(Number(amount) * 100)).padStart(12, "0");
 
     const payload = {
-      type: 1,
-      channel: channelId,
-      currency: "GHS",
-      payer: payerLocal,
-      amount: Number(Number(amount).toFixed(2)),
-      externalref: reference,
-      reference: `Purchase of USSD sessions (GHS ${amount})`,
-      accountnumber: MOOLRE_SESSIONS.wallet,
+      amount: amountFormatted,
+      processing_code: "000200",            // same as AFA (MoMo debit)
+      transaction_id: transactionId,
+      desc: "USSD Session Purchase",
+      merchant_id: THETELLER_MERCHANT_ID,
+      subscriber_number: formattedMoMo,
+      "r-switch": rSwitch,
+      redirect_url: "https://sandipay.co/sessions/callback", // can be any URL you want
     };
 
-    console.log("🟡 Moolre session payment payload:", payload);
+    console.log("🟡 TheTeller session payload:", payload);
 
-    // ✅ INIT uses PUBKEY (per docs)
-    const initRes = await axios.post(MOOLRE_SESSIONS.payUrl, payload, {
+    // 3️⃣ Call TheTeller – this is what triggers the MoMo PROMPT
+    const response = await axios.post(THETELLER_URL, payload, {
       headers: {
         "Content-Type": "application/json",
-        "X-API-USER": MOOLRE_SESSIONS.user,
-        "X-API-PUBKEY": MOOLRE_SESSIONS.pubkey,
+        Authorization: `Basic ${THETELLER_TOKEN}`,
+        "Cache-Control": "no-cache",
       },
-      timeout: 15000,
+      timeout: 30000,
     });
 
-    const initData = initRes.data || {};
-    console.log("✅ MOOLRE INIT response:", initData);
+    const data = response.data || {};
+    console.log("✅ TheTeller session response:", data);
 
-    if (Number(initData.status) !== 1) {
+    // NOTE: check the field that indicates success in YOUR existing AFA / wallet code.
+    // Often it's data.code === '0000' or data.status === '0000'.
+    const statusCode =
+      data.status || data.code || data.response_code || data.reason_code;
+
+    if (String(statusCode) !== "0000") {
+      // TheTeller accepted the request? If not, return error
       return res.status(400).json({
-        error: initData.message || "Moolre did not accept the payment request",
-        moolre: initData,
+        error: data.reason || data.message || "TheTeller did not accept the payment",
+        raw: data,
       });
     }
 
-    // Save temp order for webhook
-    try {
-      await db
-        .promise()
-        .query(
-          `INSERT INTO moolre_temp_orders
-             (mode, vendor_id, data_package, network,
-              recipient_number, momo_number, amount, externalref, hits)
-           VALUES ('sessions', ?, '', ?, '', ?, ?, ?, ?)`,
-          [
-            vendor_id,
-            (network || "").toLowerCase(),
-            payerLocal, // momo_number
-            Number(amount),
-            reference,
-            hits,
-          ]
-        );
+    // 4️⃣ If we reach here: TheTeller has accepted & prompt should be on the phone.
+    // We go ahead and store the sessions as "pending" or "completed"
+    const [result] = await db
+      .promise()
+      .query(
+        `INSERT INTO session_purchases
+           (vendor_id, source, amount, hits, reference, status, meta_json)
+         VALUES (?, 'momo', ?, ?, ?, 'completed',
+           JSON_OBJECT('network', ?, 'momo', ?, 'provider', 'theteller'))`,
+        [
+          vendor_id,
+          Number(amount),
+          hits,
+          transactionId,
+          (network || "").toLowerCase(),
+          momo_number,
+        ]
+      );
 
-      console.log("📝 Temp sessions order saved for webhook:", {
-        vendor_id,
-        amount,
-        hits,
-        reference,
-      });
-    } catch (e) {
-      console.error("❌ Failed to insert temp sessions order:", e);
-      // We still reply OK so the user can complete OTP; webhook just won't credit if this fails
-    }
+    console.log("✅ Session purchase saved (TheTeller):", {
+      vendor_id,
+      hits,
+      transactionId,
+      insertId: result.insertId,
+    });
 
+    // 5️⃣ Respond to frontend
     return res.json({
       ok: true,
-      reference,
+      message:
+        "Payment request sent. Approve the prompt on your phone to complete purchase.",
+      reference: transactionId,
       hits,
     });
   } catch (err) {
     console.error(
-      "❌ /api/sessions/purchase-momo error:",
+      "❌ /api/sessions/purchase-momo (TheTeller) error:",
       err.response?.data || err.message
     );
     return res.status(500).json({
@@ -424,81 +431,6 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
     });
   }
 });
-
-
-
-// ========================================================
-//    SIMPLE CONFIRM HANDLER (WEBHOOK-DRIVEN CREDIT)
-// ========================================================
-async function confirmMomoHandler(req, res) {
-  try {
-    const { vendor_id, reference } = req.body;
-
-    if (!vendor_id || !reference) {
-      return res
-        .status(400)
-        .json({ error: "vendor_id and reference are required" });
-    }
-
-    // 1️⃣ Check if we already credited this reference
-    const [rows] = await db
-      .promise()
-      .query(
-        `SELECT hits, amount, status
-           FROM session_purchases
-          WHERE vendor_id = ? AND reference = ?
-          LIMIT 1`,
-        [vendor_id, reference]
-      );
-
-    if (rows.length > 0) {
-      const row = rows[0];
-      console.log("✅ confirm-momo: already credited from webhook:", {
-        vendor_id,
-        reference,
-        hits: row.hits,
-      });
-
-      return res.json({
-        status: "completed",
-        reference,
-        hits: row.hits,
-        amount: row.amount,
-      });
-    }
-
-    // 2️⃣ Not yet credited – most likely still pending at Moolre.
-    //    We DON'T call Moolre status here anymore; we just tell the user to wait.
-    console.log(
-      "ℹ️ confirm-momo: no session_purchases yet for",
-      reference,
-      "- probably still pending, waiting for webhook."
-    );
-
-    return res.json({
-      status: "pending",
-      reference,
-      message:
-        "Payment is still being processed. If you approved the prompt on your phone, your sessions will be credited automatically within a few minutes. Please do not retry the payment.",
-    });
-  } catch (err) {
-    console.error(
-      "❌ /api/sessions/confirm-momo error:",
-      err.response?.data || err.message
-    );
-    return res.status(500).json({
-      error: "Confirmation error",
-      details: err.response?.data || err.message,
-    });
-  }
-}
-
-// Expose both routes
-app.post("/sessions/confirm-momo", confirmMomoHandler);
-app.post("/api/sessions/confirm-momo", confirmMomoHandler);
-
-
-
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -613,66 +545,6 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
 
         return;
       }
-
-
-      // ---------- SESSIONS MODE ----------
-if (mode === "sessions") {
-  const HIT_COST = 0.02;
-
-  // pull hits from the temp order row
-  const hitsFromDb = Number(meta.hits || 0);
-  const finalHits =
-    hitsFromDb > 0
-      ? hitsFromDb
-      : Math.floor((amountPaid || 0) / HIT_COST);
-
-  db.query(
-    `INSERT INTO session_purchases
-       (vendor_id, source, amount, hits, reference, status, meta_json)
-     VALUES (?, 'momo', ?, ?, ?, 'completed',
-       JSON_OBJECT('network', ?, 'momo', ?, 'webhook', true))`,
-    [
-      vendor_id || 0,
-      amountPaid || 0,
-      finalHits,
-      externalref,
-      network || "",
-      momo_number || "",
-    ],
-    (err1, result) => {
-      if (err1) {
-        console.error(
-          "❌ Error inserting session_purchases from webhook:",
-          err1
-        );
-      } else {
-        console.log("✅ Sessions credited from webhook:", {
-          vendor_id,
-          hits: finalHits,
-          externalref,
-          insertId: result.insertId,
-        });
-      }
-
-      // clean up temp row
-      db.query(
-        "DELETE FROM moolre_temp_orders WHERE externalref = ?",
-        [externalref],
-        (err2) => {
-          if (err2) {
-            console.error("❌ Error deleting temp sessions order:", err2);
-          } else {
-            console.log("🧹 Temp sessions order removed:", externalref);
-          }
-          return res.status(200).send("OK");
-        }
-      );
-    }
-  );
-
-  return;
-}
-
 
           // ---------- VENDOR MODE (*203*717*ID#) ----------
       db.query(
