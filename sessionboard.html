@@ -66,13 +66,6 @@
 
         <button id="momoBtn">Purchase via MoMo</button>
 
-        <!-- OTP STEP (for Moolre verification) -->
-        <div id="otpSection" class="hidden">
-          <label>Enter OTP sent to your phone</label>
-          <input type="text" id="moolreOtp" placeholder="Code from SMS" />
-          <button id="otpBtn">Verify & Complete Payment</button>
-        </div>
-
         <div id="momoMsg" class="msg"></div>
       </div>
     </div>
@@ -98,13 +91,6 @@
   const momoNetEl    = document.getElementById("momoNetwork");
   const momoBtn      = document.getElementById("momoBtn");
   const momoMsg      = document.getElementById("momoMsg");
-
-  const otpSection   = document.getElementById("otpSection");
-  const otpInput     = document.getElementById("moolreOtp");
-  const otpBtn       = document.getElementById("otpBtn");
-
-  // will hold the Moolre reference from INIT call
-  let currentMoolreRef = null;
 
   // --- Toggle source (Main Account vs MoMo) ---
   document.querySelectorAll('input[name="source"]').forEach(r => {
@@ -152,45 +138,19 @@
   updateMomoHits();
 
   // ---------- helper to safely read JSON ONCE ----------
-// ---------- helper to safely read JSON or plain text ----------
-async function safeJson(res) {
-  const ct = (res.headers.get("content-type") || "").toLowerCase();
-
-  // If server says it's JSON, try to parse once
-  if (ct.includes("application/json")) {
+  async function safeJson(res) {
     try {
       const data = await res.json();
       return { data, ok: true };
     } catch (e) {
+      // do NOT call res.text() here – the stream is already used
       return {
-        data: {
-          error: `Invalid JSON from server (status ${res.status}).`,
-          _parseError: e.message
-        },
-        ok: false
+        data: { error: "Invalid response from server" },
+        ok: false,
+        parseError: e.message
       };
     }
   }
-
-  // Not JSON: read text from a CLONE so we don't hit "body stream already read"
-  const clone = res.clone();
-  let text = "";
-  try {
-    text = await clone.text();
-  } catch (e) {
-    text = "";
-  }
-
-  return {
-    data: {
-      error: text
-        ? `Server error (status ${res.status}): ${text.slice(0, 200)}`
-        : `Server returned status ${res.status} with non-JSON body`
-    },
-    ok: false
-  };
-}
-
 
   // --- Wallet purchase (Main Account) ---
   walletBtn?.addEventListener("click", async () => {
@@ -230,15 +190,13 @@ async function safeJson(res) {
     }
   });
 
-  // --- MoMo purchase (Moolre INIT) ---
+  // --- MoMo purchase (single-step payment request) ---
   momoBtn?.addEventListener("click", async () => {
     const amount      = Number(momoAmtEl.value);
     const momo_number = momoNumberEl.value.trim();
     const network     = momoNetEl.value;
 
     momoMsg.textContent = "";
-    currentMoolreRef = null;
-    otpSection.classList.add("hidden");
 
     if (!vendorId)             return momoMsg.innerHTML = '<span class="err">Missing vendor id.</span>';
     if (!amount || amount < 1) return momoMsg.innerHTML = '<span class="err">Enter a valid amount.</span>';
@@ -249,7 +207,7 @@ async function safeJson(res) {
 
     try {
       momoBtn.disabled = true;
-      momoMsg.innerHTML = 'Requesting payment… please wait. You will receive an OTP SMS from Moolre.';
+      momoMsg.innerHTML = 'Requesting payment… please wait. You will receive a prompt on your phone.';
 
       const res = await fetch(`${API_BASE}/sessions/purchase-momo`, {
         method: "POST",
@@ -266,80 +224,19 @@ async function safeJson(res) {
       const { data } = await safeJson(res);
 
       if (res.ok && data.ok !== false) {
-        currentMoolreRef = data.reference;
         momoMsg.innerHTML =
           `<span class="ok">
-            Payment request sent (Ref: ${data.reference}).<br/>
-            An OTP has been sent to your phone. Complete the verification on your phone, 
-            then enter the code below and tap "Verify & Complete Payment".
+            Payment request sent${data.reference ? ` (Ref: ${data.reference})` : ""}.<br/>
+            Please approve the payment on your phone. Once approved, your sessions will be credited automatically.
           </span>`;
-        otpInput.value = "";
-        otpSection.classList.remove("hidden");
       } else {
-        currentMoolreRef = null;
-        otpSection.classList.add("hidden");
         momoMsg.innerHTML =
           `<span class="err">${data.error || "Payment failed to start."}</span>`;
       }
     } catch (e) {
-      currentMoolreRef = null;
-      otpSection.classList.add("hidden");
       momoMsg.innerHTML = `<span class="err">${e.message}</span>`;
     } finally {
       momoBtn.disabled = false;
-    }
-  });
-
-  // --- OTP VERIFY STEP (Moolre status check) ---
-  otpBtn?.addEventListener("click", async () => {
-    const amount      = Number(momoAmtEl.value);
-    const momo_number = momoNumberEl.value.trim();
-    const network     = momoNetEl.value;
-    const otp         = otpInput.value.trim(); // for UX/logging
-
-    if (!currentMoolreRef) {
-      return momoMsg.innerHTML = '<span class="err">No active payment to verify. Start again.</span>';
-    }
-    if (!otp) {
-      return momoMsg.innerHTML = '<span class="err">Enter the OTP code sent to your phone.</span>';
-    }
-
-    const computed_hits = calcHitsFromAmount(amount);
-
-    try {
-      otpBtn.disabled = true;
-      momoMsg.innerHTML = 'Verifying payment, please wait…';
-
-      const res = await fetch(`${API_BASE}/sessions/confirm-momo`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          vendor_id: vendorId,
-          reference: currentMoolreRef,
-          amount,
-          momo_number,
-          network,
-          computed_hits,
-          otp
-        })
-      });
-
-      const { data } = await safeJson(res);
-
-      if (res.ok) {
-        momoMsg.innerHTML =
-          `<span class="ok">
-            Payment approved! Ref: ${data.reference}. 
-            Credited: ${data.hits ?? computed_hits} hits.
-          </span>`;
-      } else {
-        momoMsg.innerHTML =
-          `<span class="err">${data.error || "Payment not approved yet. Try again after completing OTP."}</span>`;
-      }
-    } catch (e) {
-      momoMsg.innerHTML = `<span class="err">${e.message}</span>`;
-    } finally {
-      otpBtn.disabled = false;
     }
   });
 </script>
