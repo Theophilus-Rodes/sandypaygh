@@ -88,6 +88,8 @@ const sessions = {};
 
 // ====== HELPERS ======
 
+const PAGE_SIZE = 6; // how many packages per page
+
 // Map network name -> Moolre channel ID
 function getChannelId(network) {
   switch ((network || "").toLowerCase()) {
@@ -106,13 +108,35 @@ function getChannelId(network) {
   }
 }
 
-// ✅ Show ALL packages in one list, no "#. More"
+// ✅ PACKAGES LIST WITH PAGINATION
 function renderPackages(state) {
   const list = Array.isArray(state.packageList) ? state.packageList : [];
-  const pkgList =
-    list.map((p, i) => `${i + 1}) ${p}`).join("\n") || "No packages.";
+  const total = list.length;
+  const page = state.packagePage || 0;
+  const start = page * PAGE_SIZE;
+  const end = Math.min(start + PAGE_SIZE, total);
 
-  return `Packages (${(state.network || "").toUpperCase()})\n${pkgList}\n0) Back`;
+  if (!total) return "No packages.";
+
+  const title = `Packages (${(state.network || "").toUpperCase()})`;
+  const lines = [title];
+
+  // show items for this page
+  for (let i = start; i < end; i++) {
+    lines.push(`${i + 1}) ${list[i]}`);
+  }
+
+  // options
+  if (end < total) {
+    // there is another page after this
+    lines.push("0) More");
+    lines.push("00) Back");
+  } else {
+    // last page – only back
+    lines.push("0) Back");
+  }
+
+  return lines.join("\n");
 }
 
 function confirmMessage(state) {
@@ -300,15 +324,15 @@ function handleSession(sessionId, input, msisdn, res) {
         // PLAIN MODE → AdminData
         if (state.isPlain) {
           const net = state.network.toLowerCase();
- db.query(
-  `SELECT 
-     package_name AS data_package, 
-     price AS amount,
-     network
-   FROM AdminData
-   WHERE status = 'active' AND network = ?
-   ORDER BY package_name ASC`,
-  [net],
+          db.query(
+            `SELECT 
+               package_name AS data_package, 
+               price AS amount,
+               network
+             FROM AdminData
+             WHERE status = 'active' AND network = ?
+             ORDER BY price ASC`,
+            [net],
             (err, rows) => {
               try {
                 if (err) {
@@ -325,7 +349,7 @@ function handleSession(sessionId, input, msisdn, res) {
                 state.packageList = rows.map(
                   (r) => `${r.data_package} @ GHS${r.amount}`
                 );
-                state.packagePage = 0; // not used now but harmless
+                state.packagePage = 0; // reset page
                 state.step = "package";
                 return reply(renderPackages(state));
               } catch (cbErr) {
@@ -344,12 +368,12 @@ function handleSession(sessionId, input, msisdn, res) {
 
         // VENDOR MODE → data_packages
         const net = state.network.toLowerCase();
-  db.query(
-  `SELECT data_package, amount
-   FROM data_packages
-   WHERE vendor_id = ? AND network = ? AND status = 'available'
-   ORDER BY data_package ASC`,
-  [state.vendorId, net],
+        db.query(
+          `SELECT data_package, amount
+           FROM data_packages
+           WHERE vendor_id = ? AND network = ? AND status = 'available'
+           ORDER BY amount ASC`,
+          [state.vendorId, net],
           (err, rows) => {
             try {
               if (err) {
@@ -362,7 +386,7 @@ function handleSession(sessionId, input, msisdn, res) {
               state.packageList = rows.map(
                 (r) => `${r.data_package} @ GHS${r.amount}`
               );
-              state.packagePage = 0; // not used now but harmless
+              state.packagePage = 0; // reset page
               state.step = "package";
               return reply(renderPackages(state));
             } catch (cbErr) {
@@ -379,17 +403,37 @@ function handleSession(sessionId, input, msisdn, res) {
         return;
       }
 
-      // ================== PACKAGE STEP (NO PAGINATION) ==================
+      // ================== PACKAGE STEP (WITH PAGINATION) ==================
       case "package": {
         const trimmed = (input || "").trim();
+        const list = state.packageList || [];
+        const total = list.length;
+        const page = state.packagePage || 0;
+        const start = page * PAGE_SIZE;
+        const end = Math.min(start + PAGE_SIZE, total);
 
-        // 0 = go back to network menu
-        if (trimmed === "0") {
+        // 00 = go back to network menu (from any page)
+        if (trimmed === "00") {
+          state.packagePage = 0;
           state.step = "network";
           return reply("Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel");
         }
 
-        // If user presses # or blank, just re-show list with hint
+        // 0 = "More" if there is another page, otherwise "Back"
+        if (trimmed === "0") {
+          if (end < total) {
+            // go to next page
+            state.packagePage = page + 1;
+            return reply(renderPackages(state));
+          } else {
+            // last page → back to network
+            state.packagePage = 0;
+            state.step = "network";
+            return reply("Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel");
+          }
+        }
+
+        // If user presses # or blank, just re-show current page
         if (trimmed === "" || trimmed === "#") {
           return reply(
             "Please enter a number from the list.\n" + renderPackages(state)
@@ -401,10 +445,10 @@ function handleSession(sessionId, input, msisdn, res) {
         if (
           Number.isInteger(idx) &&
           idx >= 0 &&
-          state.packageList &&
-          state.packageList[idx]
+          idx < total &&
+          list[idx]
         ) {
-          state.selectedPkg = state.packageList[idx];
+          state.selectedPkg = list[idx];
           state.step = "recipient";
           return reply(
             "Recipient\n1) Buy for self\n2) Buy for others\n0) Back"
@@ -466,8 +510,7 @@ function handleSession(sessionId, input, msisdn, res) {
 
           const transactionId = `TRX${Date.now()}`.slice(0, 30);
 
-
-           // 👉 Save pending order in DB using this externalref
+          // 👉 Save pending order in DB using this externalref
           db.query(
             `INSERT INTO moolre_temp_orders
                (externalref, mode, vendor_id, data_package, network,
@@ -508,25 +551,25 @@ function handleSession(sessionId, input, msisdn, res) {
 
           const payerLocal = toLocalMsisdn(momo_number);
 
-        const payload = {
-  type: 1,
-  channel: channelId,
-  currency: "GHS",
-  payer: payerLocal,
-  amount: Number(amount.toFixed(2)),          // decimal, 2dp
-  externalref: transactionId,                 // comes back in webhook
-  reference: `Purchase of ${data_package}`,
-  accountnumber: MOOLRE.wallet,
-  sessionid: state.moolreSessionId,
+          const payload = {
+            type: 1,
+            channel: channelId,
+            currency: "GHS",
+            payer: payerLocal,
+            amount: Number(amount.toFixed(2)), // decimal, 2dp
+            externalref: transactionId, // comes back in webhook
+            reference: `Purchase of ${data_package}`,
+            accountnumber: MOOLRE.wallet,
+            sessionid: state.moolreSessionId,
 
-  // 🔴 This is what the webhook will see as data.thirdpartyref
-  thirdpartyref: JSON.stringify({
-    mode: state.isPlain ? "plain" : "vendor", // plain = *203*717#, vendor = *203*717*ID#
-    vendor_id,
-    data_package,
-    network,
-    recipient_number,
-    momo_number,
+            // 🔴 This is what the webhook will see as data.thirdpartyref
+            thirdpartyref: JSON.stringify({
+              mode: state.isPlain ? "plain" : "vendor", // plain = *203*717#, vendor = *203*717*ID#
+              vendor_id,
+              data_package,
+              network,
+              recipient_number,
+              momo_number,
             }),
           };
 
