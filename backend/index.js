@@ -463,31 +463,44 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 });
 
 
-////////////////////////////////////////////////////////////////////////////////////////////
 // ========== MOOLRE PAYMENT WEBHOOK ==========
 app.post("/api/moolre/webhook", express.json(), (req, res) => {
-  console.log("🔔 MOOLRE WEBHOOK RECEIVED:", req.body);
+  console.log("🔔 MOOLRE WEBHOOK RAW BODY:", req.body);
 
-  const wrapper = req.body || {};
-  const data = wrapper.data || {};
+  // Moolre may send { data: {...} } or just {...}
+  const body = req.body || {};
+  const data = body.data || body;
 
-  const txstatus    = Number(data.txstatus || 0);   // 1 = success
+  const txstatusRaw = data.txstatus;
+  const txstatus    = Number(txstatusRaw); // often "1"
   const payer       = data.payer;
   const amountStr   = data.amount;
-  const externalref = data.externalref;             // our key from INIT
+  const externalref = data.externalref;   // our key from INIT
   const ts          = data.ts;
   const secret      = data.secret;
 
-  const amt = parseFloat(amountStr);
+  const amt = parseFloat(amountStr || "0");
 
+  console.log("🔎 Parsed webhook data:", {
+    txstatusRaw,
+    txstatus,
+    payer,
+    amountStr,
+    externalref,
+    ts,
+    secret,
+  });
+
+  // ✅ Secret check (if you configured one)
   const expectedSecret = process.env.MOOLRE_WEBHOOK_SECRET || "";
   if (expectedSecret && secret !== expectedSecret) {
-    console.log("❌ Invalid webhook secret");
+    console.log("❌ Invalid webhook secret. Expected:", expectedSecret, "Got:", secret);
     return res.status(403).send("Forbidden");
   }
 
+  // ✅ Treat 1 / "1" as success (you can add more if Moolre uses other codes)
   if (txstatus !== 1) {
-    console.log("⏳ Payment not approved (txstatus =", txstatus, ") – ignoring.");
+    console.log("⏳ Payment not approved (txstatus =", txstatusRaw, ") – ignoring.");
     return res.status(200).send("OK");
   }
 
@@ -514,7 +527,7 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
 
       const meta = rows[0];
 
-      const mode             = meta.mode;                 // 'plain', 'vendor', 'sessions'
+      const mode             = meta.mode; // 'plain', 'vendor', 'sessions'
       const vendor_id        = Number(meta.vendor_id);
       const data_package     = meta.data_package;
       const network          = (meta.network || "").toLowerCase();
@@ -564,10 +577,12 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
 
                 db.query(
                   "DELETE FROM moolre_temp_orders WHERE externalref = ?",
-                  [externalref]
+                  [externalref],
+                  () => {
+                    console.log("🧹 Temp row cleaned for externalref:", externalref);
+                    return res.status(200).send("OK");
+                  }
                 );
-
-                return res.status(200).send("OK");
               }
             );
           }
@@ -576,24 +591,19 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
         return;
       }
 
-          // ---------- VENDOR MODE (*203*717*ID#) ----------
+      // ---------- VENDOR MODE (*203*717*ID#) ----------
       db.query(
         `SELECT amount FROM admin_data_packages WHERE data_package = ? LIMIT 1`,
         [data_package],
         (err3, rows2) => {
           if (err3 || !rows2 || !rows2.length) {
-            console.error(
-              "❌ admin_data_packages lookup error:",
-              err3 || "no rows"
-            );
+            console.error("❌ admin_data_packages lookup error:", err3 || "no rows");
             return res.status(500).send("Package lookup error");
           }
 
           const baseAmount    = parseFloat(rows2[0].amount); // admin cost
           const revenueAmount = baseAmount;
-          const vendorAmount  = parseFloat(
-            (amountPaid - baseAmount).toFixed(2)
-          );
+          const vendorAmount  = parseFloat((amountPaid - baseAmount).toFixed(2));
 
           if (vendorAmount < 0) {
             console.warn("⚠️ Vendor amount is negative. Check pricing.", {
@@ -608,14 +618,7 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
             `INSERT INTO admin_orders
                (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
              VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-            [
-              vendor_id,
-              recipient_number,
-              data_package,
-              amountPaid,
-              network,
-              package_id,
-            ],
+            [vendor_id, recipient_number, data_package, amountPaid, network, package_id],
             (err4) => {
               if (err4) {
                 console.error("❌ Error inserting vendor admin_order:", err4);
@@ -646,10 +649,7 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
                     ],
                     (err6) => {
                       if (err6) {
-                        console.error(
-                          "❌ Error inserting vendor total_revenue:",
-                          err6
-                        );
+                        console.error("❌ Error inserting vendor total_revenue:", err6);
                       } else {
                         console.log("✅ Vendor revenue logged.");
                       }
@@ -657,10 +657,12 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
                       // Clean up temp row
                       db.query(
                         "DELETE FROM moolre_temp_orders WHERE externalref = ?",
-                        [externalref]
+                        [externalref],
+                        () => {
+                          console.log("🧹 Temp row cleaned for externalref:", externalref);
+                          return res.status(200).send("OK");
+                        }
                       );
-
-                      return res.status(200).send("OK");
                     }
                   );
                 }
