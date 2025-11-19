@@ -428,18 +428,11 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 
 
 // ========================================================
-//           CONFIRM PAYMENT (STATUS CHECK + CREDIT)
+//    SIMPLE CONFIRM HANDLER (WEBHOOK-DRIVEN CREDIT)
 // ========================================================
 async function confirmMomoHandler(req, res) {
   try {
-    const {
-      vendor_id,
-      reference,
-      amount,
-      momo_number,
-      network,
-      computed_hits,
-    } = req.body;
+    const { vendor_id, reference } = req.body;
 
     if (!vendor_id || !reference) {
       return res
@@ -447,101 +440,46 @@ async function confirmMomoHandler(req, res) {
         .json({ error: "vendor_id and reference are required" });
     }
 
-    const HIT_COST = 0.02;
-    const hits = Number.isFinite(Number(computed_hits))
-      ? Math.max(0, Math.floor(Number(computed_hits)))
-      : Math.floor(Number(amount || 0) / HIT_COST);
-
-    let approved = false;
-    let lastStatus = null;
-
-    // Small delay so Moolre has time to record the transaction
-    await sleep(3000);
-
-    for (let attempt = 0; attempt < 5 && !approved; attempt++) {
-      const statusPayload = {
-        type: 1,
-        idtype: 2, // 2 = externalref (per latest docs for Payment Status)
-        id: reference,
-        accountnumber: MOOLRE_SESSIONS.wallet,
-      };
-
-      const statusRes = await axios.post(
-        MOOLRE_SESSIONS.statusUrl,
-        statusPayload,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-API-USER": MOOLRE_SESSIONS.user,
-            // ✅ Payment Status uses API KEY (public key)
-            "X-API-KEY": MOOLRE_SESSIONS.apiKey,
-          },
-          timeout: 15000,
-        }
+    // 1️⃣ Check if we already credited this reference
+    const [rows] = await db
+      .promise()
+      .query(
+        `SELECT hits, amount, status
+           FROM session_purchases
+          WHERE vendor_id = ? AND reference = ?
+          LIMIT 1`,
+        [vendor_id, reference]
       );
 
-      lastStatus = statusRes.data || {};
-      console.log(
-        `🕒 Moolre status check (attempt ${attempt + 1}) for ${reference}:`,
-        lastStatus
-      );
+    if (rows.length > 0) {
+      const row = rows[0];
+      console.log("✅ confirm-momo: already credited from webhook:", {
+        vendor_id,
+        reference,
+        hits: row.hits,
+      });
 
-      const tx =
-        Number(
-          lastStatus?.data?.txstatus != null
-            ? lastStatus.data.txstatus
-            : lastStatus.txstatus
-        ) || 0;
-
-      if (tx === 1) {
-        approved = true;
-        break;
-      }
-
-      await sleep(3000);
-    }
-
-    if (!approved) {
-      console.log(
-        "❌ Moolre payment for sessions NOT approved/complete. No DB insert. Last status:",
-        lastStatus
-      );
-      return res.status(400).json({
-        error:
-          lastStatus?.message ||
-          "Payment not approved yet. Complete the OTP / PIN on your phone and try again.",
-        status: lastStatus,
+      return res.json({
+        status: "completed",
+        reference,
+        hits: row.hits,
+        amount: row.amount,
       });
     }
 
-    const [result] = await db
-      .promise()
-      .query(
-        `INSERT INTO session_purchases
-           (vendor_id, source, amount, hits, reference, status, meta_json)
-         VALUES (?, 'momo', ?, ?, ?, 'completed',
-           JSON_OBJECT('network', ?, 'momo', ?, 'verified', true))`,
-        [
-          vendor_id,
-          amount || 0,
-          hits,
-          reference,
-          network || "",
-          momo_number || "",
-        ]
-      );
-
-    console.log("✅ Session purchase credited:", {
-      vendor_id,
-      hits,
+    // 2️⃣ Not yet credited – most likely still pending at Moolre.
+    //    We DON'T call Moolre status here anymore; we just tell the user to wait.
+    console.log(
+      "ℹ️ confirm-momo: no session_purchases yet for",
       reference,
-    });
+      "- probably still pending, waiting for webhook."
+    );
 
     return res.json({
-      id: result.insertId,
+      status: "pending",
       reference,
-      status: "completed",
-      hits,
+      message:
+        "Payment is still being processed. If you approved the prompt on your phone, your sessions will be credited automatically within a few minutes. Please do not retry the payment.",
     });
   } catch (err) {
     console.error(
@@ -555,10 +493,9 @@ async function confirmMomoHandler(req, res) {
   }
 }
 
+// Expose both routes
 app.post("/sessions/confirm-momo", confirmMomoHandler);
 app.post("/api/sessions/confirm-momo", confirmMomoHandler);
-
-
 
 
 
