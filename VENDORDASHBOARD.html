@@ -523,14 +523,27 @@ function sendOrdersToAdmin() {
 
 <script>
 function confirmWalletLoad() {
-  const network = document.getElementById("walletNetwork").value.toLowerCase(); // ✅ fixed
-  const momo = document.getElementById("walletMomo").value.trim();
-  const amount = parseFloat(document.getElementById("walletAmount").value);
-  const vendorId = localStorage.getItem("userId");
+  const network   = document.getElementById("walletNetwork").value.toLowerCase();
+  const momo      = document.getElementById("walletMomo").value.trim();
+  const amount    = parseFloat(document.getElementById("walletAmount").value);
+  const vendorId  = localStorage.getItem("userId");
+
+  const btn       = document.querySelector("#walletModal .confirm");
+  const statusEl  = document.getElementById("walletStatus");
 
   if (!network || !momo || !amount || !vendorId) {
     alert("Please complete all fields.");
     return;
+  }
+
+  // 🔒 Disable button + show waiting message
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Please wait…";
+  }
+  if (statusEl) {
+    statusEl.style.display = "block";
+    statusEl.textContent = "Please wait while you approve the payment on your phone. A prompt will appear shortly.";
   }
 
   fetch("https://sandipay.co/api/load-wallet-the-teller", {
@@ -540,15 +553,31 @@ function confirmWalletLoad() {
   })
   .then(res => res.text())
   .then(msg => {
-    alert(msg);
-    closeWalletModal();
-    fetchWalletBalance();
+    alert(msg); // this can be your "Payment made successfully" or error from backend
+
+    // If backend text contains 'success' you can auto-close:
+    if (msg.toLowerCase().includes("success")) {
+      closeWalletModal();
+      fetchWalletBalance();
+    }
   })
   .catch(err => {
     console.error("Wallet load error:", err);
     alert("Failed to load wallet.");
+  })
+  .finally(() => {
+    // 🔓 Re-enable button and clear status
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Confirm";
+    }
+    if (statusEl) {
+      statusEl.style.display = "none";
+      statusEl.textContent = "";
+    }
   });
 }
+
 
 
 
