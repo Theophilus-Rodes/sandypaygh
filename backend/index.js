@@ -265,7 +265,7 @@ const MOOLRE_SESSIONS = {
   // INIT endpoint
   payUrl: "https://api.moolre.com/open/transact/payment",
 
-  // ✅ Correct Payment Status endpoint from official docs
+  // Payment Status endpoint from official docs
   statusUrl: "https://api.moolre.com/open/transact/status",
 
   // Moolre username
@@ -287,22 +287,28 @@ const MOOLRE_SESSIONS = {
 
 function moolreChannelId(network) {
   switch (String(network || "").toLowerCase()) {
-    case "mtn":       return 13;
+    case "mtn":
+      return 13;
     case "airteltigo":
     case "airtel":
-    case "at":        return 7;
+    case "at":
+      return 7;
     case "telecel":
     case "vodafone":
-    case "voda":      return 6;
-    default:          return null;
+    case "voda":
+      return 6;
+    default:
+      return null;
   }
 }
 
 function normalizeLocalMomo(msisdn) {
   const digits = String(msisdn || "").replace(/[^\d]/g, "");
   if (digits.startsWith("0") && digits.length >= 9) return digits;
-  if (digits.startsWith("233") && digits.length >= 12) return "0" + digits.slice(3);
-  if (digits.startsWith("00233") && digits.length >= 14) return "0" + digits.slice(5);
+  if (digits.startsWith("233") && digits.length >= 12)
+    return "0" + digits.slice(3);
+  if (digits.startsWith("00233") && digits.length >= 14)
+    return "0" + digits.slice(5);
   return digits;
 }
 
@@ -324,12 +330,13 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
     }
 
     const HIT_COST = 0.02;
-    const hits =
-      Number.isFinite(Number(computed_hits))
-        ? Math.max(0, Math.floor(Number(computed_hits)))
-        : Math.floor(Number(amount) / HIT_COST);
+    const hits = Number.isFinite(Number(computed_hits))
+      ? Math.max(0, Math.floor(Number(computed_hits)))
+      : Math.floor(Number(amount) / HIT_COST);
 
-    const reference = `SM${Date.now()}${Math.floor(Math.random() * 1000)}`.slice(0, 30);
+    const reference = `SM${Date.now()}${Math.floor(
+      Math.random() * 1000
+    )}`.slice(0, 30);
 
     const channelId = moolreChannelId(network);
     if (!channelId) {
@@ -351,13 +358,13 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 
     console.log("🟡 Moolre session payment payload:", payload);
 
-    // INIT uses PUBKEY
+    // ✅ INIT uses PUBKEY (per docs)
     const initRes = await axios.post(MOOLRE_SESSIONS.payUrl, payload, {
-     headers: {
-  "Content-Type": "application/json",
-  "X-API-USER": MOOLRE_SESSIONS.user,
-  "X-API-KEY": MOOLRE_SESSIONS.apiKey,   // ✅ CORRECT FOR STATUS
-},
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-USER": MOOLRE_SESSIONS.user,
+        "X-API-PUBKEY": MOOLRE_SESSIONS.pubkey,
+      },
       timeout: 15000,
     });
 
@@ -371,24 +378,24 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
       });
     }
 
-     // ⬇️⬇️⬇️ ADD THIS BLOCK (TEMP ORDER FOR WEBHOOK) ⬇️⬇️⬇️
+    // Save temp order for webhook
     try {
       await db
-  .promise()
-  .query(
-    `INSERT INTO moolre_temp_orders
-       (mode, vendor_id, data_package, network,
-        recipient_number, momo_number, amount, externalref, hits)
-     VALUES ('sessions', ?, '', ?, '', ?, ?, ?, ?)`,
-    [
-      vendor_id,
-      (network || "").toLowerCase(),
-      payerLocal,          // momo_number
-      Number(amount),
-      reference,
-      hits,
-    ]
-  );
+        .promise()
+        .query(
+          `INSERT INTO moolre_temp_orders
+             (mode, vendor_id, data_package, network,
+              recipient_number, momo_number, amount, externalref, hits)
+           VALUES ('sessions', ?, '', ?, '', ?, ?, ?, ?)`,
+          [
+            vendor_id,
+            (network || "").toLowerCase(),
+            payerLocal, // momo_number
+            Number(amount),
+            reference,
+            hits,
+          ]
+        );
 
       console.log("📝 Temp sessions order saved for webhook:", {
         vendor_id,
@@ -398,16 +405,14 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
       });
     } catch (e) {
       console.error("❌ Failed to insert temp sessions order:", e);
-      // we still continue; webhook just won't be able to credit if this fails
+      // We still reply OK so the user can complete OTP; webhook just won't credit if this fails
     }
-    // ⬆️⬆️⬆️ END OF NEW BLOCK ⬆️⬆️⬆️
 
     return res.json({
       ok: true,
       reference,
       hits,
     });
-
   } catch (err) {
     console.error(
       "❌ /api/sessions/purchase-momo error:",
@@ -450,55 +455,49 @@ async function confirmMomoHandler(req, res) {
     let approved = false;
     let lastStatus = null;
 
-    // 🔹 Give Moolre a bit of time to register the transaction
+    // Small delay so Moolre has time to record the transaction
     await sleep(3000);
 
-    // We'll try multiple times, and for each attempt we try idtype 1 and 2
     for (let attempt = 0; attempt < 5 && !approved; attempt++) {
-      for (const idtype of [1, 2]) {
-        const statusPayload = {
-          type: 1,
-          idtype,                      // 1 or 2 (Moolre supports both)
-          id: reference,               // our externalref from INIT
-          accountnumber: MOOLRE_SESSIONS.wallet,
-        };
+      const statusPayload = {
+        type: 1,
+        idtype: 2, // 2 = externalref (per latest docs for Payment Status)
+        id: reference,
+        accountnumber: MOOLRE_SESSIONS.wallet,
+      };
 
-        const statusRes = await axios.post(
-          MOOLRE_SESSIONS.statusUrl,
-          statusPayload,
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-USER": MOOLRE_SESSIONS.user,
-              // ✅ docs show Payment Status uses the same public key header
-              "X-API-PUBKEY": MOOLRE_SESSIONS.pubkey,
-            },
-            timeout: 15000,
-          }
-        );
+      const statusRes = await axios.post(
+        MOOLRE_SESSIONS.statusUrl,
+        statusPayload,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-USER": MOOLRE_SESSIONS.user,
+            // ✅ Payment Status uses API KEY (public key)
+            "X-API-KEY": MOOLRE_SESSIONS.apiKey,
+          },
+          timeout: 15000,
+        }
+      );
 
-        lastStatus = statusRes.data || {};
-        console.log(
-          `🕒 Moolre status check (attempt ${attempt + 1}, idtype ${idtype}) for ${reference}:`,
-          lastStatus
-        );
+      lastStatus = statusRes.data || {};
+      console.log(
+        `🕒 Moolre status check (attempt ${attempt + 1}) for ${reference}:`,
+        lastStatus
+      );
 
-        const tx = Number(
+      const tx =
+        Number(
           lastStatus?.data?.txstatus != null
             ? lastStatus.data.txstatus
             : lastStatus.txstatus
         ) || 0;
 
-        // 1 = success, 3 = pending
-        if (tx === 1) {
-          approved = true;
-          break;
-        }
+      if (tx === 1) {
+        approved = true;
+        break;
       }
 
-      if (approved) break;
-
-      // wait 3s before the next outer attempt
       await sleep(3000);
     }
 
@@ -515,7 +514,6 @@ async function confirmMomoHandler(req, res) {
       });
     }
 
-    // ✅ Payment APPROVED – now credit sessions
     const [result] = await db
       .promise()
       .query(
@@ -557,11 +555,8 @@ async function confirmMomoHandler(req, res) {
   }
 }
 
-// Expose both routes
 app.post("/sessions/confirm-momo", confirmMomoHandler);
 app.post("/api/sessions/confirm-momo", confirmMomoHandler);
-
-
 
 
 
@@ -580,20 +575,18 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
   const txstatus    = Number(data.txstatus || 0);   // 1 = success
   const payer       = data.payer;
   const amountStr   = data.amount;
-  const externalref = data.externalref;             // 👈 this is our key
+  const externalref = data.externalref;             // our key from INIT
   const ts          = data.ts;
   const secret      = data.secret;
 
   const amt = parseFloat(amountStr);
 
-  // 1) Validate secret
   const expectedSecret = process.env.MOOLRE_WEBHOOK_SECRET || "";
   if (expectedSecret && secret !== expectedSecret) {
     console.log("❌ Invalid webhook secret");
     return res.status(403).send("Forbidden");
   }
 
-  // 2) Only successful payments
   if (txstatus !== 1) {
     console.log("⏳ Payment not approved (txstatus =", txstatus, ") – ignoring.");
     return res.status(200).send("OK");
@@ -604,7 +597,6 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
     return res.status(400).send("Missing externalref");
   }
 
-  // 3) Look up the temp order by externalref
   db.query(
     `SELECT *
        FROM moolre_temp_orders
@@ -623,13 +615,15 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
 
       const meta = rows[0];
 
-      const mode             = meta.mode;                 // 'plain' or 'vendor'
+      const mode             = meta.mode;                 // 'plain', 'vendor', 'sessions'
       const vendor_id        = Number(meta.vendor_id);
       const data_package     = meta.data_package;
       const network          = (meta.network || "").toLowerCase();
       const recipient_number = meta.recipient_number || payer;
       const momo_number      = meta.momo_number || payer;
       const amountPaid       = Number(meta.amount);
+      const hitsFromDb       = Number(meta.hits || 0);
+
       const package_id =
         ts || new Date().toISOString().slice(0, 16).replace("T", " ");
 
@@ -641,6 +635,7 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
         recipient_number,
         momo_number,
         amountPaid,
+        hitsFromDb,
       });
 
       // ---------- PLAIN MODE (*203*717#) ----------
@@ -668,7 +663,6 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
                   console.log("✅ Plain-mode revenue logged.");
                 }
 
-                // Optionally clean up temp row
                 db.query(
                   "DELETE FROM moolre_temp_orders WHERE externalref = ?",
                   [externalref]
@@ -683,12 +677,13 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
         return;
       }
 
-
-        // ⬇️⬇️⬇️ NEW: SESSIONS MODE HANDLER ⬇️⬇️⬇️
+      // ---------- SESSIONS MODE ----------
       if (mode === "sessions") {
         const HIT_COST = 0.02;
         const finalHits =
-          hits > 0 ? hits : Math.floor((amountPaid || 0) / HIT_COST);
+          hitsFromDb > 0
+            ? hitsFromDb
+            : Math.floor((amountPaid || 0) / HIT_COST);
 
         db.query(
           `INSERT INTO session_purchases
@@ -715,7 +710,6 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
               });
             }
 
-            // clean up temp row
             db.query(
               "DELETE FROM moolre_temp_orders WHERE externalref = ?",
               [externalref],
@@ -3420,304 +3414,6 @@ app.post("/api/theteller-withdraw", async (req, res) => {
 
 
 
-
-
-
-
-
-
-
-// ✅ USSD Sessions store
-app.use(bodyParser.text({ type: "*/*" }));
-
-// ✅ SESSION STATE
-const sessions = {};
-
-// ✅ USSD ENDPOINT
-app.post("/ussd/moolre", (req, res) => {
-  let payload = {};
-  try {
-    payload = JSON.parse(req.body);
-    console.log("📅 Incoming USSD Payload:", payload);
-  } catch (err) {
-    console.error("❌ Invalid JSON received:", req.body);
-    return res.json({ message: "END Invalid JSON format", reply: false });
-  }
-
-  const sessionId = payload.sessionId;
-  let input = (payload.data || "").trim();
-  console.log("📶 Session ID:", sessionId);
-  console.log("📝 Raw input:", input);
-
-  if (!sessions[sessionId]) {
-    const vendorId = parseInt(input);
-    if (!vendorId || isNaN(vendorId)) {
-      return res.json({ message: "END Invalid or missing vendor ID", reply: false });
-    }
-
-    db.query("SELECT id FROM users WHERE id = ?", [vendorId], (err, results) => {
-      if (err) return res.json({ message: "END System error. Try again later.", reply: false });
-      if (!results.length) return res.json({ message: "END Invalid or unregistered vendor ID", reply: false });
-
-      sessions[sessionId] = {
-        step: "start",
-        vendorId,
-        network: "",
-        selectedPkg: "",
-        recipient: "",
-        packageList: [],
-        packagePage: 0
-      };
-
-      payload.data = "";
-      return handleSession(payload, res);
-    });
-  } else {
-    return handleSession(payload, res);
-  }
-});
-
-// ✅ HANDLER
-async function handleSession(payload, res) {
-  const sessionId = payload.sessionId;
-  const input = (payload.data || payload.message || "").trim();
-  const msisdn = payload.msisdn;
-
-  function getSwitchCode(network) {
-    switch (network.toLowerCase()) {
-      case "mtn": return "MTN";
-      case "vodafone":
-      case "telecel": return "VDF";
-      case "airteltigo":
-      case "airtel": return "ATL";
-      case "tigo": return "TGO";
-      default: return null;
-    }
-  }
-
-  const state = sessions[sessionId];
-  const vendorId = state.vendorId;
-  const reply = (msg) => res.json({ message: msg, reply: true });
-  const end = (msg) => res.json({ message: msg, reply: false });
-
-
-async function getVendorName(vendor_id) {
-  return new Promise((resolve, reject) => {
-    const sql = `SELECT username FROM users WHERE id = ?`;
-    db.query(sql, [vendor_id], (err, rows) => {
-      if (err || !rows.length) return resolve("Vendor");
-      resolve(rows[0].username); // ✅ Correct field from DB
-    });
-  });
-}
-
-  function getVendorPhone(vendor_id) {
-  return new Promise((resolve, reject) => {
-    const sql = `SELECT phone FROM users WHERE id = ?`;
-    db.query(sql, [vendor_id], (err, rows) => {
-      if (err || !rows.length) return resolve("N/A");
-      resolve(rows[0].phone);
-    });
-  });
-}
-
- switch (state.step) {
-  case "start":
-    state.step = "menu";
-
-    const vendorName = await getVendorName(state.vendorId); // ✅ fix vendorId spelling
-    return reply(`${vendorName}. Data Sevices
-0. Cancel
-
-1. Buy Data
-2. Contact Us`);
-
-  case "menu":
-    if (input === "1") {
-      state.step = "network";
-      return reply("Network\n1) MTN\n2) AirtelTigo\n3) Telecel\n0. Back");
-    } else if (input === "2") {
-      const vendorPhone = await getVendorPhone(state.vendorId);
-      return end(`Contact us:\n${vendorPhone}`);
-    } else if (input === "0") {
-      state.step = "start";
-      return reply("Cancelled.\n1. Buy Data\n2. Contact Us");
-    } else {
-      return reply("Invalid option. Choose:\n1) Buy Data\n2) Contact Us");
-    }
-
-
-    case "network":
-      if (input === "1") state.network = "MTN";
-      else if (input === "2") state.network = "AirtelTigo";
-      else if (input === "3") state.network = "Telecel";
-      else if (input === "0") {
-        state.step = "menu";
-        return reply("Back to menu:\n1. Buy Data\n2. Contact Us");
-      } else return reply("Invalid network. Choose:\n1) MTN\n2) AirtelTigo\n3) Telecel");
-
-      db.query(
-        `SELECT data_package, amount FROM data_packages WHERE vendor_id = ? AND network = ? AND status = 'available'`,
-        [vendorId, state.network],
-        (err, rows) => {
-          if (err || !rows.length) return end("No data packages available.");
-          state.packageList = rows.map((row) => `${row.data_package} @ GHS${row.amount}`);
-          state.packagePage = 0;
-          state.step = "package";
-          return reply(renderPackages(state));
-        }
-      );
-      return;
-
-    case "package":
-      if (input === "0") {
-        state.step = "network";
-        return reply("Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel");
-      }
-      if (input === "#") {
-        const totalPages = Math.ceil(state.packageList.length / 5);
-        state.packagePage = (state.packagePage + 1) % totalPages;
-        return reply(renderPackages(state));
-      }
-      const index = parseInt(input) - 1 + state.packagePage * 5;
-      if (state.packageList[index]) {
-        state.selectedPkg = state.packageList[index];
-        state.step = "recipient";
-        return reply("Recipient\n1) Buy for self\n2) Buy for others\n0) Back");
-      } else {
-        return reply("Invalid selection. Choose a valid number or type # for more.");
-      }
-
-    case "recipient":
-      if (input === "1") {
-        state.recipient = msisdn;
-        state.step = "confirm";
-        return reply(confirmMessage(state));
-      } else if (input === "2") {
-        state.step = "other_number";
-        return reply("Enter recipient number:");
-      } else if (input === "0") {
-        state.step = "package";
-        return reply(renderPackages(state));
-      } else {
-        return reply("Invalid option. Choose:\n1) Buy for self\n2) Buy for others\n0) Back");
-      }
-
-    case "other_number":
-      state.recipient = input;
-      state.step = "confirm";
-      return reply(confirmMessage(state));
-
-    case "confirm":
-      if (input === "1") {
-        const match = state.selectedPkg.match(/@ GHS\s*(\d+(\.\d+)?)/);
-        const amount = match ? parseFloat(match[1]) : 0;
-        if (!amount) return end("Invalid amount in package.");
-
-        const network = state.network.toLowerCase();
-        const recipient_number = state.recipient;
-        const momo_number = msisdn;
-        const vendor_id = state.vendorId;
-        const data_package = state.selectedPkg.split(" @")[0];
-        const package_id = new Date().toISOString().slice(0, 16).replace("T", " ");
-        const transactionId = `TRX${Date.now()}`;
-        const rSwitch = getSwitchCode(network);
-        const formattedAmount = String(Math.round(amount * 100)).padStart(12, "0");
-        const formattedMoMo = momo_number.replace(/^0/, "233");
-
-        res.json({ message: "✅ Please wait while the prompt loads...\nEnter your MoMo PIN to approve.", reply: false });
-
-        const payload = {
-          amount: formattedAmount,
-          processing_code: "000200",
-          transaction_id: transactionId,
-          desc: `Purchase of ${data_package}`,
-          merchant_id: "TTM-00010694",
-          subscriber_number: formattedMoMo,
-          "r-switch": rSwitch,
-          redirect_url: "https://example.com/redirect"
-        };
-
-        const token = Buffer.from("sandipay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ=").toString("base64");
-
-        axios.post("https://prod.theteller.net/v1.1/transaction/process", payload, {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Basic ${token}`
-          }
-        })
-        .then((response) => {
-  console.log("✅ TheTeller response:", response.data);
-
-  if (response.data.status !== "approved") {
-    console.log("❌ Payment was not approved. Skipping insertion.");
-    return;
-  }
-
-  // ✅ Proceed only if approved
- const revenueAmount = parseFloat((amount * 0.02).toFixed(2));
-const vendorAmount = parseFloat((amount - revenueAmount).toFixed(2));
-
-  const sql = `
-    INSERT INTO data_orders
-    (vendor_id, data_package, amount, recipient_number, momo_number, status, created_at, network, package_id)
-    VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?)
-  `;
-  const values = [vendor_id, data_package, amount, recipient_number, momo_number, 'pending', network, package_id];
-  db.query(sql, values, (err) => {
-    if (err) return console.error("❌ Failed to log order:", err);
-    console.log("✅ Order logged into database.");
-
-    const creditSql = `
-      INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
-      VALUES (?, ?, ?, NOW())
-    `;
-    db.query(creditSql, [vendor_id, momo_number, vendorAmount], (err) => {
-      if (err) console.error("❌ Failed to insert wallet load:", err);
-      else console.log("✅ Wallet load recorded (98%).");
-    });
-
-    const revenueSql = `
-      INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-      VALUES (?, ?, ?, NOW())
-    `;
-    db.query(revenueSql, [vendor_id, `2% from ${network} payment`, revenueAmount], (err) => {
-      if (err) console.error("❌ Failed to insert revenue:", err);
-      else console.log("✅ Revenue log recorded (2%).");
-    });
-  });
-})
-
-        .catch(err => {
-          console.error("❌ TheTeller error:", err.response?.data || err.message);
-        });
-
-        return;
-      } else if (input === "2") {
-        return end("Transaction cancelled.");
-      } else {
-        return reply("Invalid input.\n1) Confirm\n2) Cancel");
-      }
-
-    default:
-      state.step = "start";
-      return reply("Restarting...\n1. Buy Data\n2. Contact Us");
-  }
-}
-
-function confirmMessage(state) {
-  const [packageName, price] = state.selectedPkg.split(" @ ");
-  return `Confirm Purchase\nRecipient: ${state.recipient}\nNetwork: ${state.network}\nPackage: ${packageName}\nPrice: ${price}\n\n1) Confirm\n2) Cancel`;
-}
-
-function renderPackages(state) {
-  const start = state.packagePage * 5;
-  const end = start + 5;
-  const sliced = state.packageList.slice(start, end);
-  const pkgList = sliced.map((p, i) => `${i + 1}) ${p}`).join("\n");
-  const moreOption = end < state.packageList.length ? "\n#. More" : "";
-  return `Packages (${state.network})\n${pkgList}${moreOption}\n0) Back`;
-}
 
 
 
