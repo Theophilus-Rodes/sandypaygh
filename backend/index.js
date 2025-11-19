@@ -614,60 +614,67 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
         return;
       }
 
+
       // ---------- SESSIONS MODE ----------
-      if (mode === "sessions") {
-        const HIT_COST = 0.02;
-        const finalHits =
-          hitsFromDb > 0
-            ? hitsFromDb
-            : Math.floor((amountPaid || 0) / HIT_COST);
+if (mode === "sessions") {
+  const HIT_COST = 0.02;
 
-        db.query(
-          `INSERT INTO session_purchases
-             (vendor_id, source, amount, hits, reference, status, meta_json)
-           VALUES (?, 'momo', ?, ?, ?, 'completed',
-             JSON_OBJECT('network', ?, 'momo', ?, 'webhook', true))`,
-          [
-            vendor_id || 0,
-            amountPaid || 0,
-            finalHits,
-            externalref,
-            network || "",
-            momo_number || "",
-          ],
-          (err1, result) => {
-            if (err1) {
-              console.error("❌ Error inserting session_purchases from webhook:", err1);
-            } else {
-              console.log("✅ Sessions credited from webhook:", {
-                vendor_id,
-                hits: finalHits,
-                externalref,
-                insertId: result.insertId,
-              });
-            }
+  // pull hits from the temp order row
+  const hitsFromDb = Number(meta.hits || 0);
+  const finalHits =
+    hitsFromDb > 0
+      ? hitsFromDb
+      : Math.floor((amountPaid || 0) / HIT_COST);
 
-            db.query(
-              "DELETE FROM moolre_temp_orders WHERE externalref = ?",
-              [externalref],
-              (err2) => {
-                if (err2) {
-                  console.error("❌ Error deleting temp sessions order:", err2);
-                } else {
-                  console.log("🧹 Temp sessions order removed:", externalref);
-                }
-                return res.status(200).send("OK");
-              }
-            );
-          }
+  db.query(
+    `INSERT INTO session_purchases
+       (vendor_id, source, amount, hits, reference, status, meta_json)
+     VALUES (?, 'momo', ?, ?, ?, 'completed',
+       JSON_OBJECT('network', ?, 'momo', ?, 'webhook', true))`,
+    [
+      vendor_id || 0,
+      amountPaid || 0,
+      finalHits,
+      externalref,
+      network || "",
+      momo_number || "",
+    ],
+    (err1, result) => {
+      if (err1) {
+        console.error(
+          "❌ Error inserting session_purchases from webhook:",
+          err1
         );
-
-        return;
+      } else {
+        console.log("✅ Sessions credited from webhook:", {
+          vendor_id,
+          hits: finalHits,
+          externalref,
+          insertId: result.insertId,
+        });
       }
-      // ⬆️⬆️⬆️ END OF NEW SESSIONS BLOCK ⬆️⬆️⬆️
+
+      // clean up temp row
+      db.query(
+        "DELETE FROM moolre_temp_orders WHERE externalref = ?",
+        [externalref],
+        (err2) => {
+          if (err2) {
+            console.error("❌ Error deleting temp sessions order:", err2);
+          } else {
+            console.log("🧹 Temp sessions order removed:", externalref);
+          }
+          return res.status(200).send("OK");
+        }
+      );
+    }
+  );
+
+  return;
+}
 
 
-      // ---------- VENDOR MODE (*203*717*ID#) ----------
+          // ---------- VENDOR MODE (*203*717*ID#) ----------
       db.query(
         `SELECT amount FROM admin_data_packages WHERE data_package = ? LIMIT 1`,
         [data_package],
