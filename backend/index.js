@@ -1611,13 +1611,22 @@ app.get("/api/export-mtn-orders", (req, res) => {
         { header: "Package", key: "data_package", width: 15 }
       ];
 
-      rows.forEach(row => {
-        const cleanPackage = row.data_package.replace(/[^\d.]/g, '');
-        worksheet.addRow({
-          recipient_number: row.recipient_number,
-          data_package: cleanPackage
-        });
-      });
+     // Add sorted rows to excel
+rows.forEach(row => {
+  const cleanPackage = row.data_package.replace(/[^\d.]/g, '');
+
+  // Convert 233XXXXXXXXX -> 0XXXXXXXXX
+  let recipient = String(row.recipient_number || "").replace(/\D/g, "");
+  if (recipient.startsWith("233") && recipient.length === 12) {
+    recipient = "0" + recipient.slice(3);   // 23354xxxxxxx -> 054xxxxxxx
+  }
+
+  worksheet.addRow({
+    recipient_number: recipient,
+    data_package: cleanPackage
+  });
+});
+
 
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", "attachment; filename=mtn_orders.xlsx");
