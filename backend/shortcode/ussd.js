@@ -64,10 +64,10 @@ const EXTENSION_EXPECTED = "888";
 // ========================================================
 const THETELLER = {
   endpoint: "https://prod.theteller.net/v1.1/transaction/process",
-  merchantId: process.env.THETELLER_MERCHANT_ID || "TTM-00010694",
+  merchantId: process.env.THETELLER_MERCHANT_ID || "TTM-00009388",
   // Using same auth pair as your other TheTeller routes
   basicToken: Buffer.from(
-    "sandipay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ="
+    "ZmVjZWZlZDc2MzA4OWU0YmZhOTk5MDBmMDAxNDhmOWY="
   ).toString("base64"),
 };
 
