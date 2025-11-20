@@ -64,12 +64,20 @@ const EXTENSION_EXPECTED = "888";
 // ========================================================
 const THETELLER = {
   endpoint: "https://prod.theteller.net/v1.1/transaction/process",
+
+  // 👇 your new merchant ID from the screenshot (top-left)
   merchantId: process.env.THETELLER_MERCHANT_ID || "TTM-00009388",
-  // Using same auth pair as your other TheTeller routes
-  basicToken: Buffer.from(
-    "ZmVjZWZlZDc2MzA4OWU0YmZhOTk5MDBmMDAxNDhmOWY="
-  ).toString("base64"),
+
+  // 👇 Production API credentials from the right-hand side of the screenshot
+  username: process.env.THETELLER_USERNAME || "louis66a20ac942e74",
+  apiKey: process.env.THETELLER_API_KEY || "ZmVjZWZlZDc2MzA4OWU0YmZhOTk5MDBmMDAxNDhmOWY=",
 };
+
+// Build the Basic Auth token correctly: base64("username:apikey")
+THETELLER.basicToken = Buffer.from(
+  `${THETELLER.username}:${THETELLER.apiKey}`
+).toString("base64");
+
 
 // Map network to TheTeller r-switch
 function getSwitchCode(net) {
