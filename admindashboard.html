@@ -163,6 +163,95 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
   .main-content { margin-left: 0 !important; } /* you use grid columns, not margin, on desktop */
   #collapseBtn, #drawerMask { display: none !important; }
 }
+
+
+/* ====== Generic modal shell ====== */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55); /* dark transparent */
+  display: none;                      /* shown via JS: display:flex */
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+/* The white card in the middle */
+.modal-card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 22px 22px 18px;
+  width: 90%;
+  max-width: 360px;
+  text-align: center;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.22);
+}
+
+/* Title + text */
+.modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 6px;
+}
+.modal-text {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+/* Buttons */
+.modal-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+.modal-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.modal-btn-primary {
+  background: #0f172a;
+  color: #ffffff;
+}
+.modal-btn-ghost {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+/* Spinner for loading */
+.spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #0f172a;
+  margin: 0 auto 16px;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Success icon */
+.status-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  margin: 0 auto 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+}
+.status-icon.success {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
 </style>
 <script>
   // Block back navigation (as in your original)
@@ -189,6 +278,7 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
       <button onclick="goto('Payment.html')">💵 Payments</button>
       <button onclick="goto('owndata.html')">💵 My Offers</button>
       <button onclick="goto('LinkCustomDomain.html')">🔗 Link Domain</button>
+      <button onclick="openSwitchPayment(); closeDrawer()">🔄 Switch Payment Account</button>
       <button onclick="openAllow(); closeDrawer()">✅ Allow</button>
     </nav>
     
@@ -376,6 +466,62 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
     </p>
   </div>
 </div>
+
+
+
+<!-- Switch Payment Dialog -->
+<div id="switchPaymentDialog" class="modal" style="display:none;">
+  <div class="modal-card">
+    <h3 class="modal-title">Switch Payment Account</h3>
+    <p class="modal-text" style="margin-bottom:14px;">
+      Choose the payment provider you want to switch to.
+    </p>
+
+    <div class="modal-actions" style="flex-direction:column;">
+      <button onclick="switchTo('MOOLRE')" class="modal-btn modal-btn-primary" style="width:100%;">
+        💳 Moolre Pay
+      </button>
+      <button onclick="switchTo('THETELLER')" class="modal-btn modal-btn-ghost" style="width:100%;">
+        🏦 TheTeller Pay
+      </button>
+    </div>
+
+    <div class="modal-actions">
+      <button onclick="closeSwitchPayment()" class="modal-btn modal-btn-ghost">
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Loading Modal -->
+<div id="loadingModal" class="modal" style="display:none;">
+  <div class="modal-card">
+    <div class="spinner"></div>
+    <h3 class="modal-title">Switching payment account…</h3>
+    <p class="modal-text">
+      Please wait while we process your switch. This may take a few seconds.
+    </p>
+  </div>
+</div>
+
+<!-- Complete Modal -->
+<div id="completeModal" class="modal" style="display:none;">
+  <div class="modal-card">
+    <div class="status-icon success">✔</div>
+    <h3 class="modal-title">Request Sent</h3>
+    <p class="modal-text">
+      Payment will finally switch when approved.
+    </p>
+    <div class="modal-actions">
+      <button onclick="closeComplete()" class="modal-btn modal-btn-primary">
+        OK
+      </button>
+    </div>
+  </div>
+</div>
+
+
 
 <script>
   // Point to API (local vs live)
@@ -615,6 +761,35 @@ fetch("/api/total-transactions")
     }
   })
   .catch(err => console.error("Failed to load transactions:", err));
+
+
+
+
+  function openSwitchPayment() {
+  document.getElementById('switchPaymentDialog').style.display = 'flex';
+}
+
+function closeSwitchPayment() {
+  document.getElementById('switchPaymentDialog').style.display = 'none';
+}
+
+function switchTo(type) {
+  closeSwitchPayment();
+
+  // Show loading modal
+  document.getElementById('loadingModal').style.display = 'flex';
+
+  // Wait 3 seconds
+  setTimeout(() => {
+    document.getElementById('loadingModal').style.display = 'none';
+    document.getElementById('completeModal').style.display = 'flex';
+  }, 3000);
+}
+
+function closeComplete() {
+  document.getElementById('completeModal').style.display = 'none';
+}
+
 
 </script>
 
