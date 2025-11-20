@@ -1398,25 +1398,27 @@ app.get("/api/export-mtn-orders", (req, res) => {
       const worksheet = workbook.addWorksheet("MTN Orders");
 
       worksheet.columns = [
-        { header: "Recipient", key: "recipient_number", width: 20 },
-        { header: "Package", key: "data_package", width: 15 }
+  { header: "Recipient", key: "recipient_number", width: 20, style: { numFmt: '@' } },
+  { header: "Package", key: "data_package", width: 15 },
       ];
 
-     // Add sorted rows to excel
+     
+// Add sorted rows to excel
 rows.forEach(row => {
   const cleanPackage = row.data_package.replace(/[^\d.]/g, '');
 
   // Convert 233XXXXXXXXX -> 0XXXXXXXXX
   let recipient = String(row.recipient_number || "").replace(/\D/g, "");
   if (recipient.startsWith("233") && recipient.length === 12) {
-    recipient = "0" + recipient.slice(3);   // 23354xxxxxxx -> 054xxxxxxx
+    recipient = "0" + recipient.slice(3);
   }
 
   worksheet.addRow({
-    recipient_number: recipient,
+    recipient_number: "'" + recipient,   // THIS FIXES THE PROBLEM
     data_package: cleanPackage
   });
 });
+
 
 
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
