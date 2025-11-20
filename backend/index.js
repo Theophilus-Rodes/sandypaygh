@@ -2547,13 +2547,22 @@ function createAdminDownloadRoute(app, db, network) {
             { header: "Package", key: "data_package", width: 15 },
           ];
 
-          rows.forEach(row => {
-            const cleanPackage = row.data_package.replace(/[^\d.]/g, '');
-            worksheet.addRow({
-              recipient_number: row.recipient_number,
-              data_package: cleanPackage
-            });
-          });
+         // Sort rows from smallest → biggest
+rows.sort((a, b) => {
+  const numA = parseFloat(a.data_package.replace(/[^\d.]/g, ''));
+  const numB = parseFloat(b.data_package.replace(/[^\d.]/g, ''));
+  return numA - numB; // ascending
+});
+
+// Add sorted rows to excel
+rows.forEach(row => {
+  const cleanPackage = row.data_package.replace(/[^\d.]/g, '');
+  worksheet.addRow({
+    recipient_number: row.recipient_number,
+    data_package: cleanPackage
+  });
+});
+
 
           res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
           res.setHeader("Content-Disposition", `attachment; filename=admin_${network}_orders.xlsx`);
