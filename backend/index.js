@@ -758,24 +758,24 @@ app.get("/api/download-orders", async (req, res) => {
 
     const now = new Date().toISOString().slice(0, 19).replace("T", " ");
 
-    rows.forEach(row => {
-      sheet.addRow({
-        ...row,
-        price: 0,
-        reference: row.reference || "AUTO_REF" + Math.random().toString().slice(2, 6)
-,
-        platform: "sandypay",
-        action: "completed"
-      });
+rows.forEach(row => {
+  const cleanPackage = row.data_package.replace(/[^\d.]/g, '');
 
-      // insert into downloaded_orders
-      db.query(
-        `INSERT INTO downloaded_orders (user_id, date, recipient, quantity, network, price, payment, status, updated_reference, platform, action)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [userId, now, row.recipient, row.volume, row.network, 0, row.payment, row.delivery, "AUTO_REF", "sandypay", "completed"]
-     
-      );
-    });
+  // Convert 233XXXXXXXXX -> 0XXXXXXXXX
+  let recipient = String(row.recipient_number || "").replace(/\D/g, "");
+  if (recipient.startsWith("233") && recipient.length === 12) {
+    recipient = "0" + recipient.slice(3);
+  }
+
+  // Zero-width space to force Excel TEXT without showing anything
+  const textRecipient = "\u200B" + recipient;
+
+  worksheet.addRow({
+    recipient_number: textRecipient,
+    data_package: cleanPackage
+  });
+});
+
 
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename=${network}_orders.xlsx`);
