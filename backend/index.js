@@ -2574,17 +2574,15 @@ rows.forEach(row => {
   // Convert 233XXXXXXXXX -> 0XXXXXXXXX
   let recipient = String(row.recipient_number || "").replace(/\D/g, "");
   if (recipient.startsWith("233") && recipient.length === 12) {
-    recipient = "0" + recipient.slice(3);
+    recipient = "0" + recipient.slice(3);   // 23354xxxxxxx -> 054xxxxxxx
   }
 
-  // Zero-width space to force Excel TEXT without showing anything
-  const textRecipient = "\u200B" + recipient;
-
   worksheet.addRow({
-    recipient_number: textRecipient,
+    recipient_number: recipient,
     data_package: cleanPackage
   });
 });
+
 
 
 
