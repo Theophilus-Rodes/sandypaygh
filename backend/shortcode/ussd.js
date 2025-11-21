@@ -57,7 +57,7 @@ if (!DB_PASSWORD) {
 }
 
 // Your short code extension (still 717)
-const EXTENSION_EXPECTED = "888";
+const EXTENSION_EXPECTED = "717";
 
 // ========================================================
 //          THETELLER CONFIG (REPLACES MOOLRE)
