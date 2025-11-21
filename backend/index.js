@@ -2571,17 +2571,27 @@ rows.sort((a, b) => {
 rows.forEach(row => {
   const cleanPackage = row.data_package.replace(/[^\d.]/g, '');
 
-  // Convert 233XXXXXXXXX -> 0XXXXXXXXX
+  // Start from DB value: e.g. 233532687733
   let recipient = String(row.recipient_number || "").replace(/\D/g, "");
+
+  // Convert 233XXXXXXXXX -> local without 0 (9 digits)
   if (recipient.startsWith("233") && recipient.length === 12) {
-    recipient = "0" + recipient.slice(3);   // 23354xxxxxxx -> 054xxxxxxx
+    recipient = recipient.slice(3);           // "532687733"
   }
 
+  // If we still have a leading 0, drop it so the format adds it visually
+  if (recipient.startsWith("0")) {
+    recipient = recipient.slice(1);           // "5432687733" etc.
+  }
+
+  const numericRecipient = Number(recipient); // true number
+
   worksheet.addRow({
-    recipient_number: recipient,
+    recipient_number: numericRecipient,       // stored as number
     data_package: cleanPackage
   });
 });
+
 
 
 
