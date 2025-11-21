@@ -2785,8 +2785,11 @@ rows.forEach(row => {
     recipient = "0" + recipient.slice(3);
   }
 
+  // Zero-width space to force Excel TEXT without showing anything
+  const textRecipient = "\u200B" + recipient;
+
   worksheet.addRow({
-    recipient_number: "'" + recipient,   // THIS FIXES THE PROBLEM
+    recipient_number: textRecipient,
     data_package: cleanPackage
   });
 });
