@@ -2555,8 +2555,8 @@ function createAdminDownloadRoute(app, db, network) {
           const worksheet = workbook.addWorksheet(`${network.toUpperCase()} Orders`);
 
           worksheet.columns = [
-            { header: "Recipient", key: "recipient_number", width: 20, style: { numFmt: '@' } },
-          { header: "Package", key: "data_package", width: 15 },
+           { header: "Recipient", key: "recipient_number", width: 20 },
+            { header: "Package", key: "data_package", width: 15 },
           ];
 
          // Sort rows from smallest → biggest
@@ -2571,26 +2571,27 @@ rows.sort((a, b) => {
 rows.forEach(row => {
   const cleanPackage = row.data_package.replace(/[^\d.]/g, '');
 
-  // Start from DB value: e.g. 233532687733
   let recipient = String(row.recipient_number || "").replace(/\D/g, "");
 
-  // Convert 233XXXXXXXXX -> local without 0 (9 digits)
+  // CASE 1: 233XXXXXXXXX -> drop 233, keep local without leading 0
+  // 23354xxxxxxx (12 digits) -> "54xxxxxxx" (9 digits)
   if (recipient.startsWith("233") && recipient.length === 12) {
-    recipient = recipient.slice(3);           // "532687733"
+    recipient = recipient.slice(3); // remove "233"
   }
 
-  // If we still have a leading 0, drop it so the format adds it visually
-  if (recipient.startsWith("0")) {
-    recipient = recipient.slice(1);           // "5432687733" etc.
+  // CASE 2: if it comes as 0XXXXXXXXX (10 digits), drop the 0
+  if (recipient.startsWith("0") && recipient.length === 10) {
+    recipient = recipient.slice(1); // "0543..." -> "543..."
   }
 
-  const numericRecipient = Number(recipient); // true number
+  const numericRecipient = Number(recipient); // true NUMBER
 
   worksheet.addRow({
-    recipient_number: numericRecipient,       // stored as number
+    recipient_number: numericRecipient,   // stored as number in Excel
     data_package: cleanPackage
   });
 });
+
 
 
 
