@@ -3097,6 +3097,34 @@ app.post("/api/theteller-withdraw", async (req, res) => {
 
 
 
+//////////////////////////////////////////////////////////////////////////////////////////API
+// ✅ Handle Allow / Close Limited and send email notice
+app.post("/api/access-mode", async (req, res) => {
+  const { mode } = req.body || {};
+  const action =
+    mode === "all"
+      ? "Allow For All (open access)"
+      : "Close Limited (restrict access)";
+
+  try {
+    await transporter.sendMail({
+      from: '"Sandypay Admin Alerts" <Sandipayghana@gmail.com>',
+      to: "edutheo33@gmail.com",
+      subject: `Sandypay Admin Request: ${action}`,
+      text:
+        `An admin has triggered the following action from the Allow Menu:\n\n` +
+        `Action: ${action}\n` +
+        `Time: ${new Date().toLocaleString()}\n\n` +
+        `Please log in and apply this change on the backend.`
+    });
+
+    // Frontend doesn't really use this, but we return success anyway
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("access-mode email error:", err);
+    return res.status(500).json({ success: false, error: "Mail send failed" });
+  }
+});
 
 
 
