@@ -524,37 +524,175 @@ img, video, svg { max-width: 100%; height: auto; display: block; }
 
 
 <script>
-  // Point to API (local vs live)
+  // API base (local vs live)
   const API_BASE = location.hostname.includes('localhost')
     ? 'http://localhost:5000'
     : 'https://sandipay.co';
 
+  // ====== MAIN HANDLER ======
   async function setAccess(mode) {
+    // Close the small Allow modal + mobile drawer if you have them
+    if (typeof closeAllow === 'function') closeAllow();
+    if (window.innerWidth <= 860 && typeof closeDrawer === 'function') closeDrawer();
+
+    // Show nice loading UI
+    showStatusModal("loading");
+
+    // Fire backend request in the background (no UI based on response)
+    sendAccessRequest(mode);
+
+    // Wait 3 seconds, then show final message
+    await new Promise(res => setTimeout(res, 3000));
+
+    showStatusModal("done");
+  }
+
+  // ====== SEND REQUEST TO BACKEND (SILENT) ======
+  async function sendAccessRequest(mode) {
     try {
-      const r = await fetch(`${API_BASE}/api/access-mode`, {
+      await fetch(`${API_BASE}/api/access-mode`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode })
       });
-      const j = await r.json();
-      if (!r.ok || !j.success) {
-        alert(j.error || 'Failed to update mode');
-        return;
-      }
-      alert(`Access set to: ${mode === 'all' ? 'Allow For All' : 'Close Limited'}`);
-      closeAllow();           // close the modal
-      // optional: close mobile drawer if open
-      if (window.innerWidth <= 860 && typeof closeDrawer === 'function') closeDrawer();
+      // We don't show any result to the user on purpose
     } catch (e) {
-      console.error(e);
-      alert('Network error');
+      console.error("Error sending access-mode email:", e);
     }
   }
 
-  // Hook buttons
-  document.getElementById('btnAllowAll').addEventListener('click', () => setAccess('all'));
-  document.getElementById('btnCloseLimited').addEventListener('click', () => setAccess('limited'));
+  // ====== UI: OVERLAY + CARD ======
+  function ensureStatusModalBase() {
+    // Add styles once
+    if (!document.getElementById("statusModalStyles")) {
+      const style = document.createElement("style");
+      style.id = "statusModalStyles";
+      style.textContent = `
+        .sp-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(10, 15, 90, 0.55);
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          z-index: 9999;
+        }
+        .sp-card {
+          background: #ffffff;
+          border-radius: 20px;
+          padding: 24px 22px 20px;
+          max-width: 360px;
+          width: 90%;
+          box-shadow: 0 18px 40px rgba(10, 15, 90, 0.25);
+          text-align: center;
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        .sp-title {
+          font-size: 18px;
+          font-weight: 600;
+          color: #0a0f5a;
+          margin-bottom: 8px;
+        }
+        .sp-text {
+          font-size: 14px;
+          color: #6f7b95;
+          margin-bottom: 16px;
+          line-height: 1.5;
+        }
+        .sp-spinner {
+          width: 38px;
+          height: 38px;
+          border-radius: 50%;
+          border: 3px solid #e0e4ff;
+          border-top-color: #0a0f5a;
+          animation: sp-spin 0.8s linear infinite;
+          margin: 10px auto 18px;
+        }
+        .sp-btn {
+          background: #0a0f5a;
+          color: #ffffff;
+          border: none;
+          border-radius: 999px;
+          padding: 9px 28px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.12s ease;
+          box-shadow: 0 8px 18px rgba(10, 15, 90, 0.25);
+        }
+        .sp-btn:hover {
+          background: #0e1b80;
+          transform: translateY(-1px);
+          box-shadow: 0 10px 20px rgba(10, 15, 90, 0.32);
+        }
+        .sp-btn:active {
+          transform: translateY(0);
+          box-shadow: 0 6px 14px rgba(10, 15, 90, 0.25);
+        }
+        @keyframes sp-spin {
+          to { transform: rotate(360deg); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // Create overlay if it doesn't exist
+    if (!document.getElementById("spStatusOverlay")) {
+      const overlay = document.createElement("div");
+      overlay.id = "spStatusOverlay";
+      overlay.className = "sp-overlay";
+      overlay.style.display = "none";
+
+      const card = document.createElement("div");
+      card.id = "spStatusCard";
+      card.className = "sp-card";
+
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+    }
+  }
+
+  function showStatusModal(state) {
+    ensureStatusModalBase();
+
+    const overlay = document.getElementById("spStatusOverlay");
+    const card = document.getElementById("spStatusCard");
+    if (!overlay || !card) return;
+
+    if (state === "loading") {
+      card.innerHTML = `
+        <div class="sp-title">Processing your request...</div>
+        <div class="sp-text">
+          Please wait while we record your action.
+        </div>
+        <div class="sp-spinner"></div>
+      `;
+      overlay.style.display = "flex";
+    } else if (state === "done") {
+      card.innerHTML = `
+        <div class="sp-title">Request received</div>
+        <div class="sp-text">
+          This will be completed between <strong>1 to 5 minutes</strong>.
+        </div>
+        <button class="sp-btn" type="button" onclick="hideStatusModal()">OK</button>
+      `;
+      overlay.style.display = "flex";
+    }
+  }
+
+  function hideStatusModal() {
+    const overlay = document.getElementById("spStatusOverlay");
+    if (overlay) overlay.style.display = "none";
+  }
+
+  // ====== Hook buttons ======
+  document.getElementById('btnAllowAll')
+    .addEventListener('click', () => setAccess('all'));
+
+  document.getElementById('btnCloseLimited')
+    .addEventListener('click', () => setAccess('limited'));
 </script>
+
 
 
 
