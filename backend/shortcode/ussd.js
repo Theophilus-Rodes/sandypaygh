@@ -56,7 +56,7 @@ if (!DB_PASSWORD) {
   throw new Error("DB_PASSWORD is empty — set DB_PASSWORD (or DB_PASS).");
 }
 
-// Your short code extension (still 717)
+// Your short code extension
 const EXTENSION_EXPECTED = "888";
 
 // ========================================================
@@ -65,10 +65,10 @@ const EXTENSION_EXPECTED = "888";
 const THETELLER = {
   endpoint: "https://prod.theteller.net/v1.1/transaction/process",
 
-  // 👇 your new merchant ID from the screenshot (top-left)
+  // 👇 your new merchant ID
   merchantId: process.env.THETELLER_MERCHANT_ID || "TTM-00009388",
 
-  // 👇 Production API credentials from the right-hand side of the screenshot
+  // 👇 Production API credentials
   username: process.env.THETELLER_USERNAME || "louis66a20ac942e74",
   apiKey: process.env.THETELLER_API_KEY || "ZmVjZWZlZDc2MzA4OWU0YmZhOTk5MDBmMDAxNDhmOWY=",
 };
@@ -77,7 +77,6 @@ const THETELLER = {
 THETELLER.basicToken = Buffer.from(
   `${THETELLER.username}:${THETELLER.apiKey}`
 ).toString("base64");
-
 
 // Map network to TheTeller r-switch
 function getSwitchCode(net) {
@@ -585,7 +584,7 @@ function handleSession(sessionId, input, msisdn, res) {
                 return;
               }
 
-              // ✅ Payment accepted – now log orders (same logic as old webhook)
+              // ✅ Payment accepted – now log orders
 
               if (mode === "plain") {
                 // PLAIN MODE (*203*717#): vendor_id is 1
@@ -783,57 +782,24 @@ router.post("/", (req, res) => {
     inputFromUser,
   });
 
-  // CASE 1: NEW PLAIN SESSION (*203*717#)
+  // CASE 1: NEW PLAIN SESSION (*203*717#) — NOW OPEN TO ALL NUMBERS
   if (isNewSession && !inputFromUser) {
     console.log("🟦 NEW PLAIN SESSION for:", msisdn);
 
-    const [intl, local, plusIntl] = msisdnVariants(msisdn);
+    sessions[sessionId] = {
+      step: "start",
+      vendorId: 1,
+      brandName: "SandyPay",
+      isPlain: true,
+      network: "",
+      selectedPkg: "",
+      recipient: "",
+      packageList: [],
+      packagePage: 0,
+    };
 
-    db.query(
-      `SELECT 1
-         FROM telephone_numbers
-        WHERE phone_number IN (?, ?, ?)
-          AND (status IS NULL OR status='allowed')
-        LIMIT 1`,
-      [intl, local, plusIntl],
-      (err, rows) => {
-        if (err) {
-          console.error("❌ telephone_numbers lookup error:", err);
-          return res.json({
-            message: "APPLICATION UNKNOWN",
-            reply: false,
-          });
-        }
-
-        if (!rows || !rows.length) {
-          console.log(
-            "❌ MSISDN not found in telephone_numbers for plain mode:",
-            msisdn
-          );
-          return res.json({
-            message: "APPLICATION UNKNOWN",
-            reply: false,
-          });
-        }
-
-        sessions[sessionId] = {
-          step: "start",
-          vendorId: 1,
-          brandName: "SandyPay",
-          isPlain: true,
-          network: "",
-          selectedPkg: "",
-          recipient: "",
-          packageList: [],
-          packagePage: 0,
-        };
-
-        console.log("🟦 CREATED PLAIN SESSION:", sessions[sessionId]);
-        return handleSession(sessionId, "", String(msisdn || ""), res);
-      }
-    );
-
-    return;
+    console.log("🟦 CREATED PLAIN SESSION:", sessions[sessionId]);
+    return handleSession(sessionId, "", String(msisdn || ""), res);
   }
 
   // CASE 2: Vendor sessions & existing sessions
