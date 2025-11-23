@@ -133,6 +133,7 @@ function renderPackages(state) {
   return lines.join("\n");
 }
 
+
 function confirmMessage(state) {
   const [packageName, price] = String(state.selectedPkg || "").split(" @ ");
   return `Confirm Purchase
@@ -168,7 +169,7 @@ function toLocalMsisdn(msisdn) {
   return "0" + intl.slice(3);
 }
 
-// Access control (still used for vendor side)
+// Access control
 function checkAccess(msisdn, cb) {
   db.query(
     "SELECT `value` AS v FROM app_settings WHERE setting='access_mode' LIMIT 1",
@@ -638,25 +639,58 @@ router.post("/", (req, res) => {
     inputFromUser,
   });
 
-  // CASE 1: NEW PLAIN SESSION (*203*717#) — NOW OPEN TO ALL NUMBERS
+  // CASE 1: NEW PLAIN SESSION (*203*717#)
   if (isNewSession && !inputFromUser) {
     console.log("🟦 NEW PLAIN SESSION for:", msisdn);
 
-    sessions[sessionId] = {
-      step: "start",
-      vendorId: 1,
-      brandName: "SandyPay",
-      isPlain: true,
-      network: "",
-      selectedPkg: "",
-      recipient: "",
-      packageList: [],
-      packagePage: 0,
-      moolreSessionId: sessionId,
-    };
+    const [intl, local, plusIntl] = msisdnVariants(msisdn);
 
-    console.log("🟦 CREATED PLAIN SESSION:", sessions[sessionId]);
-    return handleSession(sessionId, "", String(msisdn || ""), res);
+    db.query(
+      `SELECT 1
+         FROM telephone_numbers
+        WHERE phone_number IN (?, ?, ?)
+          AND (status IS NULL OR status='allowed')
+        LIMIT 1`,
+      [intl, local, plusIntl],
+      (err, rows) => {
+        if (err) {
+          console.error("❌ telephone_numbers lookup error:", err);
+          return res.json({
+            message: "APPLICATION UNKNOWN",
+            reply: false,
+          });
+        }
+
+        if (!rows || !rows.length) {
+          console.log(
+            "❌ MSISDN not found in telephone_numbers for plain mode:",
+            msisdn
+          );
+          return res.json({
+            message: "APPLICATION UNKNOWN",
+            reply: false,
+          });
+        }
+
+        sessions[sessionId] = {
+          step: "start",
+          vendorId: 1,
+          brandName: "SandyPay",
+          isPlain: true,
+          network: "",
+          selectedPkg: "",
+          recipient: "",
+          packageList: [],
+          packagePage: 0,
+          moolreSessionId: sessionId,
+        };
+
+        console.log("🟦 CREATED PLAIN SESSION:", sessions[sessionId]);
+        return handleSession(sessionId, "", String(msisdn || ""), res);
+      }
+    );
+
+    return;
   }
 
   // CASE 2: Vendor sessions & existing sessions
