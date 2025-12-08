@@ -57,7 +57,7 @@ if (!DB_PASSWORD) {
 }
 
 // Your short code extension (from Moolre)
-const EXTENSION_EXPECTED = "888";
+const EXTENSION_EXPECTED = "717";
 
 // ✅ Moolre config (from your account)
 const MOOLRE = {
