@@ -561,100 +561,106 @@ function makePackageId() {
 // =====================================================
 // POST /api/buy-data-theteller  (returns transaction_id)
 // =====================================================
+
+function makePackageId(){
+  // matches your style like "2025-11-20 09:09"
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mi = String(d.getMinutes()).padStart(2,'0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+}
+
+function makeReference(){
+  return `SANDYPAY-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+}
+
+// POST /api/buy-data-theteller
 app.post("/api/buy-data-theteller", async (req, res) => {
   const { package_id, momo_number, recipient_number, vendor_id } = req.body;
 
-  if (!package_id || !momo_number || !recipient_number) {
-    return res.json({ ok: false, message: "Missing required fields." });
+  // vendor_id can come from session/login token or frontend URL
+  const vid = vendor_id || 1; // set default if you want (better to pass real vendor_id)
+
+  if(!package_id || !momo_number || !recipient_number){
+    return res.json({ ok:false, message:"Missing fields." });
   }
 
-  const vendorId = Number(vendor_id || 1);
+  const reference = makeReference();
+  const packId = makePackageId();
 
-  try {
+  try{
+    // 1) Get package from AdminData (real table/fields)
     const [rows] = await db.promise().query(
       "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
       [package_id]
     );
 
-    if (!rows || !rows.length) {
-      return res.json({ ok: false, message: "Package not found or inactive." });
+    if(!rows.length){
+      return res.json({ ok:false, message:"Package not found or inactive." });
     }
 
-    const pkg = rows[0];
+    const pkg = rows[0]; // pkg.package_name, pkg.price, pkg.network
 
-    const rSwitch = getSwitchCode(pkg.network);
-    if (!rSwitch) {
-      return res.json({ ok: false, message: "Unsupported network for payment." });
-    }
-
-    const formattedMoMo = formatMsisdnForTheTeller(momo_number);
-    const amountFormatted = thetellerAmount(pkg.price);
-    const transactionId = makeTransactionId();
+    // 2) Trigger TheTeller prompt (PUT YOUR REAL THETELLER REQUEST HERE)
+    // This is placeholder – replace with your working payload/endpoint.
+    const thetellerUrl = process.env.THETELLER_URL;
+    const apiKey = process.env.THETELLER_API_KEY;
+    const merchantId = process.env.THETELLER_MERCHANT_ID;
 
     const payload = {
-      amount: amountFormatted,
-      processing_code: "000200",
-      transaction_id: transactionId,
-      desc: `WEB Data Purchase - ${pkg.package_name}`,
-      merchant_id: THETELLER.merchantId,
-      subscriber_number: formattedMoMo,
-      "r-switch": rSwitch,
-      redirect_url: "https://example.com/web-data-callback",
+      amount: Number(pkg.price),
+      customer_number: momo_number,
+      transaction_id: reference,
+      description: `Buy ${pkg.package_name} ${pkg.network}`
     };
 
-    console.log("📤 TheTeller INIT:", payload);
-
-    const response = await axios.post(THETELLER.endpoint, payload, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Basic ${THETELLER.basicToken}`,
-        "Cache-Control": "no-cache",
-      },
-      timeout: 30000,
+    const tt = await axios.post(thetellerUrl, payload, {
+      headers:{
+        "Content-Type":"application/json",
+        "Authorization": `Bearer ${apiKey}`,
+        "Merchant-Id": merchantId
+      }
     });
 
-    console.log("📥 TheTeller INIT response:", response.data);
-
-    const status = String(response.data.status || "").toLowerCase();
-    const code = String(response.data.code || "");
-
-    // ✅ IMPORTANT: treat "pending" as accepted (prompt sent)
-    const accepted =
-      status === "approved" ||
-      status === "successful" ||
-      status === "pending" ||
-      code === "000";
-
-    if (!accepted) {
-      return res.json({
-        ok: false,
-        message: "Payment prompt not accepted. Please try again.",
-        theteller: response.data,
-      });
-    }
+    // 3) If TheTeller accepted the request → INSERT into admin_orders
+    // status: set to 'pending' initially (or 'processing' if you prefer)
+    await db.promise().query(
+      `INSERT INTO admin_orders 
+        (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+       VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)`,
+      [
+        vid,
+        recipient_number,
+        pkg.package_name,
+        pkg.price,
+        pkg.network,
+        "pending",
+        packId
+      ]
+    );
 
     return res.json({
-      ok: true,
-      message: "✅ Prompt sent. Please approve on your phone.",
-      transaction_id: transactionId,
-      vendor_id: vendorId,
+      ok:true,
+      message:"Please wait for the prompt to appear on your phone.",
+      reference,
+      package_id: pkg.id,
+      theteller_response: tt.data
     });
-  } catch (err) {
-    const status = err.response?.status;
-    const data = err.response?.data;
-    console.error("❌ TheTeller INIT error status:", status);
-    console.error("❌ TheTeller INIT error data:", data);
-    console.error("❌ TheTeller INIT error message:", err.message);
 
-    return res.status(500).json({
-      ok: false,
-      message: "Could not initiate payment. Try again.",
-      http_status: status || null,
-      theteller_error: data || null,
-      error: err.message,
+  }catch(err){
+    return res.json({
+      ok:false,
+      message:"Payment could not be initiated. Try again.",
+      error: err?.response?.data || err.message
     });
   }
 });
+
+
+
 
 // =====================================================
 // GET /api/theteller-status?transaction_id=TRX...
