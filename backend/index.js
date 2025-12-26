@@ -572,97 +572,142 @@ app.post("/api/buy-data-theteller", async (req, res) => {
   }
 
   const vendorId = Number(vendor_id || 1);
-  const packageIdGroup = makePackageId();
 
   try {
-    // 1) Get the package from AdminData
     const [rows] = await db.promise().query(
-      "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
+      `SELECT id, package_name, price, network
+       FROM AdminData
+       WHERE id=? AND status='active'
+       LIMIT 1`,
       [package_id]
     );
 
-    if (!rows || !rows.length) {
+    if (!rows.length) {
       return res.json({ ok: false, message: "Package not found or inactive." });
     }
 
-    const pkg = rows[0]; // package_name, price, network
-
-    // 2) Prepare TheTeller payload (same logic as USSD)
+    const pkg = rows[0];
     const rSwitch = getSwitchCode(pkg.network);
     if (!rSwitch) {
-      return res.json({ ok: false, message: "Unsupported network for payment." });
+      return res.json({ ok: false, message: "Unsupported network." });
     }
 
-    const formattedMoMo = formatMsisdnForTheTeller(momo_number);
-    const amountFormatted = thetellerAmount(pkg.price);
     const transactionId = makeTransactionId();
 
     const payload = {
-      amount: amountFormatted,
+      amount: thetellerAmount(pkg.price),
       processing_code: "000200",
       transaction_id: transactionId,
       desc: `WEB Data Purchase - ${pkg.package_name}`,
       merchant_id: THETELLER.merchantId,
-      subscriber_number: formattedMoMo,
+      subscriber_number: formatMsisdnForTheTeller(momo_number),
       "r-switch": rSwitch,
-      redirect_url: "https://example.com/web-data-callback",
+      redirect_url: "https://example.com/callback",
     };
 
-    console.log("📤 Sending WEB data payment to TheTeller:", payload);
-
-    // 3) Trigger TheTeller prompt
-    const response = await axios.post(THETELLER.endpoint, payload, {
+    await axios.post(THETELLER.endpoint, payload, {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Basic ${THETELLER.basicToken}`,
-        "Cache-Control": "no-cache",
       },
     });
 
-    console.log("📥 TheTeller WEB response:", response.data);
+    return res.json({
+      ok: true,
+      message: "Please approve the payment on your phone.",
+      transaction_id: transactionId,
+      payload: {
+        vendor_id: vendorId,
+        recipient_number,
+        package_name: pkg.package_name,
+        amount: pkg.price,
+        network: pkg.network,
+      },
+    });
+
+  } catch (err) {
+    console.error("❌ TheTeller INIT error:", err.response?.data || err.message);
+    return res.json({ ok: false, message: "Payment could not be initiated." });
+  }
+});
+
+
+
+
+// GET /api/theteller-status?transaction_id=TRX...
+app.get("/api/theteller-status", async (req, res) => {
+  const { transaction_id } = req.query;
+
+  if (!transaction_id) {
+    return res.json({ ok: false, status: "error" });
+  }
+
+  try {
+    const response = await axios.get(
+      `https://prod.theteller.net/v1.1/transaction/status/${transaction_id}`,
+      {
+        headers: {
+          Authorization: `Basic ${THETELLER.basicToken}`,
+        },
+      }
+    );
 
     const status = String(response.data.status || "").toLowerCase();
-    const code = response.data.code;
 
-    // The same success check you used in USSD
-    const accepted =
-      status === "approved" || status === "successful" || code === "000";
+    return res.json({
+      ok: true,
+      status,
+      raw: response.data,
+    });
+  } catch (err) {
+    console.error("❌ Status check error:", err.response?.data || err.message);
+    return res.json({ ok: false, status: "error" });
+  }
+});
 
-    if (!accepted) {
-      return res.json({
-        ok: false,
-        message: "Payment was not accepted. Please try again.",
-        theteller: response.data,
-      });
-    }
 
-    // 4) Insert into admin_orders AFTER payment accepted
+
+
+// POST /api/buy-data-confirm
+app.post("/api/buy-data-confirm", async (req, res) => {
+  const {
+    transaction_id,
+    vendor_id,
+    recipient_number,
+    package_name,
+    amount,
+    network,
+  } = req.body;
+
+  if (!transaction_id || !recipient_number || !package_name) {
+    return res.json({ ok: false, message: "Missing confirmation data." });
+  }
+
+  try {
+    const packageIdGroup = makePackageId();
+
     await db.promise().query(
       `INSERT INTO admin_orders
         (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
        VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
       [
-        vendorId,
+        Number(vendor_id || 1),
         recipient_number,
-        pkg.package_name,
-        pkg.price,
-        pkg.network,
+        package_name,
+        amount,
+        network,
         packageIdGroup,
       ]
     );
 
     return res.json({
       ok: true,
-      message: "✅ Please wait for the prompt to appear on your phone.",
-      theteller: response.data,
+      message: "Order saved successfully.",
     });
+
   } catch (err) {
-    console.error("❌ WEB TheTeller error:", err.response?.data || err.message);
-    return res.json({
-      ok: false,
-      message: "Could not initiate payment. Try again.",
-      error: err.response?.data || err.message,
-    });
+    console.error("❌ Confirm insert error:", err);
+    return res.json({ ok: false, message: "Could not save order." });
   }
 });
 
