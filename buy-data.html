@@ -336,117 +336,167 @@
   </div>
 
   <script>
-    let selectedPackage = null;
-    let selectedNetwork = "";
+  let selectedPackage = null;
+  let selectedNetwork = "";
+  let currentTransactionId = null;
+  let pollTimer = null;
 
-    function money(n){ return Number(n).toFixed(2); }
-    function isPhone(v){ return /^[0-9]{9,15}$/.test((v||"").replace(/\s+/g,"")); }
+  function money(n){ return Number(n).toFixed(2); }
+  function isPhone(v){ return /^[0-9]{9,15}$/.test((v||"").replace(/\s+/g,"")); }
 
-    async function selectNetwork(network){
-      selectedNetwork = network;
-      document.getElementById("netBadge").innerText = network.toUpperCase();
-      document.getElementById("title").innerText = network.toUpperCase() + " Packages";
-      document.getElementById("headerPill").innerText = "Network: " + network.toUpperCase();
+  async function selectNetwork(network){
+    selectedNetwork = network;
+    document.getElementById("netBadge").innerText = network.toUpperCase();
+    document.getElementById("title").innerText = network.toUpperCase() + " Packages";
+    document.getElementById("headerPill").innerText = "Network: " + network.toUpperCase();
 
-      document.getElementById("packages").innerHTML = "";
-      document.getElementById("empty").innerText = "Loading packages...";
+    document.getElementById("packages").innerHTML = "";
+    document.getElementById("empty").innerText = "Loading packages...";
+
+    try{
+      const res = await fetch(`/api/admin-data?network=${encodeURIComponent(network)}`);
+      const data = await res.json();
+
+      if(!Array.isArray(data) || data.length === 0){
+        document.getElementById("empty").innerText =
+          "No packages available for " + network.toUpperCase();
+        return;
+      }
+
+      document.getElementById("empty").innerText = "";
+
+      data.forEach(pkg => {
+        document.getElementById("packages").innerHTML += `
+          <div class="pkg">
+            <h4>${pkg.package_name}</h4>
+            <div class="price">GHS ${money(pkg.price)}</div>
+            <div class="meta">Network: ${String(pkg.network || "").toUpperCase()}</div>
+            <button class="btn" onclick='openModal(${JSON.stringify(pkg)})'>
+              Buy Bundle
+            </button>
+          </div>
+        `;
+      });
+    }catch(e){
+      document.getElementById("empty").innerText =
+        "Failed to load packages. Please try again.";
+    }
+  }
+
+  function openModal(pkg){
+    selectedPackage = pkg;
+    document.getElementById("modalTitle").innerText =
+      `Buy ${pkg.package_name} (${String(pkg.network).toUpperCase()})`;
+    document.getElementById("modalSub").innerText =
+      `Amount: GHS ${money(pkg.price)} • Enter details below to proceed.`;
+    document.getElementById("momoNumber").value = "";
+    document.getElementById("recipientNumber").value = "";
+    document.getElementById("modalBackdrop").style.display = "flex";
+  }
+
+  function closeModal(){
+    document.getElementById("modalBackdrop").style.display = "none";
+  }
+
+  function openOverlay(msg=""){
+    document.getElementById("overlayStatus").innerText = msg;
+    document.getElementById("overlayError").style.display = "none";
+    document.getElementById("overlayError").innerText = "";
+    document.getElementById("waitOverlay").style.display = "flex";
+  }
+
+  function closeOverlay(){
+    document.getElementById("waitOverlay").style.display = "none";
+  }
+
+  function showError(msg){
+    document.getElementById("overlayError").style.display = "block";
+    document.getElementById("overlayError").innerText = msg;
+  }
+
+  function showSuccess(msg){
+    document.getElementById("overlayStatus").innerText = msg;
+    document.getElementById("overlayError").style.display = "none";
+  }
+
+  async function pollPaymentStatus(){
+    if(!currentTransactionId) return;
+
+    let tries = 0;
+
+    pollTimer = setInterval(async () => {
+      tries++;
 
       try{
-        const res = await fetch(`/api/admin-data?network=${encodeURIComponent(network)}`);
+        const res = await fetch(
+          `/api/theteller-status?transaction_id=${currentTransactionId}`
+        );
         const data = await res.json();
 
-        if(!Array.isArray(data) || data.length === 0){
-          document.getElementById("empty").innerText = "No packages available for " + network.toUpperCase();
+        if(data.status === "approved" || data.status === "successful"){
+          clearInterval(pollTimer);
+          showSuccess("✅ Payment successful! Data will be delivered shortly.");
+          setTimeout(closeOverlay, 2500);
           return;
         }
 
-        document.getElementById("empty").innerText = "";
-
-        data.forEach(pkg => {
-          document.getElementById("packages").innerHTML += `
-            <div class="pkg">
-              <h4>${pkg.package_name}</h4>
-              <div class="price">GHS ${money(pkg.price)}</div>
-              <div class="meta">Network: ${String(pkg.network || "").toUpperCase()}</div>
-              <button class="btn" onclick='openModal(${JSON.stringify(pkg)})'>Buy Bundle</button>
-            </div>
-          `;
-        });
-      }catch(e){
-        document.getElementById("empty").innerText = "Failed to load packages. Please try again.";
-      }
-    }
-
-    function openModal(pkg){
-      selectedPackage = pkg;
-      document.getElementById("modalTitle").innerText = `Buy ${pkg.package_name} (${String(pkg.network).toUpperCase()})`;
-      document.getElementById("modalSub").innerText = `Amount: GHS ${money(pkg.price)} • Enter details below to proceed.`;
-      document.getElementById("momoNumber").value = "";
-      document.getElementById("recipientNumber").value = "";
-      document.getElementById("modalBackdrop").style.display = "flex";
-    }
-
-    function closeModal(){
-      document.getElementById("modalBackdrop").style.display = "none";
-    }
-
-    function openOverlay(msg=""){
-      document.getElementById("overlayStatus").innerText = msg;
-      document.getElementById("overlayError").style.display = "none";
-      document.getElementById("overlayError").innerText = "";
-      document.getElementById("waitOverlay").style.display = "flex";
-    }
-    function closeOverlay(){
-      document.getElementById("waitOverlay").style.display = "none";
-    }
-
-    async function submitPurchase(){
-      const momo = document.getElementById("momoNumber").value.trim();
-      const recipient = document.getElementById("recipientNumber").value.trim();
-
-      if(!selectedPackage) return alert("Select a package again.");
-      if(!isPhone(momo)) return alert("Enter a valid MoMo number.");
-      if(!isPhone(recipient)) return alert("Enter a valid recipient number.");
-
-      closeModal();
-      openOverlay("Initiating payment request...");
-
-      // vendor_id: if you store it after login, keep it here
-      const vendor_id = localStorage.getItem("vendor_id") || 1;
-
-      try{
-        const payBtn = document.getElementById("payBtn");
-        payBtn.disabled = true;
-
-        const res = await fetch("/api/buy-data-theteller", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            package_id: selectedPackage.id,
-            momo_number: momo,
-            recipient_number: recipient,
-            vendor_id
-          })
-        });
-
-        const out = await res.json();
-
-        if(out.ok){
-          openOverlay(out.message || "Please wait for the prompt to appear on your phone.");
-        }else{
-          document.getElementById("overlayError").style.display = "block";
-          document.getElementById("overlayError").innerText = out.message || "Payment failed to start.";
-          document.getElementById("overlayStatus").innerText = "Request could not be completed.";
+        if(data.status === "failed" || data.status === "cancelled"){
+          clearInterval(pollTimer);
+          showError("❌ Payment failed or cancelled.");
+          return;
         }
 
-        payBtn.disabled = false;
-
+        if(tries > 20){
+          clearInterval(pollTimer);
+          showError("⏳ Payment timeout. Please try again.");
+        }
       }catch(e){
-        document.getElementById("overlayError").style.display = "block";
-        document.getElementById("overlayError").innerText = "Network error. Please try again.";
-        document.getElementById("overlayStatus").innerText = "Request failed.";
+        clearInterval(pollTimer);
+        showError("Unable to confirm payment status.");
       }
+    }, 3000);
+  }
+
+  async function submitPurchase(){
+    const momo = document.getElementById("momoNumber").value.trim();
+    const recipient = document.getElementById("recipientNumber").value.trim();
+
+    if(!selectedPackage) return alert("Select a package again.");
+    if(!isPhone(momo)) return alert("Enter a valid MoMo number.");
+    if(!isPhone(recipient)) return alert("Enter a valid recipient number.");
+
+    closeModal();
+    openOverlay("Initiating payment request...");
+
+    const vendor_id = localStorage.getItem("vendor_id") || 1;
+
+    try{
+      const res = await fetch("/api/buy-data-theteller", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          package_id: selectedPackage.id,
+          momo_number: momo,
+          recipient_number: recipient,
+          vendor_id
+        })
+      });
+
+      const out = await res.json();
+
+      if(out.ok && out.transaction_id){
+        currentTransactionId = out.transaction_id;
+        openOverlay("Waiting for payment approval...");
+        pollPaymentStatus(); // ✅ THIS WAS MISSING
+      }else{
+        showError(out.message || "Payment failed to start.");
+      }
+
+    }catch(e){
+      showError("Network error. Please try again.");
     }
-  </script>
+  }
+</script>
+
 </body>
 </html>
