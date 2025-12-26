@@ -419,43 +419,64 @@
     document.getElementById("overlayError").style.display = "none";
   }
 
-  async function pollPaymentStatus(){
-    if(!currentTransactionId) return;
+async function pollPaymentStatus(){
+  if(!currentTransactionId) return;
 
-    let tries = 0;
+  let tries = 0;
 
-    pollTimer = setInterval(async () => {
-      tries++;
+  pollTimer = setInterval(async () => {
+    tries++;
 
-      try{
-        const res = await fetch(
-          `/api/theteller-status?transaction_id=${currentTransactionId}`
-        );
-        const data = await res.json();
+    try{
+      const res = await fetch(
+        `/api/theteller-status?transaction_id=${currentTransactionId}`
+      );
+      const data = await res.json();
 
-        if(data.status === "approved" || data.status === "successful"){
-          clearInterval(pollTimer);
-          showSuccess("✅ Payment successful! Data will be delivered shortly.");
-          setTimeout(closeOverlay, 2500);
-          return;
-        }
-
-        if(data.status === "failed" || data.status === "cancelled"){
-          clearInterval(pollTimer);
-          showError("❌ Payment failed or cancelled.");
-          return;
-        }
-
-        if(tries > 20){
-          clearInterval(pollTimer);
-          showError("⏳ Payment timeout. Please try again.");
-        }
-      }catch(e){
+      // ✅ PAYMENT APPROVED
+      if(data.status === "approved" || data.status === "successful"){
         clearInterval(pollTimer);
-        showError("Unable to confirm payment status.");
+
+        // 👉 CONFIRM & INSERT INTO DB
+        await fetch("/api/buy-data-confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transaction_id: currentTransactionId,
+            vendor_id: localStorage.getItem("vendor_id") || 1,
+            recipient_number: document.getElementById("recipientNumber").value.trim(),
+            package_name: selectedPackage.package_name,
+            amount: selectedPackage.price,
+            network: selectedPackage.network
+          })
+        });
+
+        showSuccess("✅ Payment successful! Data will be delivered shortly.");
+        setTimeout(closeOverlay, 2500);
+        return;
       }
-    }, 3000);
-  }
+
+      // ❌ FAILED / CANCELLED
+      if(data.status === "failed" || data.status === "cancelled"){
+        clearInterval(pollTimer);
+        showError("❌ Payment failed or cancelled.");
+        return;
+      }
+
+      // ⏳ TIMEOUT
+      if(tries > 20){
+        clearInterval(pollTimer);
+        showError("⏳ Payment timeout. Please try again.");
+      }
+
+    }catch(e){
+      clearInterval(pollTimer);
+      showError("Unable to confirm payment status.");
+    }
+  }, 3000);
+}
+
+
 
   async function submitPurchase(){
     const momo = document.getElementById("momoNumber").value.trim();
