@@ -474,76 +474,7 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 //New Code 
 
 
-// ===============================
-// THETELLER CONFIG (SAME AS USSD)
-// ===============================
-const THETELLER = {
-  endpoint: "https://prod.theteller.net/v1.1/transaction/process",
-  merchantId: process.env.THETELLER_MERCHANT_ID || "TTM-00009388",
-  username: process.env.THETELLER_USERNAME || "louis66a20ac942e74",
-  apiKey:
-    process.env.THETELLER_API_KEY ||
-    "ZmVjZWZlZDc2MzA4OWU0YmZhOTk5MDBmMDAxNDhmOWY=",
-};
-
-THETELLER.basicToken = Buffer.from(
-  `${THETELLER.username}:${THETELLER.apiKey}`
-).toString("base64");
-
-// Map network to TheTeller r-switch
-function getSwitchCode(net) {
-  switch (String(net || "").toLowerCase()) {
-    case "mtn":
-      return "MTN";
-    case "vodafone":
-    case "telecel":
-      return "VDF";
-    case "airteltigo":
-    case "airtel":
-      return "ATL";
-    case "tigo":
-      return "TGO";
-    default:
-      return null;
-  }
-}
-
-// Format MSISDN for TheTeller (233XXXXXXXXX)
-function formatMsisdnForTheTeller(number) {
-  if (!number) return "";
-  let msisdn = String(number).replace(/\D/g, "");
-
-  if (msisdn.startsWith("233") && msisdn.length === 12) return msisdn;
-  if (msisdn.startsWith("0") && msisdn.length === 10) return "233" + msisdn.slice(1);
-  if (msisdn.length === 9 && !msisdn.startsWith("0")) return "233" + msisdn;
-  return msisdn;
-}
-
-// Amount format for TheTeller (12-digit pesewas)
-function thetellerAmount(amountGhs) {
-  const pesewas = Math.round(Number(amountGhs) * 100);
-  return String(pesewas).padStart(12, "0");
-}
-
-// Your package_id format like your DB screenshot (YYYY-MM-DD HH:MM)
-function makePackageId() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
-}
-
-function makeTransactionId() {
-  return `TRX${Date.now()}`.slice(0, 30);
-}
-
-
-
-
-// GET /api/admin-data?network=mtn
+// GET /api/admin-data?network=mtn|telecel|airteltigo
 app.get("/api/admin-data", (req, res) => {
   const network = (req.query.network || "").toLowerCase();
 
@@ -561,9 +492,7 @@ app.get("/api/admin-data", (req, res) => {
 });
 
 
-
-
-// POST /api/buy-data-theteller
+// POST /api/buy-data-theteller  (returns transaction_id for polling)
 app.post("/api/buy-data-theteller", async (req, res) => {
   const { package_id, momo_number, recipient_number, vendor_id } = req.body;
 
@@ -574,7 +503,6 @@ app.post("/api/buy-data-theteller", async (req, res) => {
   const vendorId = Number(vendor_id || 1);
 
   try {
-    // 1) Get package from AdminData
     const [rows] = await db.promise().query(
       "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
       [package_id]
@@ -586,7 +514,6 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
     const pkg = rows[0];
 
-    // 2) TheTeller payload
     const rSwitch = getSwitchCode(pkg.network);
     if (!rSwitch) {
       return res.json({ ok: false, message: "Unsupported network for payment." });
@@ -607,9 +534,8 @@ app.post("/api/buy-data-theteller", async (req, res) => {
       redirect_url: "https://example.com/web-data-callback",
     };
 
-    console.log("📤 Sending WEB data payment to TheTeller:", payload);
+    console.log("📤 TheTeller INIT:", payload);
 
-    // 3) Trigger prompt
     const response = await axios.post(THETELLER.endpoint, payload, {
       headers: {
         "Content-Type": "application/json",
@@ -618,7 +544,7 @@ app.post("/api/buy-data-theteller", async (req, res) => {
       },
     });
 
-    console.log("📥 TheTeller WEB response:", response.data);
+    console.log("📥 TheTeller INIT response:", response.data);
 
     const status = String(response.data.status || "").toLowerCase();
     const code = response.data.code;
@@ -626,7 +552,6 @@ app.post("/api/buy-data-theteller", async (req, res) => {
     const accepted =
       status === "approved" || status === "successful" || code === "000";
 
-    // If request not accepted, stop here
     if (!accepted) {
       return res.json({
         ok: false,
@@ -635,14 +560,16 @@ app.post("/api/buy-data-theteller", async (req, res) => {
       });
     }
 
-    // ✅ VERY IMPORTANT: return transaction_id for frontend polling
+    // ✅ return transaction_id so frontend can poll and then confirm insert
     return res.json({
       ok: true,
       message: "✅ Prompt sent. Please approve on your phone.",
       transaction_id: transactionId,
+      vendor_id: vendorId
     });
+
   } catch (err) {
-    console.error("❌ WEB TheTeller error:", err.response?.data || err.message);
+    console.error("❌ TheTeller INIT error:", err.response?.data || err.message);
     return res.json({
       ok: false,
       message: "Could not initiate payment. Try again.",
@@ -650,9 +577,6 @@ app.post("/api/buy-data-theteller", async (req, res) => {
     });
   }
 });
-
-
-
 
 
 // GET /api/theteller-status?transaction_id=TRX...
@@ -680,8 +604,7 @@ app.get("/api/theteller-status", async (req, res) => {
 });
 
 
-
-// POST /api/buy-data-confirm
+// POST /api/buy-data-confirm  (INSERTS into admin_orders once approved)
 app.post("/api/buy-data-confirm", async (req, res) => {
   const {
     transaction_id,
@@ -696,11 +619,11 @@ app.post("/api/buy-data-confirm", async (req, res) => {
     return res.json({ ok: false, message: "Missing confirm fields." });
   }
 
-  const packageIdGroup = makePackageId();
   const vendorId = Number(vendor_id || 1);
+  const packageIdGroup = makePackageId();
 
   try {
-    // ✅ prevent duplicate insert if frontend calls confirm twice
+    // ✅ prevent duplicates
     const [exists] = await db.promise().query(
       "SELECT 1 FROM admin_orders WHERE updated_reference = ? LIMIT 1",
       [transaction_id]
@@ -731,8 +654,6 @@ app.post("/api/buy-data-confirm", async (req, res) => {
     return res.json({ ok: false, message: "Could not save order." });
   }
 });
-
-
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
