@@ -474,15 +474,9 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 //New Code 
 
 
-// =====================================================
-//   ADMIN PACKAGES
-// =====================================================
-
 // GET /api/admin-data?network=mtn|telecel|airteltigo
 app.get("/api/admin-data", (req, res) => {
-  const network = (req.query.network || "").toLowerCase().trim();
-
-  if (!network) return res.json([]);
+  const network = (req.query.network || "").toLowerCase();
 
   db.query(
     "SELECT id, package_name, price, network FROM AdminData WHERE status='active' AND network=? ORDER BY price ASC",
@@ -498,39 +492,6 @@ app.get("/api/admin-data", (req, res) => {
 });
 
 
-// =====================================================
-//   THETELLER INIT + STATUS POLL + CONFIRM (NO WEBHOOK)
-// =====================================================
-
-// ✅ TheTeller STATUS endpoint (kept separate so THETELLER undefined never crashes)
-const THETELLER_STATUS_ENDPOINT =
-  process.env.THETELLER_STATUS_ENDPOINT ||
-  "https://prod.theteller.net/v1.1/transaction/status";
-
-// Store pending orders IN MEMORY (no DB temp table)
-// NOTE: If server restarts, pending items are lost.
-const pendingOrders = new Map(); // transaction_id -> meta
-
-// Optional cleanup: auto-expire pending items after 15 minutes
-const PENDING_TTL_MS = 15 * 60 * 1000;
-setInterval(() => {
-  const now = Date.now();
-  for (const [trx, meta] of pendingOrders.entries()) {
-    if (!meta?.created_at || now - meta.created_at > PENDING_TTL_MS) {
-      pendingOrders.delete(trx);
-    }
-  }
-}, 60 * 1000);
-
-// Normalize TheTeller status
-function normalizeTellerStatus(resp) {
-  const raw =
-    (resp && (resp.status || resp.transaction_status || resp.txstatus)) || "";
-  return String(raw).toLowerCase().trim();
-}
-
-
-// ✅ 1) INITIATE PROMPT (DO NOT INSERT HERE)
 // POST /api/buy-data-theteller  (returns transaction_id for polling)
 app.post("/api/buy-data-theteller", async (req, res) => {
   const { package_id, momo_number, recipient_number, vendor_id } = req.body;
@@ -542,7 +503,6 @@ app.post("/api/buy-data-theteller", async (req, res) => {
   const vendorId = Number(vendor_id || 1);
 
   try {
-    // Fetch package from AdminData
     const [rows] = await db.promise().query(
       "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
       [package_id]
@@ -554,37 +514,14 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
     const pkg = rows[0];
 
-    // Switch code
     const rSwitch = getSwitchCode(pkg.network);
     if (!rSwitch) {
       return res.json({ ok: false, message: "Unsupported network for payment." });
     }
 
-    // Format msisdn 233XXXXXXXXX
     const formattedMoMo = formatMsisdnForTheTeller(momo_number);
-
-    // ✅ IMPORTANT: TheTeller expects 12 digits starting with 233 for Ghana
-    if (!/^233\d{9}$/.test(formattedMoMo)) {
-      return res.json({
-        ok: false,
-        message: "Invalid MoMo number. Use 0XXXXXXXXX (e.g. 053xxxxxxx).",
-      });
-    }
-
     const amountFormatted = thetellerAmount(pkg.price);
-    const transactionId = makeTransactionId(); // e.g. TRX...
-
-    // Save pending meta (for confirm insert step)
-    pendingOrders.set(transactionId, {
-      vendor_id: vendorId,
-      recipient_number: String(recipient_number || "").trim(),
-      momo_number: String(momo_number || "").trim(),
-      data_package: String(pkg.package_name || "").trim(),
-      amount: Number(pkg.price),
-      network: String(pkg.network || "").toLowerCase(),
-      package_id_group: makePackageId(), // your batch format
-      created_at: Date.now(),
-    });
+    const transactionId = makeTransactionId();
 
     const payload = {
       amount: amountFormatted,
@@ -599,45 +536,38 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
     console.log("📤 TheTeller INIT:", payload);
 
-    // Trigger prompt
     const response = await axios.post(THETELLER.endpoint, payload, {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Basic ${THETELLER.basicToken}`,
         "Cache-Control": "no-cache",
       },
-      timeout: 45000,
     });
 
     console.log("📥 TheTeller INIT response:", response.data);
 
-    const data = response.data || {};
-    const code = String(data.code || "").trim();
-    const status = normalizeTellerStatus(data);
+    const status = String(response.data.status || "").toLowerCase();
+    const code = response.data.code;
 
-    // ✅ INIT can be accepted even if status is pending/initiated
-    const initOk =
-      code === "000" ||
-      status === "approved" ||
-      status === "successful" ||
-      status === "pending" ||
-      status === "initiated" ||
-      status === "processing";
+    const accepted =
+      status === "approved" || status === "successful" || code === "000";
 
-    if (!initOk) {
-      pendingOrders.delete(transactionId);
+    if (!accepted) {
       return res.json({
         ok: false,
         message: "Payment prompt not accepted. Please try again.",
-        theteller: data,
+        theteller: response.data,
       });
     }
 
+    // ✅ return transaction_id so frontend can poll and then confirm insert
     return res.json({
       ok: true,
       message: "✅ Prompt sent. Please approve on your phone.",
       transaction_id: transactionId,
+      vendor_id: vendorId
     });
+
   } catch (err) {
     console.error("❌ TheTeller INIT error:", err.response?.data || err.message);
     return res.json({
@@ -649,114 +579,82 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 });
 
 
-// ✅ 2) POLL STATUS
 // GET /api/theteller-status?transaction_id=TRX...
 app.get("/api/theteller-status", async (req, res) => {
-  const transactionId = String(req.query.transaction_id || "").trim();
-  if (!transactionId) return res.json({ ok: false, message: "Missing transaction_id" });
+  const transaction_id = String(req.query.transaction_id || "").trim();
+  if (!transaction_id) return res.json({ ok: false, status: "unknown" });
 
   try {
-    const url = `${THETELLER_STATUS_ENDPOINT}/${encodeURIComponent(transactionId)}`;
+    const resp = await axios.get(
+      `https://prod.theteller.net/v1.1/transaction/status/${encodeURIComponent(transaction_id)}`,
+      {
+        headers: {
+          Authorization: `Basic ${THETELLER.basicToken}`,
+          "Cache-Control": "no-cache",
+        },
+      }
+    );
 
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Basic ${THETELLER.basicToken}`,
-        "Cache-Control": "no-cache",
-      },
-      timeout: 45000,
-    });
-
-    const data = response.data || {};
-    const status = normalizeTellerStatus(data);
-
-    return res.json({
-      ok: true,
-      status, // pending | approved | successful | failed | cancelled
-      raw: data,
-    });
-  } catch (err) {
-    console.error("❌ TheTeller STATUS error:", err.response?.data || err.message);
-    return res.json({
-      ok: false,
-      message: "Status check failed.",
-      error: err.response?.data || err.message,
-    });
+    const status = String(resp.data.status || "").toLowerCase();
+    return res.json({ ok: true, status, raw: resp.data });
+  } catch (e) {
+    console.error("❌ TheTeller status error:", e.response?.data || e.message);
+    return res.json({ ok: false, status: "unknown" });
   }
 });
 
 
-// ✅ 3) CONFIRM + INSERT INTO admin_orders (ONLY AFTER APPROVED)
-// POST /api/buy-data-confirm { transaction_id }
+// POST /api/buy-data-confirm  (INSERTS into admin_orders once approved)
 app.post("/api/buy-data-confirm", async (req, res) => {
-  const transactionId = String(req.body.transaction_id || "").trim();
-  if (!transactionId) return res.json({ ok: false, message: "Missing transaction_id" });
+  const {
+    transaction_id,
+    vendor_id,
+    recipient_number,
+    package_name,
+    amount,
+    network
+  } = req.body;
 
-  const meta = pendingOrders.get(transactionId);
-  if (!meta) {
-    return res.json({
-      ok: false,
-      message: "No pending order found for this transaction. Please initiate again.",
-    });
+  if (!transaction_id || !recipient_number || !package_name || !amount || !network) {
+    return res.json({ ok: false, message: "Missing confirm fields." });
   }
 
+  const vendorId = Number(vendor_id || 1);
+  const packageIdGroup = makePackageId();
+
   try {
-    // Re-check status before insert
-    const url = `${THETELLER_STATUS_ENDPOINT}/${encodeURIComponent(transactionId)}`;
+    // ✅ prevent duplicates
+    const [exists] = await db.promise().query(
+      "SELECT 1 FROM admin_orders WHERE updated_reference = ? LIMIT 1",
+      [transaction_id]
+    );
 
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Basic ${THETELLER.basicToken}`,
-        "Cache-Control": "no-cache",
-      },
-      timeout: 45000,
-    });
-
-    const data = response.data || {};
-    const status = normalizeTellerStatus(data);
-
-    if (status === "failed" || status === "cancelled") {
-      pendingOrders.delete(transactionId);
-      return res.json({ ok: false, message: "❌ Payment failed or cancelled." });
+    if (exists && exists.length) {
+      return res.json({ ok: true, message: "Already confirmed." });
     }
 
-    if (!(status === "approved" || status === "successful")) {
-      return res.json({
-        ok: false,
-        message: "⏳ Payment not yet approved. Please wait.",
-        status,
-      });
-    }
-
-    // ✅ Insert order after approved
     await db.promise().query(
       `INSERT INTO admin_orders
-        (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-       VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+        (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
+       VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
       [
-        meta.vendor_id,
-        meta.recipient_number,
-        meta.data_package,
-        meta.amount,
-        meta.network,
-        meta.package_id_group,
+        vendorId,
+        recipient_number,
+        package_name,
+        amount,
+        network,
+        packageIdGroup,
+        transaction_id,
       ]
     );
 
-    pendingOrders.delete(transactionId);
-
-    return res.json({
-      ok: true,
-      message: "✅ Payment successful! Order has been recorded.",
-    });
+    return res.json({ ok: true, message: "Order confirmed and saved." });
   } catch (err) {
-    console.error("❌ Confirm/Insert error:", err.response?.data || err.message);
-    return res.json({
-      ok: false,
-      message: "Could not confirm payment. Try again.",
-      error: err.response?.data || err.message,
-    });
+    console.error("❌ Confirm insert error:", err);
+    return res.json({ ok: false, message: "Could not save order." });
   }
 });
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
