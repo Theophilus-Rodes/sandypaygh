@@ -473,13 +473,22 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //New Code 
 
+// ==============================
+// REQUIRED MIDDLEWARE (important)
+// ==============================
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
+// =====================================================
 // GET /api/admin-data?network=mtn|telecel|airteltigo
+// =====================================================
 app.get("/api/admin-data", (req, res) => {
-  const network = (req.query.network || "").toLowerCase();
+  const network = String(req.query.network || "").toLowerCase().trim();
+
+  if (!network) return res.json([]);
 
   db.query(
-    "SELECT id, package_name, price, network FROM AdminData WHERE status='active' AND network=? ORDER BY price ASC",
+    "SELECT id, package_name, price, network FROM AdminData WHERE status='active' AND LOWER(network)=? ORDER BY price ASC",
     [network],
     (err, rows) => {
       if (err) {
@@ -491,8 +500,67 @@ app.get("/api/admin-data", (req, res) => {
   );
 });
 
+// ==============================
+// HELPERS (required for your flow)
+// ==============================
 
-// POST /api/buy-data-theteller  (returns transaction_id for polling)
+// ✅ Map DB network -> TheTeller r-switch code
+function getSwitchCode(network) {
+  const n = String(network || "").toLowerCase().trim();
+
+  // MTN
+  if (n === "mtn" || n.includes("mtn")) return "MTN";
+
+  // AirtelTigo
+  if (
+    n === "airteltigo" ||
+    n.includes("airteltigo") ||
+    n.includes("airtel") ||
+    n.includes("tigo") ||
+    n.includes("atl")
+  )
+    return "ATL";
+
+  // Telecel/Vodafone
+  if (
+    n === "telecel" ||
+    n.includes("telecel") ||
+    n.includes("vodafone") ||
+    n.includes("voda") ||
+    n.includes("vdf")
+  )
+    return "VDF";
+
+  return null;
+}
+
+// ✅ Format Ghana numbers to TheTeller style (233xxxxxxxxx)
+function formatMsisdnForTheTeller(msisdn) {
+  let n = String(msisdn || "").replace(/\D/g, "");
+  if (n.startsWith("0")) n = "233" + n.slice(1);
+  if (n.startsWith("+")) n = n.slice(1);
+  return n;
+}
+
+// ✅ Format amount for TheTeller (string "1.00")
+function thetellerAmount(amount) {
+  const num = Number(amount || 0);
+  return num.toFixed(2);
+}
+
+// ✅ Unique transaction id
+function makeTransactionId() {
+  return "TRX" + Date.now() + Math.floor(Math.random() * 1000);
+}
+
+// ✅ Group package id for admin_orders download batch
+function makePackageId() {
+  return "PKG" + Date.now() + Math.floor(Math.random() * 1000);
+}
+
+// =====================================================
+// POST /api/buy-data-theteller  (returns transaction_id)
+// =====================================================
 app.post("/api/buy-data-theteller", async (req, res) => {
   const { package_id, momo_number, recipient_number, vendor_id } = req.body;
 
@@ -542,15 +610,20 @@ app.post("/api/buy-data-theteller", async (req, res) => {
         Authorization: `Basic ${THETELLER.basicToken}`,
         "Cache-Control": "no-cache",
       },
+      timeout: 30000,
     });
 
     console.log("📥 TheTeller INIT response:", response.data);
 
     const status = String(response.data.status || "").toLowerCase();
-    const code = response.data.code;
+    const code = String(response.data.code || "");
 
+    // ✅ IMPORTANT: treat "pending" as accepted (prompt sent)
     const accepted =
-      status === "approved" || status === "successful" || code === "000";
+      status === "approved" ||
+      status === "successful" ||
+      status === "pending" ||
+      code === "000";
 
     if (!accepted) {
       return res.json({
@@ -560,34 +633,32 @@ app.post("/api/buy-data-theteller", async (req, res) => {
       });
     }
 
-    // ✅ return transaction_id so frontend can poll and then confirm insert
     return res.json({
       ok: true,
       message: "✅ Prompt sent. Please approve on your phone.",
       transaction_id: transactionId,
-      vendor_id: vendorId
+      vendor_id: vendorId,
     });
-
   } catch (err) {
-  const status = err.response?.status;
-  const data = err.response?.data;
-  console.error("❌ TheTeller INIT error status:", status);
-  console.error("❌ TheTeller INIT error data:", data);
-  console.error("❌ TheTeller INIT error message:", err.message);
+    const status = err.response?.status;
+    const data = err.response?.data;
+    console.error("❌ TheTeller INIT error status:", status);
+    console.error("❌ TheTeller INIT error data:", data);
+    console.error("❌ TheTeller INIT error message:", err.message);
 
-  return res.status(500).json({
-    ok: false,
-    message: "Could not initiate payment. Try again.",
-    http_status: status || null,
-    theteller_error: data || null,
-    error: err.message,
-  });
-}
-
+    return res.status(500).json({
+      ok: false,
+      message: "Could not initiate payment. Try again.",
+      http_status: status || null,
+      theteller_error: data || null,
+      error: err.message,
+    });
+  }
 });
 
-
+// =====================================================
 // GET /api/theteller-status?transaction_id=TRX...
+// =====================================================
 app.get("/api/theteller-status", async (req, res) => {
   const transaction_id = String(req.query.transaction_id || "").trim();
   if (!transaction_id) return res.json({ ok: false, status: "unknown" });
@@ -600,6 +671,7 @@ app.get("/api/theteller-status", async (req, res) => {
           Authorization: `Basic ${THETELLER.basicToken}`,
           "Cache-Control": "no-cache",
         },
+        timeout: 30000,
       }
     );
 
@@ -611,8 +683,10 @@ app.get("/api/theteller-status", async (req, res) => {
   }
 });
 
-
-// POST /api/buy-data-confirm  (INSERTS into admin_orders once approved)
+// =====================================================
+// POST /api/buy-data-confirm
+// Inserts into admin_orders once approved
+// =====================================================
 app.post("/api/buy-data-confirm", async (req, res) => {
   const {
     transaction_id,
@@ -620,10 +694,13 @@ app.post("/api/buy-data-confirm", async (req, res) => {
     recipient_number,
     package_name,
     amount,
-    network
+    network,
   } = req.body;
 
-  if (!transaction_id || !recipient_number || !package_name || !amount || !network) {
+  // ✅ allow amount=0, so check null/undefined instead
+  const amountNum = Number(amount);
+
+  if (!transaction_id || !recipient_number || !package_name || !network || Number.isNaN(amountNum)) {
     return res.json({ ok: false, message: "Missing confirm fields." });
   }
 
@@ -649,8 +726,8 @@ app.post("/api/buy-data-confirm", async (req, res) => {
         vendorId,
         recipient_number,
         package_name,
-        amount,
-        network,
+        amountNum,
+        String(network).toLowerCase(),
         packageIdGroup,
         transaction_id,
       ]
@@ -662,6 +739,7 @@ app.post("/api/buy-data-confirm", async (req, res) => {
     return res.json({ ok: false, message: "Could not save order." });
   }
 });
+
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
