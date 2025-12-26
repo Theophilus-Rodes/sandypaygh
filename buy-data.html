@@ -4,60 +4,31 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Sandypay | Buy Data</title>
-
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet" />
-
   <style>
-    :root{
-      --primary:#0A3D62; --accent:#1DD1A1; --bg:#F5F7FA; --card:#FFFFFF;
-      --text:#1E293B; --muted:#64748B; --line:#E2E8F0;
-    }
+    :root{--primary:#0A3D62;--accent:#1DD1A1;--bg:#F5F7FA;--card:#fff;--text:#1E293B;--muted:#64748B;--line:#E2E8F0;}
     *{box-sizing:border-box;font-family:Poppins,system-ui,Segoe UI,Roboto,Arial}
     body{margin:0;background:var(--bg);color:var(--text)}
-    .header{
-      background:linear-gradient(90deg,var(--primary),#082f49);
-      color:#fff;padding:18px 16px;display:flex;align-items:center;justify-content:space-between;
-      position:sticky;top:0;z-index:10;box-shadow:0 10px 30px rgba(2,6,23,.18);
-    }
+    .header{background:linear-gradient(90deg,var(--primary),#082f49);color:#fff;padding:18px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:10;box-shadow:0 10px 30px rgba(2,6,23,.18);}
     .brand{display:flex;align-items:center;gap:10px}
-    .logo{
-      width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.14);
-      display:flex;align-items:center;justify-content:center;font-weight:700;border:1px solid rgba(255,255,255,.18);
-    }
+    .logo{width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-weight:700;border:1px solid rgba(255,255,255,.18);}
     .brand .title{font-weight:700}
     .brand .sub{font-size:12px;opacity:.85;margin-top:2px}
-
+    .pill{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);padding:8px 12px;border-radius:999px;font-size:12px;white-space:nowrap;}
     .wrap{max-width:1100px;margin:0 auto;padding:18px 16px}
-    .notice{
-      background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;
-      box-shadow:0 10px 24px rgba(0,0,0,.05);
-      display:flex;gap:12px;align-items:flex-start;margin-bottom:14px;
-    }
+    .notice{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;box-shadow:0 10px 24px rgba(0,0,0,.05);display:flex;gap:12px;align-items:flex-start;margin-bottom:14px;}
     .notice b{color:var(--primary)}
     .notice p{margin:0;color:var(--muted);font-size:12px;line-height:1.45}
     .notice .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);margin-top:4px;flex:0 0 auto;}
-
-    .networks{
-      display:grid;
-      grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
-      gap:12px;
-    }
-    .net-card{
-      background:var(--card);border-radius:16px;padding:16px;text-align:center;cursor:pointer;
-      box-shadow:0 10px 24px rgba(0,0,0,.06);transition:.25s;border:2px solid transparent;
-      position:relative;overflow:hidden;
-    }
-    .net-card::before{
-      content:"";position:absolute;inset:-80px -80px auto auto;width:160px;height:160px;border-radius:50%;
-      background:rgba(29,209,161,.12);transform:translate(30px,-30px);
-    }
+    .networks{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px;}
+    .net-card{background:var(--card);border-radius:16px;padding:16px;text-align:center;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.06);transition:.25s;border:2px solid transparent;position:relative;overflow:hidden;}
+    .net-card::before{content:"";position:absolute;inset:-80px -80px auto auto;width:160px;height:160px;border-radius:50%;background:rgba(29,209,161,.12);transform:translate(30px,-30px);}
     .net-card:hover{transform:translateY(-4px);border-color:var(--accent)}
     .net-card img{width:54px;height:54px;object-fit:contain;margin-bottom:8px;position:relative}
-    .net-card b{display:block;position:relative}
-    .net-card small{display:block;color:var(--muted);font-size:12px;margin-top:4px;position:relative}
+    .net-card b,.net-card small{position:relative;display:block}
+    .net-card small{color:var(--muted);font-size:12px;margin-top:4px}
   </style>
 </head>
-
 <body>
   <div class="header">
     <div class="brand">
@@ -67,6 +38,7 @@
         <div class="sub">Buy Data • Fast & Secure (TheTeller)</div>
       </div>
     </div>
+    <div class="pill">Choose a Network</div>
   </div>
 
   <div class="wrap">
@@ -74,33 +46,29 @@
       <div class="dot"></div>
       <div>
         <b>Note:</b>
-        <p>Select a network to view admin-set bundles on a new page.</p>
+        <p>After you click <b>Pay & Buy</b>, you will receive a TheTeller MoMo prompt on your phone. Please enter your MoMo PIN to approve the payment.</p>
       </div>
     </div>
 
     <div class="networks">
-      <div class="net-card" onclick="go('mtn.html')">
+      <div class="net-card" onclick="location.href='mtn.html'">
         <img src="MTN.png" alt="MTN">
         <b>MTN</b>
         <small>Open MTN bundles</small>
       </div>
 
-      <div class="net-card" onclick="go('telecel.html')">
+      <div class="net-card" onclick="location.href='telecel.html'">
         <img src="TL.png" alt="Telecel">
         <b>Telecel</b>
         <small>Open Telecel bundles</small>
       </div>
 
-      <div class="net-card" onclick="go('airteltigo.html')">
+      <div class="net-card" onclick="location.href='airteltigo.html'">
         <img src="AT.png" alt="AirtelTigo">
         <b>AirtelTigo</b>
         <small>Open AirtelTigo bundles</small>
       </div>
     </div>
   </div>
-
-  <script>
-    function go(page){ window.location.href = page; }
-  </script>
 </body>
 </html>
