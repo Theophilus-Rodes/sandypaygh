@@ -569,13 +569,21 @@ app.post("/api/buy-data-theteller", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ TheTeller INIT error:", err.response?.data || err.message);
-    return res.json({
-      ok: false,
-      message: "Could not initiate payment. Try again.",
-      error: err.response?.data || err.message,
-    });
-  }
+  const status = err.response?.status;
+  const data = err.response?.data;
+  console.error("❌ TheTeller INIT error status:", status);
+  console.error("❌ TheTeller INIT error data:", data);
+  console.error("❌ TheTeller INIT error message:", err.message);
+
+  return res.status(500).json({
+    ok: false,
+    message: "Could not initiate payment. Try again.",
+    http_status: status || null,
+    theteller_error: data || null,
+    error: err.message,
+  });
+}
+
 });
 
 
