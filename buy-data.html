@@ -438,21 +438,22 @@ async function pollPaymentStatus(){
         clearInterval(pollTimer);
 
         // 👉 CONFIRM & INSERT INTO DB
-        await fetch("/api/buy-data-confirm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            transaction_id: currentTransactionId,
-            vendor_id: localStorage.getItem("vendor_id") || 1,
-            recipient_number: document.getElementById("recipientNumber").value.trim(),
-            package_name: selectedPackage.package_name,
-            amount: selectedPackage.price,
-            network: selectedPackage.network
-          })
-        });
+     await fetch("/api/buy-data-confirm", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    transaction_id: currentTransactionId,
+    vendor_id: localStorage.getItem("vendor_id") || 1,
+    recipient_number: recipient,
+    package_name: selectedPackage.package_name,
+    amount: selectedPackage.price,
+    network: selectedPackage.network
+  })
+});
 
-        showSuccess("✅ Payment successful! Data will be delivered shortly.");
-        setTimeout(closeOverlay, 2500);
+showSuccess("✅ Payment successful! Data will be delivered shortly.");
+setTimeout(closeOverlay, 2500);
+
         return;
       }
 
@@ -505,13 +506,21 @@ async function pollPaymentStatus(){
 
       const out = await res.json();
 
-      if(out.ok && out.transaction_id){
-        currentTransactionId = out.transaction_id;
-        openOverlay("Waiting for payment approval...");
-        pollPaymentStatus(); // ✅ THIS WAS MISSING
-      }else{
-        showError(out.message || "Payment failed to start.");
-      }
+    if(out.ok){
+  currentTransactionId = out.transaction_id || null;
+
+  openOverlay("Waiting for payment approval...");
+
+  if(!currentTransactionId){
+    showError("Missing transaction id from server. Please try again.");
+    return;
+  }
+
+  pollPaymentStatus();
+}else{
+  showError(out.message || "Payment failed to start.");
+}
+
 
     }catch(e){
       showError("Network error. Please try again.");
