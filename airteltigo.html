@@ -4,50 +4,101 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Sandypay | AirtelTigo Bundles</title>
+
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet" />
+
   <style>
-    :root{--primary:#0A3D62;--accent:#1DD1A1;--bg:#F5F7FA;--card:#fff;--text:#1E293B;--muted:#64748B;--line:#E2E8F0;--danger:#ef4444;}
+    :root{
+      --primary:#0A3D62; --accent:#1DD1A1; --bg:#F5F7FA; --card:#FFFFFF;
+      --text:#1E293B; --muted:#64748B; --line:#E2E8F0; --danger:#ef4444;
+    }
     *{box-sizing:border-box;font-family:Poppins,system-ui,Segoe UI,Roboto,Arial}
     body{margin:0;background:var(--bg);color:var(--text)}
-    .header{background:linear-gradient(90deg,var(--primary),#082f49);color:#fff;padding:18px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:10;box-shadow:0 10px 30px rgba(2,6,23,.18);}
+    .header{
+      background:linear-gradient(90deg,var(--primary),#082f49);
+      color:#fff;padding:18px 16px;display:flex;align-items:center;justify-content:space-between;
+      gap:12px;position:sticky;top:0;z-index:10;box-shadow:0 10px 30px rgba(2,6,23,.18);
+    }
     .brand{display:flex;align-items:center;gap:10px}
-    .logo{width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-weight:700;border:1px solid rgba(255,255,255,.18);}
+    .logo{
+      width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.14);
+      display:flex;align-items:center;justify-content:center;font-weight:700;border:1px solid rgba(255,255,255,.18);
+    }
     .brand .title{font-weight:700}
     .brand .sub{font-size:12px;opacity:.85;margin-top:2px}
-    .pill{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);padding:8px 12px;border-radius:999px;font-size:12px;white-space:nowrap;}
+    .pill{
+      background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);
+      padding:8px 12px;border-radius:999px;font-size:12px;white-space:nowrap;
+    }
     .wrap{max-width:1100px;margin:0 auto;padding:18px 16px}
-    .toprow{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:10px}
-    .back{color:var(--primary);text-decoration:none;font-weight:700}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;}
-    .pkg{background:var(--card);border-radius:16px;padding:14px;border:1px solid var(--line);box-shadow:0 10px 22px rgba(0,0,0,.05);display:flex;flex-direction:column;min-height:160px;}
-    .pkg h4{margin:0 0 6px;color:var(--primary);font-size:15px}
+
+    .topbar{
+      display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;
+    }
+    .back{
+      border:none;background:#eaf2f7;color:var(--primary);
+      padding:10px 12px;border-radius:12px;font-weight:700;cursor:pointer;
+    }
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+    .pkg{
+      background:var(--card);border-radius:16px;padding:14px;border:1px solid var(--line);
+      box-shadow:0 10px 22px rgba(0,0,0,.05);display:flex;flex-direction:column;min-height:160px;
+    }
+    .pkg h4{margin:0 0 6px 0;color:var(--primary);font-size:15px}
     .price{font-weight:800;font-size:18px;margin:6px 0 8px}
     .meta{color:var(--muted);font-size:12px;margin-bottom:12px}
-    .btn{margin-top:auto;width:100%;border:none;border-radius:12px;padding:11px 12px;cursor:pointer;background:var(--accent);color:#fff;font-weight:700;transition:.2s;}
+    .btn{
+      margin-top:auto;width:100%;border:none;border-radius:12px;padding:11px 12px;
+      cursor:pointer;background:var(--accent);color:#fff;font-weight:700;transition:.2s;
+    }
     .btn:hover{opacity:.92}
-    .empty{padding:28px 10px;text-align:center;color:var(--muted);}
-    .modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.55);display:none;align-items:center;justify-content:center;padding:14px;z-index:1000;}
-    .modal{width:min(560px,100%);background:var(--card);border-radius:18px;padding:16px;border:1px solid var(--line);box-shadow:0 24px 80px rgba(0,0,0,.35);}
-    .modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+    .empty{padding:28px 10px;text-align:center;color:var(--muted)}
+
+    /* Modal */
+    .modal-backdrop{
+      position:fixed;inset:0;background:rgba(2,6,23,.55);display:none;align-items:center;justify-content:center;
+      padding:14px;z-index:1000;
+    }
+    .modal{
+      width:min(560px,100%);background:var(--card);border-radius:18px;padding:16px;border:1px solid var(--line);
+      box-shadow:0 24px 80px rgba(0,0,0,.35);
+    }
+    .modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
     .modal-header h3{margin:0;font-size:16px}
     .modal-sub{color:var(--muted);font-size:12px;margin-top:4px;line-height:1.35}
     .x{border:none;background:transparent;font-size:24px;cursor:pointer;line-height:1;color:#0f172a;}
     .row{display:grid;grid-template-columns:1fr;gap:10px;margin-top:12px}
     .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
-    .field input{width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);outline:none;font-size:14px;}
-    .field input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(29,209,161,.18);}
-    .helper{margin-top:8px;font-size:12px;color:var(--muted);background:#f1f5f9;border:1px solid var(--line);padding:10px 12px;border-radius:12px;line-height:1.4;}
-    .modal-footer{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;}
-    .btn-ghost{background:#eaf2f7;color:var(--primary);}
-    .overlay{position:fixed;inset:0;background:rgba(2,6,23,.68);display:none;align-items:center;justify-content:center;padding:16px;z-index:1200;}
-    .overlay-card{width:min(560px,100%);background:var(--card);border-radius:18px;padding:18px;border:1px solid var(--line);text-align:center;box-shadow:0 24px 80px rgba(0,0,0,.35);}
-    .spinner{width:46px;height:46px;border-radius:50%;border:4px solid rgba(100,116,139,.25);border-top-color:var(--primary);margin:10px auto 12px;animation:spin 1s linear infinite;}
+    .field input{
+      width:100%;padding:12px 12px;border-radius:12px;border:1px solid var(--line);outline:none;font-size:14px;
+    }
+    .field input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(29,209,161,.18)}
+    .helper{
+      margin-top:8px;font-size:12px;color:var(--muted);background:#f1f5f9;border:1px solid var(--line);
+      padding:10px 12px;border-radius:12px;line-height:1.4;
+    }
+    .modal-footer{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+    .btn-ghost{background:#eaf2f7;color:var(--primary)}
+
+    /* Waiting overlay */
+    .overlay{
+      position:fixed;inset:0;background:rgba(2,6,23,.68);display:none;align-items:center;justify-content:center;
+      padding:16px;z-index:1200;
+    }
+    .overlay-card{
+      width:min(560px,100%);background:var(--card);border-radius:18px;padding:18px;border:1px solid var(--line);
+      text-align:center;box-shadow:0 24px 80px rgba(0,0,0,.35);
+    }
+    .spinner{
+      width:46px;height:46px;border-radius:50%;border:4px solid rgba(100,116,139,.25);
+      border-top-color:var(--primary);margin:10px auto 12px;animation:spin 1s linear infinite;
+    }
     @keyframes spin{to{transform:rotate(360deg)}}
     .small{color:var(--muted);font-size:12px;margin-top:6px;line-height:1.45}
     .err{color:var(--danger);font-size:12px;margin-top:10px}
-    .ok{color:var(--accent);font-size:12px;margin-top:10px;font-weight:700}
   </style>
 </head>
+
 <body>
   <div class="header">
     <div class="brand">
@@ -61,15 +112,16 @@
   </div>
 
   <div class="wrap">
-    <div class="toprow">
-      <a class="back" href="buy.html">← Back</a>
-      <div class="small">Select a bundle to buy</div>
+    <div class="topbar">
+      <button class="back" onclick="location.href='buy-data.html'">← Back</button>
+      <div style="color:var(--muted);font-size:12px">Select a bundle to buy</div>
     </div>
 
     <div id="packages" class="grid"></div>
     <div id="empty" class="empty">Loading AirtelTigo packages...</div>
   </div>
 
+  <!-- Modal -->
   <div class="modal-backdrop" id="modalBackdrop">
     <div class="modal">
       <div class="modal-header">
@@ -83,7 +135,7 @@
       <div class="row">
         <div class="field">
           <label>MoMo Number (to deduct from)</label>
-          <input id="momoNumber" inputmode="numeric" placeholder="e.g. 026XXXXXXX" />
+          <input id="momoNumber" inputmode="numeric" placeholder="e.g. 027XXXXXXX" />
         </div>
 
         <div class="field">
@@ -104,59 +156,60 @@
     </div>
   </div>
 
+  <!-- Waiting Overlay -->
   <div class="overlay" id="waitOverlay">
     <div class="overlay-card">
       <div class="spinner"></div>
-      <h3>Please wait for the prompt on your phone</h3>
-      <div class="small">Approve the payment by entering your MoMo PIN when the prompt appears.</div>
-      <div class="small" id="overlayStatus">Initiating payment request...</div>
-      <div class="ok" id="overlayOk" style="display:none;"></div>
+      <h3 id="overlayTitle">Please wait for the prompt on your phone</h3>
+      <div class="small" id="overlayStatus">Initiating request...</div>
       <div class="err" id="overlayError" style="display:none;"></div>
     </div>
   </div>
 
   <script>
     const NETWORK = "airteltigo";
+
     let selectedPackage = null;
     let currentTransactionId = null;
     let pollTimer = null;
+    let lastRecipient = "";
 
     function money(n){ return Number(n).toFixed(2); }
     function isPhone(v){ return /^[0-9]{9,15}$/.test((v||"").replace(/\s+/g,"")); }
 
     function openOverlay(msg=""){
+      document.getElementById("overlayTitle").innerText = "Please wait for the prompt on your phone";
       document.getElementById("overlayStatus").innerText = msg;
       document.getElementById("overlayError").style.display = "none";
-      document.getElementById("overlayOk").style.display = "none";
       document.getElementById("overlayError").innerText = "";
-      document.getElementById("overlayOk").innerText = "";
       document.getElementById("waitOverlay").style.display = "flex";
     }
     function closeOverlay(){ document.getElementById("waitOverlay").style.display = "none"; }
-    function showError(msg){ document.getElementById("overlayError").style.display="block"; document.getElementById("overlayError").innerText=msg; }
-    function showOk(msg){ document.getElementById("overlayOk").style.display="block"; document.getElementById("overlayOk").innerText=msg; }
-
-    function openModal(pkg){
-      selectedPackage = pkg;
-      document.getElementById("modalTitle").innerText = `Buy ${pkg.package_name} (${String(pkg.network).toUpperCase()})`;
-      document.getElementById("modalSub").innerText = `Amount: GHS ${money(pkg.price)} • Enter details below to proceed.`;
-      document.getElementById("momoNumber").value = "";
-      document.getElementById("recipientNumber").value = "";
-      document.getElementById("modalBackdrop").style.display = "flex";
+    function showError(msg){
+      document.getElementById("overlayError").style.display = "block";
+      document.getElementById("overlayError").innerText = msg;
     }
-    function closeModal(){ document.getElementById("modalBackdrop").style.display = "none"; }
+    function showSuccess(msg){
+      document.getElementById("overlayTitle").innerText = "✅ Success";
+      document.getElementById("overlayStatus").innerText = msg;
+      document.getElementById("overlayError").style.display = "none";
+    }
 
     async function loadPackages(){
       document.getElementById("packages").innerHTML = "";
       document.getElementById("empty").innerText = "Loading AirtelTigo packages...";
+
       try{
         const res = await fetch(`/api/admin-data?network=${encodeURIComponent(NETWORK)}`);
         const data = await res.json();
+
         if(!Array.isArray(data) || data.length === 0){
-          document.getElementById("empty").innerText = "No packages available for AirtelTigo.";
+          document.getElementById("empty").innerText = "No AirtelTigo packages available.";
           return;
         }
+
         document.getElementById("empty").innerText = "";
+
         data.forEach(pkg => {
           document.getElementById("packages").innerHTML += `
             <div class="pkg">
@@ -164,52 +217,76 @@
               <div class="price">GHS ${money(pkg.price)}</div>
               <div class="meta">Network: ${String(pkg.network || "").toUpperCase()}</div>
               <button class="btn" onclick='openModal(${JSON.stringify(pkg)})'>Buy Bundle</button>
-            </div>`;
+            </div>
+          `;
         });
+
       }catch(e){
         document.getElementById("empty").innerText = "Failed to load packages. Please try again.";
       }
     }
 
+    function openModal(pkg){
+      selectedPackage = pkg;
+      document.getElementById("modalTitle").innerText =
+        `Buy ${pkg.package_name} (${String(pkg.network).toUpperCase()})`;
+      document.getElementById("modalSub").innerText =
+        `Amount: GHS ${money(pkg.price)} • Enter details below to proceed.`;
+      document.getElementById("momoNumber").value = "";
+      document.getElementById("recipientNumber").value = "";
+      document.getElementById("modalBackdrop").style.display = "flex";
+    }
+    function closeModal(){ document.getElementById("modalBackdrop").style.display = "none"; }
+
     async function pollPaymentStatus(){
       if(!currentTransactionId) return;
+
       let tries = 0;
-      clearInterval(pollTimer);
+      if(pollTimer) clearInterval(pollTimer);
 
       pollTimer = setInterval(async () => {
         tries++;
+
         try{
           const res = await fetch(`/api/theteller-status?transaction_id=${encodeURIComponent(currentTransactionId)}`);
-          const out = await res.json();
-          if(!out.ok){
-            if(tries > 6){ clearInterval(pollTimer); showError(out.message || "Status check failed."); }
-            return;
-          }
-          const status = String(out.status || "").toLowerCase();
+          const data = await res.json();
+          const st = String(data.status || "").toLowerCase();
 
-          if(status === "approved" || status === "successful"){
+          if(st === "approved" || st === "successful"){
             clearInterval(pollTimer);
-            document.getElementById("overlayStatus").innerText = "Payment approved. Confirming order...";
-            const res2 = await fetch("/api/buy-data-confirm", {
-              method:"POST", headers:{ "Content-Type":"application/json" },
-              body: JSON.stringify({ transaction_id: currentTransactionId })
+
+            // confirm insert
+            await fetch("/api/buy-data-confirm", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                transaction_id: currentTransactionId,
+                vendor_id: localStorage.getItem("vendor_id") || 1,
+                recipient_number: lastRecipient,
+                package_name: selectedPackage.package_name,
+                amount: selectedPackage.price,
+                network: selectedPackage.network
+              })
             });
-            const out2 = await res2.json();
-            if(out2.ok){ showOk(out2.message || "✅ Payment successful!"); setTimeout(closeOverlay, 2500); }
-            else { showError(out2.message || "Could not confirm order."); }
+
+            showSuccess("Payment successful! Data will be delivered shortly.");
+            setTimeout(closeOverlay, 2500);
             return;
           }
 
-          if(status === "failed" || status === "cancelled"){
+          if(st === "failed" || st === "cancelled" || st === "declined"){
             clearInterval(pollTimer);
             showError("❌ Payment failed or cancelled.");
             return;
           }
 
-          document.getElementById("overlayStatus").innerText = "Waiting for approval... (check your MoMo prompt)";
-          if(tries > 35){ clearInterval(pollTimer); showError("⏳ Timeout. Please try again."); }
+          if(tries > 25){
+            clearInterval(pollTimer);
+            showError("⏳ Payment timeout. If you approved, please try again.");
+          }
         }catch(e){
-          if(tries > 6){ clearInterval(pollTimer); showError("Unable to confirm payment status."); }
+          clearInterval(pollTimer);
+          showError("Unable to confirm payment status.");
         }
       }, 3000);
     }
@@ -217,9 +294,12 @@
     async function submitPurchase(){
       const momo = document.getElementById("momoNumber").value.trim();
       const recipient = document.getElementById("recipientNumber").value.trim();
+
       if(!selectedPackage) return alert("Select a package again.");
       if(!isPhone(momo)) return alert("Enter a valid MoMo number.");
       if(!isPhone(recipient)) return alert("Enter a valid recipient number.");
+
+      lastRecipient = recipient;
 
       closeModal();
       openOverlay("Initiating payment request...");
@@ -228,18 +308,30 @@
 
       try{
         const res = await fetch("/api/buy-data-theteller", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ package_id: selectedPackage.id, momo_number: momo, recipient_number: recipient, vendor_id })
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            package_id: selectedPackage.id,
+            momo_number: momo,
+            recipient_number: recipient,
+            vendor_id
+          })
         });
+
         const out = await res.json();
-        if(out.ok && out.transaction_id){
-          currentTransactionId = out.transaction_id;
-          document.getElementById("overlayStatus").innerText = out.message || "✅ Prompt sent. Please approve.";
+
+        if(out.ok){
+          currentTransactionId = out.transaction_id || null;
+          if(!currentTransactionId){
+            showError("Missing transaction id from server. Please try again.");
+            return;
+          }
+          openOverlay("Waiting for payment approval...");
           pollPaymentStatus();
         }else{
-          showError(out.message || "Could not initiate payment. Try again.");
+          showError(out.message || "Payment failed to start.");
         }
+
       }catch(e){
         showError("Network error. Please try again.");
       }
