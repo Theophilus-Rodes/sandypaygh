@@ -1,7 +1,5 @@
 // ✅ IMPORTS
 require("dotenv").config();
-console.log("AT_USERNAME:", AT_USERNAME);
-console.log("AT_API_KEY loaded:", !!AT_API_KEY);
 const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
@@ -961,9 +959,12 @@ const AT_API_KEY = process.env.AT_API_KEY;
 const AT_SENDER_ID = process.env.AT_SENDER_ID || ""; // optional
 const OTP_TTL = Number(process.env.AT_OTP_TTL_SECONDS || 300) * 1000;
 
+
 if (!AT_USERNAME || !AT_API_KEY) {
   console.warn("⚠️ Missing AT_USERNAME or AT_API_KEY (Africa's Talking OTP will fail)");
 }
+console.log("AT_USERNAME:", AT_USERNAME);
+console.log("AT_API_KEY loaded:", !!AT_API_KEY);
 
 const at = AfricasTalking({ username: AT_USERNAME, apiKey: AT_API_KEY });
 const sms = at.SMS;
