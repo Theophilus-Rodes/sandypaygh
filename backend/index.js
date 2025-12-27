@@ -519,7 +519,7 @@ app.get("/api/admin-data", (req, res) => {
 // =======================
 const THETELLER = {
   endpoint: "https://prod.theteller.net/v1.1/transaction/process",
-  statusBase: "https://prod.theteller.net/v1.1/transaction/status",
+  statusBase: "https://prod.theteller.net/v1.1/users/transactions",
   merchantId: process.env.THETELLER_MERCHANT_ID || "TTM-00009388",
   username: process.env.THETELLER_USERNAME || "louis66a20ac942e74",
   apiKey:
@@ -729,13 +729,16 @@ app.get("/api/theteller-status", async (req, res) => {
   if (!transaction_id) return res.json({ ok: false, status: "unknown" });
 
   try {
-    const url = `${THETELLER.statusBase}/${encodeURIComponent(transaction_id)}`;
+    const url = `${THETELLER.statusBase}/${encodeURIComponent(transaction_id)}/status`;
+
 
     const resp = await axios.get(url, {
-      headers: {
-        Authorization: `Basic ${THETELLER.basicToken}`,
-        "Cache-Control": "no-cache",
-      },
+     headers: {
+  Authorization: `Basic ${THETELLER.basicToken}`,
+  "Merchant-Id": THETELLER.merchantId,
+  "Cache-Control": "no-cache",
+},
+
       timeout: 30000,
     });
 
