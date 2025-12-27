@@ -167,18 +167,18 @@
   </div>
 
   <script>
-    const NETWORK = "MTN";
+    const NETWORK = "mtn";
 
     let selectedPackage = null;
     let currentTransactionId = null;
     let pollTimer = null;
-    let lastMomo = "";
-    let lastRecipient = "";
 
     function money(n){ return Number(n).toFixed(2); }
     function isPhone(v){ return /^[0-9]{9,15}$/.test((v||"").replace(/\s+/g,"")); }
 
     function openOverlay(msg=""){
+      // ✅ always reset the overlay title on open
+      document.getElementById("overlayTitle").innerText = "Please wait for the prompt on your phone";
       document.getElementById("overlayStatus").innerText = msg;
       document.getElementById("overlayError").style.display = "none";
       document.getElementById("overlayError").innerText = "";
@@ -250,40 +250,34 @@
         try{
           const res = await fetch(`/api/theteller-status?transaction_id=${encodeURIComponent(currentTransactionId)}`);
           const data = await res.json();
+
           const st = String(data.status || "").toLowerCase();
+          const finalized = !!data.finalized;
 
-          if(st === "approved" || st === "successful"){
+          // ✅ show server message if it exists
+          if(data.message){
+            document.getElementById("overlayStatus").innerText = data.message;
+          } else {
+            document.getElementById("overlayStatus").innerText = "⏳ Awaiting approval...";
+          }
+
+          // ✅ success when approved OR finalized
+          if(finalized || st === "approved" || st === "successful" || st === "success" || st === "completed"){
             clearInterval(pollTimer);
+            showSuccess("Payment successful! Order saved. Data will be delivered shortly.");
 
-            // ✅ confirm insert into DB
-            await fetch("/api/buy-data-confirm", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                transaction_id: currentTransactionId,
-                vendor_id: localStorage.getItem("vendor_id") || 1,
-                recipient_number: lastRecipient,
-                package_name: selectedPackage.package_name,
-                amount: selectedPackage.price,
-                network: selectedPackage.network
-              })
-            });
-
-            showSuccess("Payment successful! Data will be delivered shortly.");
-            setTimeout(() => {
-              closeOverlay();
-              // reset overlay title
-              document.getElementById("overlayTitle").innerText = "Please wait for the prompt on your phone";
-            }, 2500);
+            setTimeout(() => closeOverlay(), 2500);
             return;
           }
 
+          // ✅ fail states
           if(st === "failed" || st === "cancelled" || st === "declined"){
             clearInterval(pollTimer);
             showError("❌ Payment failed or cancelled.");
             return;
           }
 
+          // ✅ timeout
           if(tries > 25){
             clearInterval(pollTimer);
             showError("⏳ Payment timeout. If you approved, please try again.");
@@ -302,9 +296,6 @@
       if(!selectedPackage) return alert("Select a package again.");
       if(!isPhone(momo)) return alert("Enter a valid MoMo number.");
       if(!isPhone(recipient)) return alert("Enter a valid recipient number.");
-
-      lastMomo = momo;
-      lastRecipient = recipient;
 
       closeModal();
       openOverlay("Initiating payment request...");
@@ -327,10 +318,12 @@
 
         if(out.ok){
           currentTransactionId = out.transaction_id || null;
+
           if(!currentTransactionId){
             showError("Missing transaction id from server. Please try again.");
             return;
           }
+
           openOverlay("Waiting for payment approval...");
           pollPaymentStatus();
         }else{
