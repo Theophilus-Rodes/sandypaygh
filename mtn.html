@@ -79,6 +79,7 @@
     }
     .modal-footer{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
     .btn-ghost{background:#eaf2f7;color:var(--primary)}
+    .modal-footer.otp3{grid-template-columns:1fr 1fr 1fr}
 
     /* Waiting overlay */
     .overlay{
@@ -105,7 +106,7 @@
       <div class="logo">S</div>
       <div>
         <div class="title">Sandypay</div>
-        <div class="sub">MTN Bundles • Pay with TheTeller</div>
+        <div class="sub">MTN Bundles • OTP then Pay</div>
       </div>
     </div>
     <div class="pill">Network: MTN</div>
@@ -143,15 +144,22 @@
           <input id="recipientNumber" inputmode="numeric" placeholder="e.g. 055XXXXXXX" />
         </div>
 
+        <!-- OTP Field (hidden until OTP is sent) -->
+        <div class="field" id="otpFieldWrap" style="display:none;">
+          <label>OTP Code (sent to MoMo number)</label>
+          <input id="otpCode" inputmode="numeric" placeholder="Enter OTP" />
+        </div>
+
         <div class="helper">
-          ✅ You will receive a payment prompt on the <b>MoMo number</b> you entered. <br/>
-          Please approve it by entering your MoMo PIN.
+          ✅ We will first send an <b>OTP</b> to confirm the MoMo number. <br/>
+          After OTP verification, you will receive the <b>MoMo PIN prompt</b> to approve payment.
         </div>
       </div>
 
-      <div class="modal-footer">
+      <div class="modal-footer otp3">
         <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-        <button class="btn" onclick="submitPurchase()">Pay & Buy</button>
+        <button class="btn" id="sendOtpBtn" onclick="sendOtp()">Send OTP</button>
+        <button class="btn" id="verifyPayBtn" onclick="verifyOtpAndPay()" style="display:none;">Verify & Pay</button>
       </div>
     </div>
   </div>
@@ -160,7 +168,7 @@
   <div class="overlay" id="waitOverlay">
     <div class="overlay-card">
       <div class="spinner"></div>
-      <h3 id="overlayTitle">Please wait for the prompt on your phone</h3>
+      <h3 id="overlayTitle">Please wait</h3>
       <div class="small" id="overlayStatus">Initiating request...</div>
       <div class="err" id="overlayError" style="display:none;"></div>
     </div>
@@ -173,12 +181,14 @@
     let currentTransactionId = null;
     let pollTimer = null;
 
+    let otpSent = false;
+    let otpSessionId = null;
+
     function money(n){ return Number(n).toFixed(2); }
     function isPhone(v){ return /^[0-9]{9,15}$/.test((v||"").replace(/\s+/g,"")); }
 
-    function openOverlay(msg=""){
-      // ✅ always reset the overlay title on open
-      document.getElementById("overlayTitle").innerText = "Please wait for the prompt on your phone";
+    function openOverlay(title="Please wait", msg=""){
+      document.getElementById("overlayTitle").innerText = title;
       document.getElementById("overlayStatus").innerText = msg;
       document.getElementById("overlayError").style.display = "none";
       document.getElementById("overlayError").innerText = "";
@@ -232,11 +242,99 @@
         `Buy ${pkg.package_name} (${String(pkg.network).toUpperCase()})`;
       document.getElementById("modalSub").innerText =
         `Amount: GHS ${money(pkg.price)} • Enter details below to proceed.`;
+
       document.getElementById("momoNumber").value = "";
       document.getElementById("recipientNumber").value = "";
+      document.getElementById("otpCode").value = "";
+
+      // reset OTP UI
+      otpSent = false;
+      otpSessionId = null;
+      document.getElementById("otpFieldWrap").style.display = "none";
+      document.getElementById("sendOtpBtn").style.display = "inline-block";
+      document.getElementById("verifyPayBtn").style.display = "none";
+
       document.getElementById("modalBackdrop").style.display = "flex";
     }
     function closeModal(){ document.getElementById("modalBackdrop").style.display = "none"; }
+
+    async function sendOtp(){
+      const momo = document.getElementById("momoNumber").value.trim();
+      const recipient = document.getElementById("recipientNumber").value.trim();
+
+      if(!selectedPackage) return alert("Select a package again.");
+      if(!isPhone(momo)) return alert("Enter a valid MoMo number.");
+      if(!isPhone(recipient)) return alert("Enter a valid recipient number.");
+
+      openOverlay("Sending OTP", "Sending OTP to the MoMo number...");
+
+      try{
+        const res = await fetch("/api/send-momo-otp", {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          body: JSON.stringify({ momo_number: momo })
+        });
+
+        const out = await res.json();
+
+        if(!out.ok){
+          showError(out.message || "Failed to send OTP.");
+          setTimeout(closeOverlay, 1800);
+          return;
+        }
+
+        otpSent = true;
+        otpSessionId = out.session_id || null;
+
+        closeOverlay();
+
+        document.getElementById("otpFieldWrap").style.display = "block";
+        document.getElementById("sendOtpBtn").style.display = "none";
+        document.getElementById("verifyPayBtn").style.display = "inline-block";
+
+        alert("OTP sent. Please check your SMS.");
+
+      }catch(e){
+        showError("Network error sending OTP.");
+        setTimeout(closeOverlay, 1800);
+      }
+    }
+
+    async function verifyOtpAndPay(){
+      const momo = document.getElementById("momoNumber").value.trim();
+      const recipient = document.getElementById("recipientNumber").value.trim();
+      const otp = document.getElementById("otpCode").value.trim();
+
+      if(!otpSent) return alert("Please send OTP first.");
+      if(!/^[0-9]{4,8}$/.test(otp)) return alert("Enter a valid OTP code.");
+
+      openOverlay("Verifying OTP", "Please wait...");
+
+      try{
+        const vr = await fetch("/api/verify-momo-otp", {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          body: JSON.stringify({ momo_number: momo, otp, session_id: otpSessionId })
+        });
+        const vout = await vr.json();
+
+        if(!vout.ok){
+          showError(vout.message || "OTP verification failed.");
+          setTimeout(closeOverlay, 2000);
+          return;
+        }
+
+        // OTP ok → start TheTeller
+        document.getElementById("overlayTitle").innerText = "Starting Payment";
+        document.getElementById("overlayStatus").innerText = "OTP verified. Starting MoMo prompt...";
+
+        await startTheTellerPayment(momo, recipient);
+
+      }catch(e){
+        showError("Network error verifying OTP.");
+        setTimeout(closeOverlay, 2000);
+      }
+    }
 
     async function pollPaymentStatus(){
       if(!currentTransactionId) return;
@@ -254,30 +352,22 @@
           const st = String(data.status || "").toLowerCase();
           const finalized = !!data.finalized;
 
-          // ✅ show server message if it exists
-          if(data.message){
-            document.getElementById("overlayStatus").innerText = data.message;
-          } else {
-            document.getElementById("overlayStatus").innerText = "⏳ Awaiting approval...";
-          }
+          document.getElementById("overlayTitle").innerText = "Approve Payment";
+          document.getElementById("overlayStatus").innerText = data.message || "⏳ Awaiting approval...";
 
-          // ✅ success when approved OR finalized
           if(finalized || st === "approved" || st === "successful" || st === "success" || st === "completed"){
             clearInterval(pollTimer);
             showSuccess("Payment successful! Order saved. Data will be delivered shortly.");
-
             setTimeout(() => closeOverlay(), 2500);
             return;
           }
 
-          // ✅ fail states
           if(st === "failed" || st === "cancelled" || st === "declined"){
             clearInterval(pollTimer);
             showError("❌ Payment failed or cancelled.");
             return;
           }
 
-          // ✅ timeout
           if(tries > 25){
             clearInterval(pollTimer);
             showError("⏳ Payment timeout. If you approved, please try again.");
@@ -289,20 +379,14 @@
       }, 3000);
     }
 
-    async function submitPurchase(){
-      const momo = document.getElementById("momoNumber").value.trim();
-      const recipient = document.getElementById("recipientNumber").value.trim();
-
-      if(!selectedPackage) return alert("Select a package again.");
-      if(!isPhone(momo)) return alert("Enter a valid MoMo number.");
-      if(!isPhone(recipient)) return alert("Enter a valid recipient number.");
-
+    async function startTheTellerPayment(momo, recipient){
+      // keep modal closed
       closeModal();
-      openOverlay("Initiating payment request...");
 
-      const vendor_id = localStorage.getItem("vendor_id") || 1;
-
+      // overlay already open
       try{
+        const vendor_id = localStorage.getItem("vendor_id") || 1;
+
         const res = await fetch("/api/buy-data-theteller", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -324,7 +408,8 @@
             return;
           }
 
-          openOverlay("Waiting for payment approval...");
+          document.getElementById("overlayTitle").innerText = "Approve Payment";
+          document.getElementById("overlayStatus").innerText = "Please wait for the prompt on your phone...";
           pollPaymentStatus();
         }else{
           showError(out.message || "Payment failed to start.");
