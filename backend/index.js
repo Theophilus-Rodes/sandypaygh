@@ -573,7 +573,7 @@ const THETELLER = {
     "ZmVjZWZlZDc2MzA4OWU0YmZhOTk5MDBmMDAxNDhmOWY=",
 };
 
-// ✅ Build Basic Auth ONCE (username:apikey)
+// ✅ Build Basic Auth ONCE: base64("username:apikey")
 const THETELLER_BASIC_TOKEN = Buffer.from(
   `${THETELLER.username}:${THETELLER.apiKey}`
 ).toString("base64");
@@ -582,7 +582,14 @@ const THETELLER_BASIC_TOKEN = Buffer.from(
 // HELPERS
 // =======================
 
-// r-switch mapping
+// ✅ TheTeller requires 12-digit amount in pesewas
+// Example: GHS 1.00 -> "000000000100"
+function thetellerAmount12(ghsAmount) {
+  const pesewas = Math.round(Number(ghsAmount) * 100); // 6.00 -> 600
+  return String(pesewas).padStart(12, "0");
+}
+
+// ✅ r-switch mapping
 function getSwitchCode(network) {
   const n = String(network || "").toLowerCase().trim();
   if (n.includes("mtn")) return "MTN";
@@ -593,15 +600,22 @@ function getSwitchCode(network) {
   return null;
 }
 
-// MSISDN → 233XXXXXXXXX
+// ✅ MSISDN -> 233XXXXXXXXX
 function formatMsisdnForTheTeller(number) {
-  let msisdn = String(number || "").replace(/\D/g, "");
-  if (msisdn.startsWith("0")) msisdn = "233" + msisdn.slice(1);
-  if (msisdn.startsWith("+")) msisdn = msisdn.slice(1);
+  if (!number) return "";
+  let msisdn = String(number).replace(/\D/g, "");
+
+  // 0XXXXXXXXX -> 233XXXXXXXXX
+  if (msisdn.startsWith("0") && msisdn.length === 10) {
+    msisdn = "233" + msisdn.slice(1);
+  }
+
+  // already 233XXXXXXXXX
   return msisdn;
 }
 
-function makeReference() {
+// ✅ Unique transaction id
+function makeTransactionId() {
   return `SANDYPAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
 
@@ -617,7 +631,7 @@ app.post("/api/buy-data-theteller", async (req, res) => {
   }
 
   try {
-    // 1️⃣ Fetch package
+    // 1) Fetch package
     const [rows] = await db.promise().query(
       "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
       [package_id]
@@ -629,16 +643,17 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
     const pkg = rows[0];
 
-    // 2️⃣ Network validation
+    // 2) Map network to r-switch
     const rSwitch = getSwitchCode(pkg.network);
     if (!rSwitch) {
       return res.json({ ok: false, message: "Unsupported network." });
     }
 
-    // 3️⃣ Build TheTeller payload
-    const transactionId = makeReference();
+    // 3) Build payload (✅ amount must be 12 digits pesewas)
+    const transactionId = makeTransactionId();
+
     const payload = {
-      amount: Number(pkg.price).toFixed(2),
+      amount: thetellerAmount12(pkg.price), // ✅ FIXED FORMAT
       processing_code: "000200",
       transaction_id: transactionId,
       desc: `Sandypay Data - ${pkg.package_name}`,
@@ -650,7 +665,7 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
     console.log("📤 TheTeller INIT payload:", payload);
 
-    // 4️⃣ Call TheTeller
+    // 4) Call TheTeller
     const tt = await axios.post(THETELLER.endpoint, payload, {
       headers: {
         "Content-Type": "application/json",
@@ -662,7 +677,7 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
     console.log("📥 TheTeller INIT response:", tt.data);
 
-    // 5️⃣ Accept APPROVED / PENDING
+    // 5) Accept prompt sent/approved states
     const status = String(tt.data?.status || "").toLowerCase();
     const code = String(tt.data?.code || "");
 
@@ -680,18 +695,15 @@ app.post("/api/buy-data-theteller", async (req, res) => {
       });
     }
 
-    // 6️⃣ Respond to frontend (frontend will poll status)
+    // 6) Return transaction_id so frontend can poll /api/theteller-status
     return res.json({
       ok: true,
-      message: "Please approve the payment on your phone.",
+      message: "✅ Prompt sent. Please approve on your phone.",
       transaction_id: transactionId,
       vendor_id: vid,
     });
   } catch (err) {
-    console.error(
-      "❌ TheTeller INIT error:",
-      err.response?.data || err.message
-    );
+    console.error("❌ TheTeller INIT error:", err.response?.data || err.message);
     return res.status(500).json({
       ok: false,
       message: "Payment could not be initiated. Try again.",
@@ -699,8 +711,6 @@ app.post("/api/buy-data-theteller", async (req, res) => {
     });
   }
 });
-
-
 
 
 // =====================================================
