@@ -722,7 +722,7 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
 // =====================================================
 // GET /api/theteller-status?transaction_id=...
-// ✅ AUTO-INSERT INTO admin_orders WHEN APPROVED
+// ✅ Robust parsing + auto-insert into admin_orders
 // =====================================================
 app.get("/api/theteller-status", async (req, res) => {
   const transaction_id = String(req.query.transaction_id || "").trim();
@@ -733,18 +733,68 @@ app.get("/api/theteller-status", async (req, res) => {
 
     const resp = await axios.get(url, {
       headers: {
-        Authorization: `Basic ${THETELLER.basicToken}`, // ✅ FIXED
+        Authorization: `Basic ${THETELLER.basicToken}`,
         "Cache-Control": "no-cache",
       },
       timeout: 30000,
     });
 
     const raw = resp.data || {};
-    const status = String(raw.status || "").toLowerCase();
-    const code = String(raw.code || "");
+
+    // ✅ Some TheTeller responses use different key names
+    const statusRaw =
+      raw.status ??
+      raw.Status ??
+      raw.transaction_status ??
+      raw.transactionStatus ??
+      raw.response_status ??
+      raw.state ??
+      "";
+
+    const codeRaw =
+      raw.code ??
+      raw.Code ??
+      raw.response_code ??
+      raw.responseCode ??
+      raw.status_code ??
+      raw.statusCode ??
+      "";
+
+    const status = String(statusRaw).toLowerCase().trim();
+    const code = String(codeRaw).trim();
+
+    // ✅ IMPORTANT: Log raw once for debugging
+    console.log("📥 TheTeller STATUS raw:", raw);
+    console.log("✅ Parsed STATUS:", { status, code });
+
+    // ✅ More tolerant “approved”
+    const approved =
+      code === "000" ||
+      code === "00" ||
+      code === "0" ||
+      ["approved", "successful", "success", "completed", "paid", "done"].includes(status) ||
+      status.includes("success") ||
+      status.includes("approved") ||
+      status.includes("complete") ||
+      status.includes("paid");
+
+    // ✅ More tolerant “pending”
+    const pending =
+      ["pending", "processing", "in progress", "in_progress"].includes(status) ||
+      status.includes("pending") ||
+      status.includes("processing") ||
+      code === "099";
+
+    // ✅ More tolerant “failed”
+    const failed =
+      ["failed", "declined", "cancelled", "canceled", "reversed"].includes(status) ||
+      status.includes("fail") ||
+      status.includes("decline") ||
+      status.includes("cancel") ||
+      code === "999";
 
     // ✅ If approved, finalize by inserting into admin_orders
-    if (isApprovedStatus(status, code)) {
+    if (approved) {
       const p = pendingOrders.get(transaction_id);
 
       if (p) {
@@ -783,32 +833,42 @@ app.get("/api/theteller-status", async (req, res) => {
         });
       }
 
+      // Approved but pendingOrders lost (server restart etc.)
       return res.json({
         ok: true,
         status: "approved",
         finalized: false,
-        message: "✅ Payment approved but pending data not found (server restarted).",
+        message: "✅ Payment successful, but pending order data not found (server restarted).",
         raw,
       });
     }
 
-    // pending/processing
-    if (isPendingStatus(status, code)) {
+    if (pending) {
       return res.json({
         ok: true,
-        status,
+        status: "pending",
         finalized: false,
         message: "⏳ Awaiting approval...",
         raw,
       });
     }
 
-    // failed/declined/cancelled
+    if (failed) {
+      return res.json({
+        ok: true,
+        status: "failed",
+        finalized: false,
+        message: "❌ Payment failed/declined/cancelled.",
+        raw,
+      });
+    }
+
+    // Unknown state — don't claim failure too early
     return res.json({
       ok: true,
-      status,
+      status: status || "unknown",
       finalized: false,
-      message: "❌ Payment not approved.",
+      message: "⏳ Checking payment status...",
       raw,
     });
   } catch (e) {
@@ -816,6 +876,7 @@ app.get("/api/theteller-status", async (req, res) => {
     return res.json({ ok: false, status: "unknown" });
   }
 });
+
 
 
 // =====================================================
