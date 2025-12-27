@@ -52,6 +52,7 @@
       cursor:pointer;background:var(--accent);color:#fff;font-weight:700;transition:.2s;
     }
     .btn:hover{opacity:.92}
+    .btn[disabled]{opacity:.6;cursor:not-allowed}
     .empty{padding:28px 10px;text-align:center;color:var(--muted)}
 
     /* Modal */
@@ -138,6 +139,27 @@
           <input id="momoNumber" inputmode="numeric" placeholder="e.g. 020XXXXXXX" />
         </div>
 
+        <!-- ✅ OTP BLOCK (same idea as MTN) -->
+        <div class="field">
+          <label>OTP Code</label>
+
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="otpCode" inputmode="numeric" placeholder="Enter OTP" style="flex:1" />
+            <button class="back" type="button" id="sendOtpBtn" onclick="sendOtp()" style="white-space:nowrap;">
+              Send OTP
+            </button>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="back" type="button" id="verifyOtpBtn" onclick="verifyOtp()" style="flex:1;">
+              Verify OTP
+            </button>
+            <div id="otpStatus" style="flex:2;font-size:12px;color:var(--muted);display:flex;align-items:center">
+              OTP not sent
+            </div>
+          </div>
+        </div>
+
         <div class="field">
           <label>Recipient Number (to receive data)</label>
           <input id="recipientNumber" inputmode="numeric" placeholder="e.g. 055XXXXXXX" />
@@ -151,7 +173,9 @@
 
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-        <button class="btn" onclick="submitPurchase()">Pay & Buy</button>
+        <button class="btn" id="payBtn" onclick="submitPurchase()" disabled>
+          Pay & Buy
+        </button>
       </div>
     </div>
   </div>
@@ -174,8 +198,17 @@
   let pollTimer = null;
   let lastRecipient = "";
 
+  // ✅ OTP state
+  let otpSessionId = null;
+  let otpVerified = false;
+
   function money(n){ return Number(n).toFixed(2); }
   function isPhone(v){ return /^[0-9]{9,15}$/.test((v||"").replace(/\s+/g,"")); }
+
+  function setPayEnabled(enabled){
+    const btn = document.getElementById("payBtn");
+    btn.disabled = !enabled;
+  }
 
   function openOverlay(msg=""){
     document.getElementById("overlayTitle").innerText = "Please wait for the prompt on your phone";
@@ -232,11 +265,113 @@
       `Buy ${pkg.package_name} (${String(pkg.network).toUpperCase()})`;
     document.getElementById("modalSub").innerText =
       `Amount: GHS ${money(pkg.price)} • Enter details below to proceed.`;
+
     document.getElementById("momoNumber").value = "";
     document.getElementById("recipientNumber").value = "";
+
+    // ✅ reset OTP every time
+    otpSessionId = null;
+    otpVerified = false;
+    document.getElementById("otpCode").value = "";
+    document.getElementById("otpStatus").innerText = "OTP not sent";
+    document.getElementById("otpStatus").style.color = "var(--muted)";
+    setPayEnabled(false);
+
     document.getElementById("modalBackdrop").style.display = "flex";
   }
   function closeModal(){ document.getElementById("modalBackdrop").style.display = "none"; }
+
+  // ============================
+  // ✅ OTP FUNCTIONS (Africa's Talking)
+  // endpoints must exist on backend:
+  // POST /api/send-momo-otp { momo_number }
+  // POST /api/verify-momo-otp { momo_number, otp, session_id }
+  // ============================
+
+  async function sendOtp(){
+    const momo = document.getElementById("momoNumber").value.trim();
+
+    if(!isPhone(momo)){
+      alert("Enter a valid MoMo number before requesting OTP.");
+      return;
+    }
+
+    document.getElementById("otpStatus").innerText = "Sending OTP...";
+    document.getElementById("otpStatus").style.color = "var(--muted)";
+    setPayEnabled(false);
+    otpVerified = false;
+
+    try{
+      const res = await fetch("/api/send-momo-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ momo_number: momo })
+      });
+
+      const out = await res.json();
+
+      if(out.ok){
+        otpSessionId = out.session_id || null;
+        document.getElementById("otpStatus").innerText = "OTP sent ✅ Check SMS and enter it";
+        document.getElementById("otpStatus").style.color = "green";
+      }else{
+        document.getElementById("otpStatus").innerText = out.message || "Failed to send OTP";
+        document.getElementById("otpStatus").style.color = "var(--danger)";
+      }
+    }catch(e){
+      document.getElementById("otpStatus").innerText = "Network error sending OTP";
+      document.getElementById("otpStatus").style.color = "var(--danger)";
+    }
+  }
+
+  async function verifyOtp(){
+    const momo = document.getElementById("momoNumber").value.trim();
+    const otp = document.getElementById("otpCode").value.trim();
+
+    if(!isPhone(momo)){
+      alert("Enter a valid MoMo number.");
+      return;
+    }
+    if(!/^\d{4,8}$/.test(otp)){
+      alert("Enter a valid OTP code.");
+      return;
+    }
+
+    document.getElementById("otpStatus").innerText = "Verifying OTP...";
+    document.getElementById("otpStatus").style.color = "var(--muted)";
+    setPayEnabled(false);
+
+    try{
+      const res = await fetch("/api/verify-momo-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          momo_number: momo,
+          otp,
+          session_id: otpSessionId
+        })
+      });
+
+      const out = await res.json();
+
+      if(out.ok){
+        otpVerified = true;
+        document.getElementById("otpStatus").innerText = "OTP verified ✅ You can proceed";
+        document.getElementById("otpStatus").style.color = "green";
+        setPayEnabled(true);
+      }else{
+        otpVerified = false;
+        document.getElementById("otpStatus").innerText = out.message || "OTP verification failed";
+        document.getElementById("otpStatus").style.color = "var(--danger)";
+        setPayEnabled(false);
+      }
+    }catch(e){
+      otpVerified = false;
+      document.getElementById("otpStatus").innerText = "Network error verifying OTP";
+      document.getElementById("otpStatus").style.color = "var(--danger)";
+      setPayEnabled(false);
+    }
+  }
 
   // ✅ updated poll logic (same as MTN style)
   async function pollPaymentStatus(){
@@ -255,31 +390,25 @@
         const st = String(data.status || "").toLowerCase();
         const finalized = !!data.finalized;
 
-        // ✅ show server message if present
         if(data.message){
           document.getElementById("overlayStatus").innerText = data.message;
         } else {
           document.getElementById("overlayStatus").innerText = "⏳ Awaiting approval...";
         }
 
-        // ✅ success if finalized OR approved/success states
         if(finalized || st === "approved" || st === "successful" || st === "success" || st === "completed"){
           clearInterval(pollTimer);
-
-          // ✅ DO NOT call /api/buy-data-confirm here (backend should insert on status)
           showSuccess("Payment successful! Order saved. Data will be delivered shortly.");
           setTimeout(() => closeOverlay(), 2500);
           return;
         }
 
-        // fail states
         if(st === "failed" || st === "cancelled" || st === "declined"){
           clearInterval(pollTimer);
           showError("❌ Payment failed or cancelled.");
           return;
         }
 
-        // timeout
         if(tries > 25){
           clearInterval(pollTimer);
           showError("⏳ Payment timeout. If you approved, please try again.");
@@ -298,6 +427,12 @@
     if(!selectedPackage) return alert("Select a package again.");
     if(!isPhone(momo)) return alert("Enter a valid MoMo number.");
     if(!isPhone(recipient)) return alert("Enter a valid recipient number.");
+
+    // ✅ MUST verify OTP first
+    if(!otpVerified){
+      alert("Please verify OTP before proceeding.");
+      return;
+    }
 
     lastRecipient = recipient;
 
@@ -341,7 +476,6 @@
 
   loadPackages();
 </script>
- 
 
 </body>
 </html>
