@@ -505,67 +505,21 @@ app.get("/api/admin-data", (req, res) => {
 // ==============================
 
 // ✅ Map DB network -> TheTeller r-switch code
-function getSwitchCode(network) {
-  const n = String(network || "").toLowerCase().trim();
-
-  // MTN
-  if (n === "mtn" || n.includes("mtn")) return "MTN";
-
-  // AirtelTigo
-  if (
-    n === "airteltigo" ||
-    n.includes("airteltigo") ||
-    n.includes("airtel") ||
-    n.includes("tigo") ||
-    n.includes("atl")
-  )
-    return "ATL";
-
-  // Telecel/Vodafone
-  if (
-    n === "telecel" ||
-    n.includes("telecel") ||
-    n.includes("vodafone") ||
-    n.includes("voda") ||
-    n.includes("vdf")
-  )
-    return "VDF";
-
-  return null;
-}
-
-// ✅ Format Ghana numbers to TheTeller style (233xxxxxxxxx)
-function formatMsisdnForTheTeller(msisdn) {
-  let n = String(msisdn || "").replace(/\D/g, "");
-  if (n.startsWith("0")) n = "233" + n.slice(1);
-  if (n.startsWith("+")) n = n.slice(1);
-  return n;
-}
-
-// ✅ Format amount for TheTeller (string "1.00")
-function thetellerAmount(amount) {
-  const num = Number(amount || 0);
-  return num.toFixed(2);
-}
-
-// ✅ Unique transaction id
-function makeTransactionId() {
-  return "TRX" + Date.now() + Math.floor(Math.random() * 1000);
-}
-
-// ✅ Group package id for admin_orders download batch
-function makePackageId() {
-  return "PKG" + Date.now() + Math.floor(Math.random() * 1000);
-}
-
 // =====================================================
-// POST /api/buy-data-theteller  (returns transaction_id)
+//  THETELLER + BUY DATA (FULL WORKING)
+//  - INITIATE PAYMENT PROMPT
+//  - POLL STATUS
+//  - AUTO-INSERT INTO admin_orders WHEN APPROVED
 // =====================================================
+
+const axios = require("axios");
+
 // =======================
 // THETELLER CONFIG
 // =======================
 const THETELLER = {
   endpoint: "https://prod.theteller.net/v1.1/transaction/process",
+  statusBase: "https://prod.theteller.net/v1.1/transaction/status",
   merchantId: process.env.THETELLER_MERCHANT_ID || "TTM-00009388",
   username: process.env.THETELLER_USERNAME || "louis66a20ac942e74",
   apiKey:
@@ -573,8 +527,8 @@ const THETELLER = {
     "ZmVjZWZlZDc2MzA4OWU0YmZhOTk5MDBmMDAxNDhmOWY=",
 };
 
-// ✅ Build Basic Auth ONCE: base64("username:apikey")
-const THETELLER_BASIC_TOKEN = Buffer.from(
+// ✅ Build Basic Auth token ONCE: base64("username:apikey")
+THETELLER.basicToken = Buffer.from(
   `${THETELLER.username}:${THETELLER.apiKey}`
 ).toString("base64");
 
@@ -585,32 +539,45 @@ const THETELLER_BASIC_TOKEN = Buffer.from(
 // ✅ TheTeller requires 12-digit amount in pesewas
 // Example: GHS 1.00 -> "000000000100"
 function thetellerAmount12(ghsAmount) {
-  const pesewas = Math.round(Number(ghsAmount) * 100); // 6.00 -> 600
+  const pesewas = Math.round(Number(ghsAmount || 0) * 100);
   return String(pesewas).padStart(12, "0");
 }
 
-// ✅ r-switch mapping
+// ✅ r-switch mapping (TheTeller expects: MTN / ATL / VDF)
 function getSwitchCode(network) {
   const n = String(network || "").toLowerCase().trim();
-  if (n.includes("mtn")) return "MTN";
-  if (n.includes("airteltigo") || n.includes("airtel") || n.includes("tigo"))
+  if (n === "mtn" || n.includes("mtn")) return "MTN";
+  if (
+    n === "airteltigo" ||
+    n.includes("airteltigo") ||
+    n.includes("airtel") ||
+    n.includes("tigo") ||
+    n.includes("atl")
+  )
     return "ATL";
-  if (n.includes("telecel") || n.includes("vodafone") || n.includes("voda"))
+  if (
+    n === "telecel" ||
+    n.includes("telecel") ||
+    n.includes("vodafone") ||
+    n.includes("voda") ||
+    n.includes("vdf")
+  )
     return "VDF";
   return null;
 }
 
 // ✅ MSISDN -> 233XXXXXXXXX
 function formatMsisdnForTheTeller(number) {
-  if (!number) return "";
-  let msisdn = String(number).replace(/\D/g, "");
+  let msisdn = String(number || "").replace(/\D/g, "");
+
+  // +233XXXXXXXXX -> 233XXXXXXXXX
+  if (msisdn.startsWith("+")) msisdn = msisdn.slice(1);
 
   // 0XXXXXXXXX -> 233XXXXXXXXX
   if (msisdn.startsWith("0") && msisdn.length === 10) {
     msisdn = "233" + msisdn.slice(1);
   }
 
-  // already 233XXXXXXXXX
   return msisdn;
 }
 
@@ -619,14 +586,12 @@ function makeTransactionId() {
   return `SANDYPAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
 
-// ===============================
-//  PENDING ORDERS STORE (MEMORY)
-// ===============================
-// Key: transaction_id
-// Value: { vendor_id, recipient_number, package_name, amount, network, package_id }
-const pendingOrders = new Map();
+// ✅ Group package id for admin_orders download batch
+function makePackageId() {
+  return `PKG-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+}
 
-// Helper: treat these as "good" statuses
+// ✅ status helpers
 function isApprovedStatus(status, code) {
   const s = String(status || "").toLowerCase();
   const c = String(code || "");
@@ -645,11 +610,20 @@ function isPendingStatus(status, code) {
   return s === "pending" || s === "processing" || c === "099";
 }
 
+// ===============================
+//  PENDING ORDERS STORE (MEMORY)
+// ===============================
+// Key: transaction_id
+// Value: { vendor_id, recipient_number, package_name, amount, network, package_id }
+const pendingOrders = new Map();
+
+
 // =====================================================
 // POST /api/buy-data-theteller  (INITIATE PROMPT)
 // =====================================================
 app.post("/api/buy-data-theteller", async (req, res) => {
   const { package_id, momo_number, recipient_number, vendor_id } = req.body;
+
   const vid = Number(vendor_id || 1);
 
   if (!package_id || !momo_number || !recipient_number) {
@@ -658,10 +632,12 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
   try {
     // 1) Fetch package
-    const [rows] = await db.promise().query(
-      "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
-      [package_id]
-    );
+    const [rows] = await db
+      .promise()
+      .query(
+        "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
+        [package_id]
+      );
 
     if (!rows.length) {
       return res.json({ ok: false, message: "Package not found or inactive." });
@@ -679,26 +655,24 @@ app.post("/api/buy-data-theteller", async (req, res) => {
     const transactionId = makeTransactionId();
 
     const payload = {
-      amount: thetellerAmount12(pkg.price), // 12 digits pesewas
+      amount: thetellerAmount12(pkg.price),
       processing_code: "000200",
       transaction_id: transactionId,
       desc: `Sandypay Data - ${pkg.package_name}`,
       merchant_id: THETELLER.merchantId,
       subscriber_number: formatMsisdnForTheTeller(momo_number),
       "r-switch": rSwitch,
-      redirect_url: "https://sandypay.co/payment-callback",
+      redirect_url: "https://sandipay.co/payment-callback",
     };
 
     console.log("📤 TheTeller INIT payload:", payload);
+    console.log("🔐 Using merchant:", THETELLER.merchantId);
 
-    // ✅ Use ONE token variable consistently
-    const authToken = THETELLER.basicToken; // base64(username:apikey)
-
-    // 4) Call TheTeller INIT
+    // 4) Call TheTeller INIT  ✅ FIXED AUTH
     const tt = await axios.post(THETELLER.endpoint, payload, {
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Basic ${authToken}`,
+        Authorization: `Basic ${THETELLER.basicToken}`, // ✅ FIXED
         "Cache-Control": "no-cache",
       },
       timeout: 30000,
@@ -709,7 +683,6 @@ app.post("/api/buy-data-theteller", async (req, res) => {
     const status = String(tt.data?.status || "").toLowerCase();
     const code = String(tt.data?.code || "");
 
-    // INIT can return pending / successful depending on channel
     const accepted = isApprovedStatus(status, code) || isPendingStatus(status, code);
 
     if (!accepted) {
@@ -720,7 +693,7 @@ app.post("/api/buy-data-theteller", async (req, res) => {
       });
     }
 
-    // ✅ Store pending details for auto-finalize on status poll
+    // ✅ Store pending info so STATUS can auto-insert after approval
     pendingOrders.set(transactionId, {
       vendor_id: vid,
       recipient_number,
@@ -748,42 +721,39 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
 
 // =====================================================
-// GET /api/theteller-status?transaction_id=TRX...
-// ✅ NOW AUTO-INSERTS INTO admin_orders when approved
+// GET /api/theteller-status?transaction_id=...
+// ✅ AUTO-INSERT INTO admin_orders WHEN APPROVED
 // =====================================================
 app.get("/api/theteller-status", async (req, res) => {
   const transaction_id = String(req.query.transaction_id || "").trim();
   if (!transaction_id) return res.json({ ok: false, status: "unknown" });
 
   try {
-    const authToken = THETELLER.basicToken;
+    const url = `${THETELLER.statusBase}/${encodeURIComponent(transaction_id)}`;
 
-    const resp = await axios.get(
-      `https://prod.theteller.net/v1.1/transaction/status/${encodeURIComponent(transaction_id)}`,
-      {
-        headers: {
-          Authorization: `Basic ${authToken}`,
-          "Cache-Control": "no-cache",
-        },
-        timeout: 30000,
-      }
-    );
+    const resp = await axios.get(url, {
+      headers: {
+        Authorization: `Basic ${THETELLER.basicToken}`, // ✅ FIXED
+        "Cache-Control": "no-cache",
+      },
+      timeout: 30000,
+    });
 
     const raw = resp.data || {};
     const status = String(raw.status || "").toLowerCase();
     const code = String(raw.code || "");
 
-    // If approved/successful → finalize automatically
+    // ✅ If approved, finalize by inserting into admin_orders
     if (isApprovedStatus(status, code)) {
       const p = pendingOrders.get(transaction_id);
 
-      // If we still have the pending info, insert it
       if (p) {
-        // ✅ prevent duplicates
-        const [exists] = await db.promise().query(
-          "SELECT 1 FROM admin_orders WHERE updated_reference = ? LIMIT 1",
-          [transaction_id]
-        );
+        // prevent duplicates
+        const [exists] = await db
+          .promise()
+          .query("SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1", [
+            transaction_id,
+          ]);
 
         if (!exists.length) {
           await db.promise().query(
@@ -802,7 +772,6 @@ app.get("/api/theteller-status", async (req, res) => {
           );
         }
 
-        // Once done, clear pending (optional)
         pendingOrders.delete(transaction_id);
 
         return res.json({
@@ -814,25 +783,32 @@ app.get("/api/theteller-status", async (req, res) => {
         });
       }
 
-      // Approved but no pending data (server restarted etc.)
       return res.json({
         ok: true,
         status: "approved",
         finalized: false,
-        message: "✅ Payment approved, but order data not found. (Server restart?)",
+        message: "✅ Payment approved but pending data not found (server restarted).",
         raw,
       });
     }
 
-    // pending / failed / other states
+    // pending/processing
+    if (isPendingStatus(status, code)) {
+      return res.json({
+        ok: true,
+        status,
+        finalized: false,
+        message: "⏳ Awaiting approval...",
+        raw,
+      });
+    }
+
+    // failed/declined/cancelled
     return res.json({
       ok: true,
       status,
       finalized: false,
-      message:
-        status === "pending" || status === "processing"
-          ? "⏳ Awaiting approval..."
-          : "❌ Payment not approved.",
+      message: "❌ Payment not approved.",
       raw,
     });
   } catch (e) {
@@ -843,9 +819,8 @@ app.get("/api/theteller-status", async (req, res) => {
 
 
 // =====================================================
-// POST /api/buy-data-confirm (OPTIONAL)
-// Keep this if you still want manual confirm from frontend
-// But with auto-finalize above, you may not even need it.
+// POST /api/buy-data-confirm (OPTIONAL BACKUP)
+// Use only if you still want manual confirm from frontend.
 // =====================================================
 app.post("/api/buy-data-confirm", async (req, res) => {
   const {
@@ -869,30 +844,26 @@ app.post("/api/buy-data-confirm", async (req, res) => {
     return res.json({ ok: false, message: "Missing confirm fields." });
   }
 
-  const vendorId = Number(vendor_id || 1);
-  const packageIdGroup = makePackageId();
-
   try {
-    const [exists] = await db.promise().query(
-      "SELECT 1 FROM admin_orders WHERE updated_reference = ? LIMIT 1",
-      [transaction_id]
-    );
+    const [exists] = await db
+      .promise()
+      .query("SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1", [
+        transaction_id,
+      ]);
 
-    if (exists.length) {
-      return res.json({ ok: true, message: "Already confirmed." });
-    }
+    if (exists.length) return res.json({ ok: true, message: "Already confirmed." });
 
     await db.promise().query(
       `INSERT INTO admin_orders
         (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
        VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
       [
-        vendorId,
+        Number(vendor_id || 1),
         recipient_number,
         package_name,
         amountNum,
         String(network).toLowerCase(),
-        packageIdGroup,
+        makePackageId(),
         transaction_id,
       ]
     );
@@ -903,7 +874,6 @@ app.post("/api/buy-data-confirm", async (req, res) => {
     return res.json({ ok: false, message: "Could not save order." });
   }
 });
-
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
