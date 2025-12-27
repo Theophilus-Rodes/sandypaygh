@@ -1,4 +1,7 @@
 // ✅ IMPORTS
+require("dotenv").config();
+console.log("AT_USERNAME:", AT_USERNAME);
+console.log("AT_API_KEY loaded:", !!AT_API_KEY);
 const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
@@ -10,8 +13,11 @@ const multer = require("multer");
 const xlsx = require("xlsx");
 const path = require("path");
 const fs = require("fs");
+
 //calling ussd 
 const moolreRouter = require("./shortcode/ussd");
+
+
 
 
 // --- Sessions helpers (place near other requires/configs) ---
@@ -941,6 +947,187 @@ app.post("/api/buy-data-confirm", async (req, res) => {
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// ============================
+//  AFRICA'S TALKING OTP (SMS)
+// ============================
+const AfricasTalking = require("africastalking");
+
+const AT_USERNAME = process.env.AT_USERNAME;
+const AT_API_KEY = process.env.AT_API_KEY;
+const AT_SENDER_ID = process.env.AT_SENDER_ID || ""; // optional
+const OTP_TTL = Number(process.env.AT_OTP_TTL_SECONDS || 300) * 1000;
+
+if (!AT_USERNAME || !AT_API_KEY) {
+  console.warn("⚠️ Missing AT_USERNAME or AT_API_KEY (Africa's Talking OTP will fail)");
+}
+
+const at = AfricasTalking({ username: AT_USERNAME, apiKey: AT_API_KEY });
+const sms = at.SMS;
+
+// In-memory OTP store: momo -> { otp, expiresAt, attempts, sessionId, verifiedUntil }
+const otpStore = new Map();
+
+function normalizePhoneToE164Ghana(input = "") {
+  const v = String(input).replace(/\s+/g, "").replace(/^\+/, "");
+  // Accept:
+  // 0XXXXXXXXX (10 digits) -> +233XXXXXXXXX
+  // 233XXXXXXXXX -> +233XXXXXXXXX
+  // XXXXXXXXX (9 digits) -> +233XXXXXXXXX (if user entered without leading 0)
+  if (/^0\d{9}$/.test(v)) return "+233" + v.slice(1);
+  if (/^233\d{9}$/.test(v)) return "+" + v;
+  if (/^\d{9}$/.test(v)) return "+233" + v;
+  if (/^\d{10,15}$/.test(v)) return "+" + v; // fallback for other formats
+  return null;
+}
+
+function generateOtp(len = 6) {
+  let s = "";
+  for (let i = 0; i < len; i++) s += Math.floor(Math.random() * 10);
+  return s;
+}
+
+function genSessionId() {
+  return "otp_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 9);
+}
+
+async function sendOtpSmsAfricaTalking(toE164, otp) {
+  const message = `Sandypay OTP: ${otp}\nExpires in ${Math.round(OTP_TTL / 60000)} minutes. Do not share this code.`;
+
+  const options = {
+    to: [toE164],
+    message,
+  };
+
+  // Only include "from" if you actually have a Sender ID/shortcode approved
+  if (AT_SENDER_ID && AT_SENDER_ID.trim()) {
+    options.from = AT_SENDER_ID.trim();
+  }
+
+  // SDK sms.send(options)
+  // Ref: Africa's Talking Node SDK repo examples. :contentReference[oaicite:3]{index=3}
+  const resp = await sms.send(options);
+  return resp;
+}
+
+// ----------------------------
+// POST /api/send-momo-otp
+// body: { momo_number }
+// ----------------------------
+app.post("/api/send-momo-otp", async (req, res) => {
+  try {
+    const momoRaw = req.body?.momo_number;
+    const momoE164 = normalizePhoneToE164Ghana(momoRaw);
+
+    if (!momoE164) {
+      return res.json({ ok: false, message: "Invalid MoMo number format." });
+    }
+
+    // Anti-spam: if existing OTP still valid, block resend for a short time
+    const existing = otpStore.get(momoE164);
+    if (existing && Date.now() < existing.expiresAt) {
+      const waitSec = Math.ceil((existing.expiresAt - Date.now()) / 1000);
+      if (waitSec > (OTP_TTL / 1000 - 30)) {
+        // just created recently
+        return res.json({ ok: false, message: "OTP already sent. Please check your SMS." });
+      }
+    }
+
+    const otp = generateOtp(6);
+    const sessionId = genSessionId();
+    const expiresAt = Date.now() + OTP_TTL;
+
+    otpStore.set(momoE164, {
+      otp,
+      expiresAt,
+      attempts: 0,
+      sessionId,
+      verifiedUntil: 0,
+    });
+
+    const resp = await sendOtpSmsAfricaTalking(momoE164, otp);
+
+    // You can inspect resp for delivery status if needed.
+    return res.json({
+      ok: true,
+      message: "OTP sent successfully.",
+      session_id: sessionId,
+      // ⚠️ Do NOT return OTP in production
+      ...(String(process.env.NODE_ENV).toLowerCase() !== "production" ? { dev_note: "OTP sent (not returned)" } : {})
+    });
+
+  } catch (err) {
+    console.error("❌ send-momo-otp error:", err?.response?.data || err);
+    return res.status(500).json({ ok: false, message: "Failed to send OTP." });
+  }
+});
+
+// ----------------------------
+// POST /api/verify-momo-otp
+// body: { momo_number, otp, session_id }
+// ----------------------------
+app.post("/api/verify-momo-otp", (req, res) => {
+  try {
+    const momoRaw = req.body?.momo_number;
+    const otp = String(req.body?.otp || "").trim();
+    const sessionId = String(req.body?.session_id || "").trim();
+
+    const momoE164 = normalizePhoneToE164Ghana(momoRaw);
+    if (!momoE164) return res.json({ ok: false, message: "Invalid MoMo number." });
+    if (!/^\d{4,8}$/.test(otp)) return res.json({ ok: false, message: "Invalid OTP code." });
+
+    const rec = otpStore.get(momoE164);
+    if (!rec) return res.json({ ok: false, message: "No OTP request found. Please send OTP again." });
+
+    if (sessionId && rec.sessionId !== sessionId) {
+      return res.json({ ok: false, message: "OTP session mismatch. Please request a new OTP." });
+    }
+
+    if (Date.now() > rec.expiresAt) {
+      otpStore.delete(momoE164);
+      return res.json({ ok: false, message: "OTP expired. Please request a new OTP." });
+    }
+
+    rec.attempts = (rec.attempts || 0) + 1;
+    if (rec.attempts > 5) {
+      otpStore.delete(momoE164);
+      return res.json({ ok: false, message: "Too many attempts. Please request a new OTP." });
+    }
+
+    if (otp !== rec.otp) {
+      otpStore.set(momoE164, rec);
+      return res.json({ ok: false, message: "Incorrect OTP." });
+    }
+
+    // Mark verified for 10 minutes window
+    rec.verifiedUntil = Date.now() + (10 * 60 * 1000);
+    otpStore.set(momoE164, rec);
+
+    return res.json({ ok: true, message: "OTP verified." });
+
+  } catch (err) {
+    console.error("❌ verify-momo-otp error:", err);
+    return res.status(500).json({ ok: false, message: "OTP verification failed." });
+  }
+});
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
 
 
 
