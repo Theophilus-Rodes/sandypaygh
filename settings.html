@@ -154,8 +154,20 @@
       <label for="supportNumber">Support Number (Call/ WhatsApp)</label>
       <input type="tel" id="supportNumber" placeholder="Enter support number" />
 
-      <label for="senderId">Sender ID</label>
-      <input type="text" id="senderId" placeholder="Enter Sender ID" />
+
+
+<label for="senderId">Sender ID</label>
+<input type="text" id="senderId" placeholder="Enter Sender ID" />
+
+<!-- ✅ NEW: MoMo Details -->
+<label for="momoNumber">MoMo Number</label>
+<input type="tel" id="momoNumber" placeholder="Enter MoMo number" />
+
+<label for="accountName">Account Name</label>
+<input type="text" id="accountName" placeholder="Enter account name" />
+
+
+
 
       <button class="save-button" onclick="saveSettings()">Save Settings</button>
     </div>
@@ -201,6 +213,9 @@
           document.getElementById("businessName").value = data.username || "";
           document.getElementById("supportNumber").value = data.phone || "";
           document.getElementById("senderId").value = data.sender_id || "";
+          document.getElementById("momoNumber").value = data.momo_number || "";
+document.getElementById("accountName").value = data.account_name || "";
+
           localStorage.setItem("publicLink", data.public_link || "");
         }
       })
@@ -214,13 +229,17 @@
       const username = document.getElementById("businessName").value;
       const phone = document.getElementById("supportNumber").value;
       const sender_id = document.getElementById("senderId").value;
+      const momo_number = document.getElementById("momoNumber").value;
+const account_name = document.getElementById("accountName").value;
+
 
       if (!userId) return alert("User ID not found.");
 
       fetch("https://sandipay.co/api/update-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, username, phone, sender_id })
+       body: JSON.stringify({ userId, username, phone, sender_id, momo_number, account_name })
+
       })
       .then(res => res.text())
       .then(alert)
