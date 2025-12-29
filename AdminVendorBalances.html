@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin | Vendor Balances</title>
+  <style>
+    :root{
+      --primary:#0A3D62; --accent:#1DD1A1; --bg:#F5F7FA; --card:#fff;
+      --text:#0f172a; --muted:#64748b; --line:#e2e8f0; --danger:#ef4444;
+    }
+    *{box-sizing:border-box;font-family:Poppins,system-ui,Segoe UI,Roboto,Arial}
+    body{margin:0;background:var(--bg);color:var(--text)}
+    .wrap{max-width:1100px;margin:24px auto;padding:0 14px}
+    .top{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:14px}
+    .title{font-size:20px;font-weight:800}
+    .search{width:320px;max-width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;outline:none}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+    table{width:100%;border-collapse:collapse}
+    thead th{padding:12px;border-bottom:1px solid var(--line);text-align:left;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+    tbody td{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle}
+    tbody tr:hover{background:#fafafa}
+    .bal{font-weight:800}
+    .neg{color:var(--danger)}
+    .amt{width:140px;padding:10px;border:1px solid var(--line);border-radius:10px;outline:none}
+    .btn{padding:10px 12px;border-radius:10px;border:0;cursor:pointer;font-weight:700;background:var(--primary);color:#fff}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .toast{display:none;margin-top:12px;padding:12px;border-radius:12px;border:1px solid var(--line);background:#fff}
+    .toast.ok{border-color:rgba(29,209,161,.35)}
+    .toast.err{border-color:rgba(239,68,68,.35)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="title">Vendor Balances</div>
+      <input id="search" class="search" placeholder="Search vendor..." />
+    </div>
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Vendor</th>
+            <th>Contact</th>
+            <th>Total (GHS)</th>
+            <th>Deduct</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="4" style="padding:18px;color:#64748b;">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="toast" class="toast"></div>
+  </div>
+
+<script>
+  // ✅ If your API is on a different domain, set it here:
+  // const API = "https://vendor.sandipay.co";
+  const API = "";
+
+  const tbody = document.getElementById("tbody");
+  const search = document.getElementById("search");
+  const toast = document.getElementById("toast");
+
+  let cached = [];
+
+  function showToast(msg, ok=true){
+    toast.className = "toast " + (ok ? "ok" : "err");
+    toast.textContent = msg;
+    toast.style.display = "block";
+    setTimeout(()=>toast.style.display="none", 3000);
+  }
+
+  async function fetchBalances(){
+    tbody.innerHTML = `<tr><td colspan="4" style="padding:18px;color:#64748b;">Loading...</td></tr>`;
+    const res = await fetch(`${API}/api/admin/vendor-balances`);
+    const data = await res.json();
+
+    if(!data.ok){
+      tbody.innerHTML = `<tr><td colspan="4" style="padding:18px;color:#ef4444;">${data.message || "Failed."}</td></tr>`;
+      return;
+    }
+
+    cached = data.vendors || [];
+    render();
+  }
+
+  function render(){
+    const q = (search.value || "").toLowerCase().trim();
+    const list = !q ? cached : cached.filter(v => String(v.username||"").toLowerCase().includes(q));
+
+    if(list.length === 0){
+      tbody.innerHTML = `<tr><td colspan="4" style="padding:18px;color:#64748b;">No vendors found.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = list.map(v => {
+      const bal = Number(v.total_amount || 0);
+      return `
+        <tr>
+          <td style="font-weight:800">${escapeHtml(v.username)}</td>
+          <td>${escapeHtml(v.contact || "-")}</td>
+          <td class="bal ${bal < 0 ? "neg" : ""}">${bal.toFixed(2)}</td>
+          <td>
+            <input class="amt" type="number" step="0.01" min="0" placeholder="e.g. 5.00" id="amt_${v.id}" />
+            <button class="btn" onclick="deduct(${v.id}, this)">Deduct</button>
+          </td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  async function deduct(vendor_id, btn){
+    const input = document.getElementById(`amt_${vendor_id}`);
+    const amount = Number(input.value);
+
+    if(!amount || amount <= 0){
+      showToast("Enter a valid amount.", false);
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Working...";
+
+    try{
+      const res = await fetch(`${API}/api/admin/deduct-vendor`, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ vendor_id, amount })
+      });
+      const data = await res.json();
+
+      if(!data.ok){
+        showToast(data.message || "Deduction failed.", false);
+      }else{
+        showToast("Deducted successfully ✅", true);
+        input.value = "";
+        await fetchBalances();
+      }
+    }catch(e){
+      showToast("Server/network error.", false);
+    }finally{
+      btn.disabled = false;
+      btn.textContent = "Deduct";
+    }
+  }
+
+  function escapeHtml(str){
+    return String(str ?? "").replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+  }
+
+  search.addEventListener("input", render);
+
+  fetchBalances();
+</script>
+</body>
+</html>
