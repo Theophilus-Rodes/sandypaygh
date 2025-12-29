@@ -679,6 +679,57 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+//ADDED ACCOUNT FOR VENDORS 
+// ✅ GET vendor balances
+// /api/admin/vendor-balances
+app.get("/api/admin/vendor-balances", (req, res) => {
+  const q = `
+    SELECT 
+      u.id,
+      u.username,
+      COALESCE(u.telephone, u.phone, u.email) AS contact,
+      COALESCE(SUM(w.amount), 0) AS total_amount
+    FROM users u
+    LEFT JOIN wallet_loads w ON w.vendor_id = u.id
+    WHERE u.rull = 'vendor'
+    GROUP BY u.id, u.username, contact
+    ORDER BY u.username ASC
+  `;
+
+  db.query(q, (err, rows) => {
+    if (err) {
+      console.error("❌ vendor-balances error:", err);
+      return res.status(500).json({ ok: false, message: "Database error" });
+    }
+    res.json({ ok: true, vendors: rows || [] });
+  });
+});
+
+
+// ✅ POST deduct vendor balance
+// /api/admin/deduct-vendor
+app.post("/api/admin/deduct-vendor", (req, res) => {
+  const vendor_id = Number(req.body.vendor_id);
+  const amount = Number(req.body.amount);
+
+  if (!vendor_id || amount <= 0) {
+    return res.json({ ok: false, message: "Invalid vendor or amount" });
+  }
+
+  // Insert a negative entry so SUM() reduces
+  const negAmount = -Math.abs(amount);
+
+  const sql = `INSERT INTO wallet_loads (vendor_id, momo, amount) VALUES (?, ?, ?)`;
+  const momo = "admin_deduction";
+
+  db.query(sql, [vendor_id, momo, negAmount], (err) => {
+    if (err) {
+      console.error("❌ deduct-vendor error:", err);
+      return res.status(500).json({ ok: false, message: "Database error" });
+    }
+    res.json({ ok: true, message: "Deducted successfully" });
+  });
+});
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
