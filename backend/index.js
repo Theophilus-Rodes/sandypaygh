@@ -1523,53 +1523,101 @@ app.post("/api/downloaded-orders", (req, res) => {
 
 // (Leave all other existing routes and logic untouched below this comment)
 
-// ✅ REGISTER
+// ✅ REGISTER (FIXED)
 app.post("/api/register", async (req, res) => {
   const { username, phone, sender_id, password, role } = req.body;
+
+  // ✅ Clean and validate email safely
+  const email = String(sender_id || "").trim().toLowerCase();
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(sender_id)) return res.status(400).send("Invalid email format");
-  if (password === "0000") return res.status(400).send("PIN cannot be 0000.");
+
+  if (!emailRegex.test(email)) {
+    return res.status(400).send("Invalid email format");
+  }
+
+  if (password === "0000") {
+    return res.status(400).send("PIN cannot be 0000.");
+  }
 
   try {
-    db.query("SELECT * FROM users", async (err, users) => {
-      if (err) return res.status(500).send("Error checking PINs.");
-      for (let user of users) {
-        const match = await bcrypt.compare(password, user.password);
-        if (match) return res.status(400).send("PIN already in use.");
+    // ✅ Check if PIN is already in use (your original logic kept)
+    db.query("SELECT id, password FROM users", async (err, users) => {
+      if (err) {
+        console.error("❌ Error checking PINs:", err);
+        return res.status(500).send("Error checking PINs.");
       }
+
+      for (let user of users) {
+        try {
+          const match = await bcrypt.compare(password, user.password);
+          if (match) return res.status(400).send("PIN already in use.");
+        } catch (compareErr) {
+          console.error("❌ PIN compare error:", compareErr);
+          return res.status(500).send("PIN validation error.");
+        }
+      }
+
+      // ✅ Hash password
       const hashedPassword = await bcrypt.hash(password, 10);
-      const mailOptions = {
-        from: "Sandipayghana@gmail.com",
-        to: sender_id,
-        subject: "Vendor Portal - Email Verification",
-        text: `Hi ${username},\n\nWe are verifying this email for your account registration on Vendor Portal.`
-      };
-     transporter.sendMail(mailOptions, (emailErr) => {
-  if (emailErr) {
-    console.error("❌ Email sending error:", emailErr); // ✅ Log the actual error
-    return res.status(400).send("Invalid email.");
-  }
-        db.query("INSERT INTO users (username, phone, sender_id, password, role) VALUES (?, ?, ?, ?, ?)",
-          [username, phone, sender_id, hashedPassword, role],
-          (insertErr, result) => {
-            if (insertErr) return res.status(500).send("Registration failed.");
 
-            const userId = result.insertId;
-           const ussdCode = generateUssdCode("*203*888#", userId);
-           const publicLink = `https://sandipay.co/index1.html?id=${userId}`;
+      // ✅ 1) Create the account FIRST (so email failure doesn’t block registration)
+      db.query(
+        "INSERT INTO users (username, phone, sender_id, password, role) VALUES (?, ?, ?, ?, ?)",
+        [username, phone, email, hashedPassword, role],
+        (insertErr, result) => {
+          if (insertErr) {
+            console.error("❌ Insert error:", insertErr);
+            return res.status(500).send("Registration failed.");
+          }
 
+          const userId = result.insertId;
+          const ussdCode = generateUssdCode("*203*888#", userId);
+          const publicLink = `https://sandipay.co/index1.html?id=${userId}`;
 
-            db.query("UPDATE users SET ussd_code = ?, public_link = ? WHERE id = ?", [ussdCode, publicLink, userId], (updateErr) => {
-              if (updateErr) return res.status(500).send("Failed to save USSD code and Link.");
-              res.send(`Account created and email sent successfully! Your USSD Code: ${ussdCode}| Link: ${publicLink}`);
-            });
-          });
-      });
+          // ✅ 2) Save USSD and link
+          db.query(
+            "UPDATE users SET ussd_code = ?, public_link = ? WHERE id = ?",
+            [ussdCode, publicLink, userId],
+            (updateErr) => {
+              if (updateErr) {
+                console.error("❌ Update USSD/link error:", updateErr);
+                return res.status(500).send("Failed to save USSD code and Link.");
+              }
+
+              // ✅ 3) Try sending email AFTER registration succeeds
+              const mailOptions = {
+                from: "Sandipayghana@gmail.com",
+                to: email,
+                subject: "Vendor Portal - Email Verification",
+                text: `Hi ${username},\n\nWe are verifying this email for your account registration on Vendor Portal.`
+              };
+
+              transporter.sendMail(mailOptions, (emailErr) => {
+                if (emailErr) {
+                  // ✅ Don’t block registration because SMTP failed
+                  console.error("❌ Email sending error:", emailErr);
+
+                  return res.send(
+                    `Account created successfully! (Email not sent).\nYour USSD Code: ${ussdCode} | Link: ${publicLink}`
+                  );
+                }
+
+                // ✅ Email sent successfully
+                return res.send(
+                  `Account created and email sent successfully!\nYour USSD Code: ${ussdCode} | Link: ${publicLink}`
+                );
+              });
+            }
+          );
+        }
+      );
     });
   } catch (err) {
+    console.error("❌ Registration crash:", err);
     res.status(500).send("Registration error.");
   }
 });
+
 
 
 
