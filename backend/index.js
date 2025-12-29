@@ -728,101 +728,51 @@ app.post("/api/admin/deduct-vendor", (req, res) => {
   const vendor_id = Number(req.body.vendor_id);
   const amount = Number(req.body.amount);
 
-  if (!vendor_id || !Number.isFinite(amount) || amount <= 0) {
+  if (!vendor_id || amount <= 0) {
     return res.json({ ok: false, message: "Invalid vendor or amount" });
   }
 
-  // Start transaction
-  db.getConnection((err, conn) => {
-    if (err) {
-      console.error("❌ getConnection error:", err);
-      return res.status(500).json({ ok: false, message: "Database error" });
-    }
-
-    conn.beginTransaction((err1) => {
-      if (err1) {
-        conn.release();
-        console.error("❌ beginTransaction error:", err1);
+  // 1️⃣ First: get current balance
+  db.query(
+    "SELECT COALESCE(SUM(amount), 0) AS balance FROM wallet_loads WHERE vendor_id = ?",
+    [vendor_id],
+    (err, rows) => {
+      if (err) {
+        console.error("❌ balance check error:", err);
         return res.status(500).json({ ok: false, message: "Database error" });
       }
 
-      // 1) Lock vendor's wallet rows and compute current balance
-      // FOR UPDATE locks the selected rows until commit/rollback.
-      const balSql = `
-        SELECT COALESCE(SUM(amount),0) AS balance
-        FROM wallet_loads
-        WHERE vendor_id = ?
-        FOR UPDATE
-      `;
+      const balance = Number(rows[0].balance || 0);
 
-      conn.query(balSql, [vendor_id], (err2, rows) => {
-        if (err2) {
-          console.error("❌ balance query error:", err2);
-          return conn.rollback(() => {
-            conn.release();
-            res.status(500).json({ ok: false, message: "Database error" });
-          });
-        }
+      // 2️⃣ Check if balance is enough
+      if (balance < amount) {
+        return res.json({
+          ok: false,
+          message: `Insufficient balance. Current balance is GHS ${balance.toFixed(2)}`
+        });
+      }
 
-        const balance = Number(rows?.[0]?.balance || 0);
+      // 3️⃣ Deduct by inserting a negative value
+      const negAmount = -Math.abs(amount);
 
-        // 2) Check if balance is enough
-        if (balance < amount) {
-          return conn.rollback(() => {
-            conn.release();
-            res.json({
-              ok: false,
-              message: `Insufficient balance. Current: GHS ${balance.toFixed(
-                2
-              )}`,
-            });
-          });
-        }
-
-        // 3) Insert a negative row (deduction)
-        const negAmount = -Math.abs(amount);
-        const insSql = `
-          INSERT INTO wallet_loads (vendor_id, momo, amount)
-          VALUES (?, ?, ?)
-        `;
-
-        conn.query(
-          insSql,
-          [vendor_id, "admin_deduction", negAmount],
-          (err3) => {
-            if (err3) {
-              console.error("❌ insert deduction error:", err3);
-              return conn.rollback(() => {
-                conn.release();
-                res.status(500).json({ ok: false, message: "Database error" });
-              });
-            }
-
-            // 4) Commit
-            conn.commit((err4) => {
-              if (err4) {
-                console.error("❌ commit error:", err4);
-                return conn.rollback(() => {
-                  conn.release();
-                  res
-                    .status(500)
-                    .json({ ok: false, message: "Database error" });
-                });
-              }
-
-              conn.release();
-              res.json({
-                ok: true,
-                message: "Deducted successfully",
-                old_balance: balance,
-                new_balance: balance - amount,
-              });
-            });
+      db.query(
+        "INSERT INTO wallet_loads (vendor_id, momo, amount) VALUES (?, ?, ?)",
+        [vendor_id, "admin_deduction", negAmount],
+        (err2) => {
+          if (err2) {
+            console.error("❌ deduct-vendor error:", err2);
+            return res.status(500).json({ ok: false, message: "Database error" });
           }
-        );
-      });
-    });
-  });
+
+          res.json({
+            ok: true,
+            message: "Deducted successfully",
+            new_balance: balance - amount
+          });
+        }
+      );
+    }
+  );
 });
 
 
