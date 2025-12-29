@@ -42,13 +42,14 @@
         <thead>
           <tr>
             <th>Vendor</th>
-            <th>Contact</th>
+            <th>MoMo Number</th>
+            <th>Account Holder</th>
             <th>Total (GHS)</th>
             <th>Deduct</th>
           </tr>
         </thead>
         <tbody id="tbody">
-          <tr><td colspan="4" style="padding:18px;color:#64748b;">Loading...</td></tr>
+          <tr><td colspan="5" style="padding:18px;color:#64748b;">Loading...</td></tr>
         </tbody>
       </table>
     </div>
@@ -58,7 +59,7 @@
 
 <script>
   // ✅ If your API is on a different domain, set it here:
-  // const API = "https://vendor.sandipay.co";
+  // const API = "https://sandipay.co";
   const API = "";
 
   const tbody = document.getElementById("tbody");
@@ -75,12 +76,12 @@
   }
 
   async function fetchBalances(){
-    tbody.innerHTML = `<tr><td colspan="4" style="padding:18px;color:#64748b;">Loading...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="padding:18px;color:#64748b;">Loading...</td></tr>`;
     const res = await fetch(`${API}/api/admin/vendor-balances`);
     const data = await res.json();
 
     if(!data.ok){
-      tbody.innerHTML = `<tr><td colspan="4" style="padding:18px;color:#ef4444;">${data.message || "Failed."}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" style="padding:18px;color:#ef4444;">${data.message || "Failed."}</td></tr>`;
       return;
     }
 
@@ -93,16 +94,20 @@
     const list = !q ? cached : cached.filter(v => String(v.username||"").toLowerCase().includes(q));
 
     if(list.length === 0){
-      tbody.innerHTML = `<tr><td colspan="4" style="padding:18px;color:#64748b;">No vendors found.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" style="padding:18px;color:#64748b;">No vendors found.</td></tr>`;
       return;
     }
 
     tbody.innerHTML = list.map(v => {
       const bal = Number(v.total_amount || 0);
+      const momo = v.momo_number || "-";
+      const acc = v.account_name || "-";
+
       return `
         <tr>
           <td style="font-weight:800">${escapeHtml(v.username)}</td>
-          <td>${escapeHtml(v.contact || "-")}</td>
+          <td>${escapeHtml(momo)}</td>
+          <td>${escapeHtml(acc)}</td>
           <td class="bal ${bal < 0 ? "neg" : ""}">${bal.toFixed(2)}</td>
           <td>
             <input class="amt" type="number" step="0.01" min="0" placeholder="e.g. 5.00" id="amt_${v.id}" />
