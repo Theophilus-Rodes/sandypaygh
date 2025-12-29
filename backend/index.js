@@ -1771,11 +1771,18 @@ app.post("/api/user-info", (req, res) => {
   }
 
   db.query(
-    "SELECT username, phone, sender_id, ussd_code, public_link FROM users WHERE id = ? LIMIT 1",
+    "SELECT username, phone, sender_id, ussd_code, public_link, momo_number, account_name FROM users WHERE id = ? LIMIT 1",
     [userId],
     (err, results) => {
-      if (err) return res.status(500).json({ error: "Database error while fetching user." });
-      if (!results.length) return res.status(404).json({ error: "User not found." });
+      if (err) {
+        console.error("❌ user-info error:", err);
+        return res.status(500).json({ error: "Database error while fetching user." });
+      }
+
+      if (!results.length) {
+        return res.status(404).json({ error: "User not found." });
+      }
+
       res.json(results[0]);
     }
   );
@@ -1783,24 +1790,35 @@ app.post("/api/user-info", (req, res) => {
 
 
 
-// ✅ UPDATE SETTINGS
-app.post("/api/update-settings", (req, res) => {
-  const { userId, username, phone, sender_id } = req.body;
-  if (!userId || !username || !phone || !sender_id) return res.status(400).send("All fields required.");
-  db.query("UPDATE users SET username = ?, phone = ?, sender_id = ? WHERE id = ?", [username, phone, sender_id, userId], (err) => {
-    if (err) return res.status(500).send("Failed to update settings.");
-    res.send("Settings updated successfully.");
-  });
-});
 
-// ✅ ADD DATA PACKAGE
-app.post("/api/add-package", (req, res) => {
-  const { network, value, amount, status, vendor_id } = req.body;
-  const sql = `INSERT INTO data_packages (network, amount, data_package, status, vendor_id) VALUES (?, ?, ?, ?, ?)`;
-  db.query(sql, [network, amount, value, status, vendor_id], (err) => {
-    if (err) return res.status(500).send("Failed to insert package.");
-    res.send("Package inserted successfully.");
-  });
+// ✅ UPDATE SETTINGS
+
+
+app.post("/api/update-settings", (req, res) => {
+  const {
+    userId,
+    username,
+    phone,
+    sender_id,
+    momo_number,
+    account_name
+  } = req.body;
+
+  if (!userId || !username || !phone || !sender_id) {
+    return res.status(400).send("All fields required.");
+  }
+
+  db.query(
+    "UPDATE users SET username = ?, phone = ?, sender_id = ?, momo_number = ?, account_name = ? WHERE id = ?",
+    [username, phone, sender_id, momo_number || null, account_name || null, userId],
+    (err) => {
+      if (err) {
+        console.error("❌ update-settings error:", err);
+        return res.status(500).send("Failed to update settings.");
+      }
+      res.send("Settings updated successfully.");
+    }
+  );
 });
 
 
