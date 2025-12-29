@@ -699,11 +699,13 @@ app.get("/api/admin/vendor-balances", (req, res) => {
       SELECT 
         u.id,
         u.username,
+        u.momo_number,
+        u.account_name,
         COALESCE(SUM(w.amount), 0) AS total_amount
       FROM users u
       LEFT JOIN wallet_loads w ON w.vendor_id = u.id
       WHERE u.${roleCol} = 'vendor'
-      GROUP BY u.id, u.username
+      GROUP BY u.id, u.username, u.momo_number, u.account_name
       ORDER BY u.username ASC
     `;
 
