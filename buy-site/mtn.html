@@ -270,7 +270,7 @@
       openOverlay("Sending OTP", "Sending OTP to the MoMo number...");
 
       try{
-        const res = await fetch("/api/send-momo-otp", {
+        const res = await fetch("${API_BASE}/api/send-momo-otp", {
           method: "POST",
           headers: { "Content-Type":"application/json" },
           body: JSON.stringify({ momo_number: momo })
@@ -312,7 +312,7 @@
       openOverlay("Verifying OTP", "Please wait...");
 
       try{
-        const vr = await fetch("/api/verify-momo-otp", {
+        const vr = await fetch("${API_BASE}/api/verify-momo-otp", {
           method: "POST",
           headers: { "Content-Type":"application/json" },
           body: JSON.stringify({ momo_number: momo, otp, session_id: otpSessionId })
@@ -347,7 +347,7 @@
         tries++;
 
         try{
-          const res = await fetch(`/api/theteller-status?transaction_id=${encodeURIComponent(currentTransactionId)}`);
+          const res = await fetch(`${API_BASE}/api/theteller-status?transaction_id=${encodeURIComponent(currentTransactionId)}`);
           const data = await res.json();
 
           const st = String(data.status || "").toLowerCase();
@@ -388,7 +388,7 @@
       try{
         const vendor_id = localStorage.getItem("vendor_id") || 1;
 
-        const res = await fetch("/api/buy-data-theteller", {
+        const res = await fetch("${API_BASE}/api/buy-data-theteller", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

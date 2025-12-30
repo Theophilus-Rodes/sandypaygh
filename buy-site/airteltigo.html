@@ -114,7 +114,7 @@
 
   <div class="wrap">
     <div class="topbar">
-      <button class="back" onclick="location.href='buy-data.html'">← Back</button>
+      <button class="back" onclick="location.href='index.html'">← Back</button>
       <div style="color:var(--muted);font-size:12px">Select a bundle to buy</div>
     </div>
 
@@ -192,6 +192,7 @@
 
 <script>
   const NETWORK = "airteltigo";
+  const API_BASE = "https://sandipay.co";
 
   let selectedPackage = null;
   let currentTransactionId = null;
@@ -233,7 +234,7 @@
     document.getElementById("empty").innerText = "Loading AirtelTigo packages...";
 
     try{
-      const res = await fetch(`/api/admin-data?network=${encodeURIComponent(NETWORK)}`);
+      const res = await fetch(`${API_BASE}/api/admin-data?network=${encodeURIComponent(NETWORK)}`);
       const data = await res.json();
 
       if(!Array.isArray(data) || data.length === 0){
@@ -301,7 +302,7 @@
     otpVerified = false;
 
     try{
-      const res = await fetch("/api/send-momo-otp", {
+      const res = await fetch("${API_BASE}/api/send-momo-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ momo_number: momo })
@@ -341,7 +342,7 @@
     setPayEnabled(false);
 
     try{
-      const res = await fetch("/api/verify-momo-otp", {
+      const res = await fetch("${API_BASE}/api/verify-momo-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -383,7 +384,7 @@
       tries++;
 
       try{
-        const res = await fetch(`/api/theteller-status?transaction_id=${encodeURIComponent(currentTransactionId)}`);
+        const res = await fetch(`${API_BASE}/api/theteller-status/api/theteller-status?transaction_id=${encodeURIComponent(currentTransactionId)}`);
         const data = await res.json();
 
         const st = String(data.status || "").toLowerCase();
@@ -441,7 +442,7 @@
     const vendor_id = localStorage.getItem("vendor_id") || 1;
 
     try{
-      const res = await fetch("/api/buy-data-theteller", {
+      const res = await fetch("${API_BASE}/api/buy-data-theteller", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
