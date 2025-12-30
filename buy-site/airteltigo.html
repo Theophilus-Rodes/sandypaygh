@@ -139,7 +139,7 @@
           <input id="momoNumber" inputmode="numeric" placeholder="e.g. 027XXXXXXX" />
         </div>
 
-        <!-- ✅ OTP BLOCK (same as MTN/Telecel OTP) -->
+        <!-- ✅ OTP BLOCK -->
         <div class="field">
           <label>OTP Code</label>
 
@@ -197,9 +197,8 @@
   let selectedPackage = null;
   let currentTransactionId = null;
   let pollTimer = null;
-  let lastRecipient = "";
 
-  // ✅ OTP state
+  // OTP state
   let otpSessionId = null;
   let otpVerified = false;
 
@@ -207,8 +206,7 @@
   function isPhone(v){ return /^[0-9]{9,15}$/.test((v||"").replace(/\s+/g,"")); }
 
   function setPayEnabled(enabled){
-    const btn = document.getElementById("payBtn");
-    btn.disabled = !enabled;
+    document.getElementById("payBtn").disabled = !enabled;
   }
 
   function openOverlay(msg=""){
@@ -262,6 +260,7 @@
 
   function openModal(pkg){
     selectedPackage = pkg;
+
     document.getElementById("modalTitle").innerText =
       `Buy ${pkg.package_name} (${String(pkg.network).toUpperCase()})`;
     document.getElementById("modalSub").innerText =
@@ -270,7 +269,6 @@
     document.getElementById("momoNumber").value = "";
     document.getElementById("recipientNumber").value = "";
 
-    // ✅ reset OTP every time
     otpSessionId = null;
     otpVerified = false;
     document.getElementById("otpCode").value = "";
@@ -280,13 +278,8 @@
 
     document.getElementById("modalBackdrop").style.display = "flex";
   }
-  function closeModal(){ document.getElementById("modalBackdrop").style.display = "none"; }
 
-  // ============================
-  // ✅ OTP FUNCTIONS (same endpoints as MTN/Telecel)
-  // POST /api/send-momo-otp { momo_number }
-  // POST /api/verify-momo-otp { momo_number, otp, session_id }
-  // ============================
+  function closeModal(){ document.getElementById("modalBackdrop").style.display = "none"; }
 
   async function sendOtp(){
     const momo = document.getElementById("momoNumber").value.trim();
@@ -302,11 +295,17 @@
     otpVerified = false;
 
     try{
-      const res = await fetch("${API_BASE}/api/send-momo-otp", {
+      const res = await fetch(`${API_BASE}/api/send-momo-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ momo_number: momo })
       });
+
+      if(!res.ok){
+        document.getElementById("otpStatus").innerText = `Server error (${res.status}) sending OTP`;
+        document.getElementById("otpStatus").style.color = "var(--danger)";
+        return;
+      }
 
       const out = await res.json();
 
@@ -342,7 +341,7 @@
     setPayEnabled(false);
 
     try{
-      const res = await fetch("${API_BASE}/api/verify-momo-otp", {
+      const res = await fetch(`${API_BASE}/api/verify-momo-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -351,6 +350,13 @@
           session_id: otpSessionId
         })
       });
+
+      if(!res.ok){
+        document.getElementById("otpStatus").innerText = `Server error (${res.status}) verifying OTP`;
+        document.getElementById("otpStatus").style.color = "var(--danger)";
+        otpVerified = false;
+        return;
+      }
 
       const out = await res.json();
 
@@ -373,7 +379,6 @@
     }
   }
 
-  // ✅ Updated poll logic (MTN-style)
   async function pollPaymentStatus(){
     if(!currentTransactionId) return;
 
@@ -384,17 +389,13 @@
       tries++;
 
       try{
-        const res = await fetch(`${API_BASE}/api/theteller-status/api/theteller-status?transaction_id=${encodeURIComponent(currentTransactionId)}`);
+        const res = await fetch(`${API_BASE}/api/theteller-status?transaction_id=${encodeURIComponent(currentTransactionId)}`);
         const data = await res.json();
 
         const st = String(data.status || "").toLowerCase();
         const finalized = !!data.finalized;
 
-        if(data.message){
-          document.getElementById("overlayStatus").innerText = data.message;
-        }else{
-          document.getElementById("overlayStatus").innerText = "⏳ Awaiting approval...";
-        }
+        document.getElementById("overlayStatus").innerText = data.message || "⏳ Awaiting approval...";
 
         if(finalized || st === "approved" || st === "successful" || st === "success" || st === "completed"){
           clearInterval(pollTimer);
@@ -428,13 +429,10 @@
     if(!isPhone(momo)) return alert("Enter a valid MoMo number.");
     if(!isPhone(recipient)) return alert("Enter a valid recipient number.");
 
-    // ✅ MUST verify OTP first
     if(!otpVerified){
       alert("Please verify OTP before proceeding.");
       return;
     }
-
-    lastRecipient = recipient;
 
     closeModal();
     openOverlay("Initiating payment request...");
@@ -442,7 +440,7 @@
     const vendor_id = localStorage.getItem("vendor_id") || 1;
 
     try{
-      const res = await fetch("${API_BASE}/api/buy-data-theteller", {
+      const res = await fetch(`${API_BASE}/api/buy-data-theteller`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
