@@ -16,7 +16,16 @@
     .title{font-size:20px;font-weight:800}
     .search{width:320px;max-width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;outline:none}
     .card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
-    table{width:100%;border-collapse:collapse}
+
+    /* ✅ NEW: allow horizontal scroll on mobile so Deduct column never hides */
+    .table-scroll{
+      width:100%;
+      overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
+    }
+
+    table{width:100%;border-collapse:collapse; min-width: 820px;} /* ✅ NEW */
+
     thead th{padding:12px;border-bottom:1px solid var(--line);text-align:left;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
     tbody td{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle}
     tbody tr:hover{background:#fafafa}
@@ -28,6 +37,16 @@
     .toast{display:none;margin-top:12px;padding:12px;border-radius:12px;border:1px solid var(--line);background:#fff}
     .toast.ok{border-color:rgba(29,209,161,.35)}
     .toast.err{border-color:rgba(239,68,68,.35)}
+
+    /* ✅ NEW: small tweaks for phones */
+    @media (max-width: 600px){
+      .wrap{margin:16px auto}
+      .top{flex-direction:column; align-items:stretch}
+      .search{width:100%}
+      .amt{width:120px;padding:8px}
+      .btn{padding:8px 10px}
+      table{min-width: 760px;} /* still scrolls but a bit tighter */
+    }
   </style>
 </head>
 <body>
@@ -38,20 +57,23 @@
     </div>
 
     <div class="card">
-      <table>
-        <thead>
-          <tr>
-            <th>Vendor</th>
-            <th>MoMo Number</th>
-            <th>Account Holder</th>
-            <th>Total (GHS)</th>
-            <th>Deduct</th>
-          </tr>
-        </thead>
-        <tbody id="tbody">
-          <tr><td colspan="5" style="padding:18px;color:#64748b;">Loading...</td></tr>
-        </tbody>
-      </table>
+      <!-- ✅ NEW: wrap table to enable swipe scroll on mobile -->
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Vendor</th>
+              <th>MoMo Number</th>
+              <th>Account Holder</th>
+              <th>Total (GHS)</th>
+              <th>Deduct</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td colspan="5" style="padding:18px;color:#64748b;">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <div id="toast" class="toast"></div>
