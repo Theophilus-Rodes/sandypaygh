@@ -270,11 +270,12 @@
       openOverlay("Sending OTP", "Sending OTP to the MoMo number...");
 
       try{
-        const res = await fetch("${API_BASE}/api/send-momo-otp", {
-          method: "POST",
-          headers: { "Content-Type":"application/json" },
-          body: JSON.stringify({ momo_number: momo })
-        });
+      fetch(`${API_BASE}/api/send-momo-otp`, {
+  method: "POST",
+  headers: { "Content-Type":"application/json" },
+  body: JSON.stringify({ momo_number: momo })
+});
+
 
         const out = await res.json();
 
@@ -312,11 +313,12 @@
       openOverlay("Verifying OTP", "Please wait...");
 
       try{
-        const vr = await fetch("${API_BASE}/api/verify-momo-otp", {
-          method: "POST",
-          headers: { "Content-Type":"application/json" },
-          body: JSON.stringify({ momo_number: momo, otp, session_id: otpSessionId })
-        });
+      const vr = await fetch(`${API_BASE}/api/verify-momo-otp`, {
+  method: "POST",
+  headers: { "Content-Type":"application/json" },
+  body: JSON.stringify({ momo_number: momo, otp, session_id: otpSessionId })
+});
+
         const vout = await vr.json();
 
         if(!vout.ok){
@@ -388,16 +390,17 @@
       try{
         const vendor_id = localStorage.getItem("vendor_id") || 1;
 
-        const res = await fetch("${API_BASE}/api/buy-data-theteller", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            package_id: selectedPackage.id,
-            momo_number: momo,
-            recipient_number: recipient,
-            vendor_id
-          })
-        });
+     const res = await fetch(`${API_BASE}/api/buy-data-theteller`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    package_id: selectedPackage.id,
+    momo_number: momo,
+    recipient_number: recipient,
+    vendor_id
+  })
+});
+
 
         const out = await res.json();
 
