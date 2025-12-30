@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sandypay | AirtelTigo Bundles</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    :root{
+      --primary:#0A3D62; --accent:#1DD1A1; --bg:#F5F7FA; --card:#FFFFFF;
+      --text:#1E293B; --muted:#64748B; --line:#E2E8F0; --danger:#ef4444;
+    }
+    *{box-sizing:border-box;font-family:Poppins,system-ui,Segoe UI,Roboto,Arial}
+    body{margin:0;background:var(--bg);color:var(--text)}
+    .header{
+      background:linear-gradient(90deg,var(--primary),#082f49);
+      color:#fff;padding:18px 16px;display:flex;align-items:center;justify-content:space-between;
+      gap:12px;position:sticky;top:0;z-index:10;box-shadow:0 10px 30px rgba(2,6,23,.18);
+    }
+    .brand{display:flex;align-items:center;gap:10px}
+    .logo{
+      width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.14);
+      display:flex;align-items:center;justify-content:center;font-weight:700;border:1px solid rgba(255,255,255,.18);
+    }
+    .brand .title{font-weight:700}
+    .brand .sub{font-size:12px;opacity:.85;margin-top:2px}
+    .pill{
+      background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);
+      padding:8px 12px;border-radius:999px;font-size:12px;white-space:nowrap;
+    }
+    .wrap{max-width:1100px;margin:0 auto;padding:18px 16px}
+
+    .topbar{
+      display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;
+    }
+    .back{
+      border:none;background:#eaf2f7;color:var(--primary);
+      padding:10px 12px;border-radius:12px;font-weight:700;cursor:pointer;
+    }
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+    .pkg{
+      background:var(--card);border-radius:16px;padding:14px;border:1px solid var(--line);
+      box-shadow:0 10px 22px rgba(0,0,0,.05);display:flex;flex-direction:column;min-height:160px;
+    }
+    .pkg h4{margin:0 0 6px 0;color:var(--primary);font-size:15px}
+    .price{font-weight:800;font-size:18px;margin:6px 0 8px}
+    .meta{color:var(--muted);font-size:12px;margin-bottom:12px}
+    .btn{
+      margin-top:auto;width:100%;border:none;border-radius:12px;padding:11px 12px;
+      cursor:pointer;background:var(--accent);color:#fff;font-weight:700;transition:.2s;
+    }
+    .btn:hover{opacity:.92}
+    .btn[disabled]{opacity:.6;cursor:not-allowed}
+    .empty{padding:28px 10px;text-align:center;color:var(--muted)}
+
+    /* Modal */
+    .modal-backdrop{
+      position:fixed;inset:0;background:rgba(2,6,23,.55);display:none;align-items:center;justify-content:center;
+      padding:14px;z-index:1000;
+    }
+    .modal{
+      width:min(560px,100%);background:var(--card);border-radius:18px;padding:16px;border:1px solid var(--line);
+      box-shadow:0 24px 80px rgba(0,0,0,.35);
+    }
+    .modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+    .modal-header h3{margin:0;font-size:16px}
+    .modal-sub{color:var(--muted);font-size:12px;margin-top:4px;line-height:1.35}
+    .x{border:none;background:transparent;font-size:24px;cursor:pointer;line-height:1;color:#0f172a;}
+    .row{display:grid;grid-template-columns:1fr;gap:10px;margin-top:12px}
+    .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    .field input{
+      width:100%;padding:12px 12px;border-radius:12px;border:1px solid var(--line);outline:none;font-size:14px;
+    }
+    .field input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(29,209,161,.18)}
+    .helper{
+      margin-top:8px;font-size:12px;color:var(--muted);background:#f1f5f9;border:1px solid var(--line);
+      padding:10px 12px;border-radius:12px;line-height:1.4;
+    }
+    .modal-footer{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+    .btn-ghost{background:#eaf2f7;color:var(--primary)}
+
+    /* Waiting overlay */
+    .overlay{
+      position:fixed;inset:0;background:rgba(2,6,23,.68);display:none;align-items:center;justify-content:center;
+      padding:16px;z-index:1200;
+    }
+    .overlay-card{
+      width:min(560px,100%);background:var(--card);border-radius:18px;padding:18px;border:1px solid var(--line);
+      text-align:center;box-shadow:0 24px 80px rgba(0,0,0,.35);
+    }
+    .spinner{
+      width:46px;height:46px;border-radius:50%;border:4px solid rgba(100,116,139,.25);
+      border-top-color:var(--primary);margin:10px auto 12px;animation:spin 1s linear infinite;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .small{color:var(--muted);font-size:12px;margin-top:6px;line-height:1.45}
+    .err{color:var(--danger);font-size:12px;margin-top:10px}
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <div class="brand">
+      <div class="logo">S</div>
+      <div>
+        <div class="title">Sandypay</div>
+        <div class="sub">AirtelTigo Bundles • Pay with TheTeller</div>
+      </div>
+    </div>
+    <div class="pill">Network: AIRTELTIGO</div>
+  </div>
+
+  <div class="wrap">
+    <div class="topbar">
+      <button class="back" onclick="location.href='buy-data.html'">← Back</button>
+      <div style="color:var(--muted);font-size:12px">Select a bundle to buy</div>
+    </div>
+
+    <div id="packages" class="grid"></div>
+    <div id="empty" class="empty">Loading AirtelTigo packages...</div>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <h3 id="modalTitle">Confirm Purchase</h3>
+          <div class="modal-sub" id="modalSub"></div>
+        </div>
+        <button class="x" onclick="closeModal()">×</button>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>MoMo Number (to deduct from)</label>
+          <input id="momoNumber" inputmode="numeric" placeholder="e.g. 027XXXXXXX" />
+        </div>
+
+        <!-- ✅ OTP BLOCK (same as MTN/Telecel OTP) -->
+        <div class="field">
+          <label>OTP Code</label>
+
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="otpCode" inputmode="numeric" placeholder="Enter OTP" style="flex:1" />
+            <button class="back" type="button" id="sendOtpBtn" onclick="sendOtp()" style="white-space:nowrap;">
+              Send OTP
+            </button>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="back" type="button" id="verifyOtpBtn" onclick="verifyOtp()" style="flex:1;">
+              Verify OTP
+            </button>
+            <div id="otpStatus" style="flex:2;font-size:12px;color:var(--muted);display:flex;align-items:center">
+              OTP not sent
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Recipient Number (to receive data)</label>
+          <input id="recipientNumber" inputmode="numeric" placeholder="e.g. 055XXXXXXX" />
+        </div>
+
+        <div class="helper">
+          ✅ You will receive a payment prompt on the <b>MoMo number</b> you entered. <br/>
+          Please approve it by entering your MoMo PIN.
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn" id="payBtn" onclick="submitPurchase()" disabled>
+          Pay & Buy
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Waiting Overlay -->
+  <div class="overlay" id="waitOverlay">
+    <div class="overlay-card">
+      <div class="spinner"></div>
+      <h3 id="overlayTitle">Please wait for the prompt on your phone</h3>
+      <div class="small" id="overlayStatus">Initiating request...</div>
+      <div class="err" id="overlayError" style="display:none;"></div>
+    </div>
+  </div>
+
+<script>
+  const NETWORK = "airteltigo";
+
+  let selectedPackage = null;
+  let currentTransactionId = null;
+  let pollTimer = null;
+  let lastRecipient = "";
+
+  // ✅ OTP state
+  let otpSessionId = null;
+  let otpVerified = false;
+
+  function money(n){ return Number(n).toFixed(2); }
+  function isPhone(v){ return /^[0-9]{9,15}$/.test((v||"").replace(/\s+/g,"")); }
+
+  function setPayEnabled(enabled){
+    const btn = document.getElementById("payBtn");
+    btn.disabled = !enabled;
+  }
+
+  function openOverlay(msg=""){
+    document.getElementById("overlayTitle").innerText = "Please wait for the prompt on your phone";
+    document.getElementById("overlayStatus").innerText = msg;
+    document.getElementById("overlayError").style.display = "none";
+    document.getElementById("overlayError").innerText = "";
+    document.getElementById("waitOverlay").style.display = "flex";
+  }
+  function closeOverlay(){ document.getElementById("waitOverlay").style.display = "none"; }
+  function showError(msg){
+    document.getElementById("overlayError").style.display = "block";
+    document.getElementById("overlayError").innerText = msg;
+  }
+  function showSuccess(msg){
+    document.getElementById("overlayTitle").innerText = "✅ Success";
+    document.getElementById("overlayStatus").innerText = msg;
+    document.getElementById("overlayError").style.display = "none";
+  }
+
+  async function loadPackages(){
+    document.getElementById("packages").innerHTML = "";
+    document.getElementById("empty").innerText = "Loading AirtelTigo packages...";
+
+    try{
+      const res = await fetch(`/api/admin-data?network=${encodeURIComponent(NETWORK)}`);
+      const data = await res.json();
+
+      if(!Array.isArray(data) || data.length === 0){
+        document.getElementById("empty").innerText = "No AirtelTigo packages available.";
+        return;
+      }
+
+      document.getElementById("empty").innerText = "";
+
+      data.forEach(pkg => {
+        document.getElementById("packages").innerHTML += `
+          <div class="pkg">
+            <h4>${pkg.package_name}</h4>
+            <div class="price">GHS ${money(pkg.price)}</div>
+            <div class="meta">Network: ${String(pkg.network || "").toUpperCase()}</div>
+            <button class="btn" onclick='openModal(${JSON.stringify(pkg)})'>Buy Bundle</button>
+          </div>
+        `;
+      });
+
+    }catch(e){
+      document.getElementById("empty").innerText = "Failed to load packages. Please try again.";
+    }
+  }
+
+  function openModal(pkg){
+    selectedPackage = pkg;
+    document.getElementById("modalTitle").innerText =
+      `Buy ${pkg.package_name} (${String(pkg.network).toUpperCase()})`;
+    document.getElementById("modalSub").innerText =
+      `Amount: GHS ${money(pkg.price)} • Enter details below to proceed.`;
+
+    document.getElementById("momoNumber").value = "";
+    document.getElementById("recipientNumber").value = "";
+
+    // ✅ reset OTP every time
+    otpSessionId = null;
+    otpVerified = false;
+    document.getElementById("otpCode").value = "";
+    document.getElementById("otpStatus").innerText = "OTP not sent";
+    document.getElementById("otpStatus").style.color = "var(--muted)";
+    setPayEnabled(false);
+
+    document.getElementById("modalBackdrop").style.display = "flex";
+  }
+  function closeModal(){ document.getElementById("modalBackdrop").style.display = "none"; }
+
+  // ============================
+  // ✅ OTP FUNCTIONS (same endpoints as MTN/Telecel)
+  // POST /api/send-momo-otp { momo_number }
+  // POST /api/verify-momo-otp { momo_number, otp, session_id }
+  // ============================
+
+  async function sendOtp(){
+    const momo = document.getElementById("momoNumber").value.trim();
+
+    if(!isPhone(momo)){
+      alert("Enter a valid MoMo number before requesting OTP.");
+      return;
+    }
+
+    document.getElementById("otpStatus").innerText = "Sending OTP...";
+    document.getElementById("otpStatus").style.color = "var(--muted)";
+    setPayEnabled(false);
+    otpVerified = false;
+
+    try{
+      const res = await fetch("/api/send-momo-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ momo_number: momo })
+      });
+
+      const out = await res.json();
+
+      if(out.ok){
+        otpSessionId = out.session_id || null;
+        document.getElementById("otpStatus").innerText = "OTP sent ✅ Check SMS and enter it";
+        document.getElementById("otpStatus").style.color = "green";
+      }else{
+        document.getElementById("otpStatus").innerText = out.message || "Failed to send OTP";
+        document.getElementById("otpStatus").style.color = "var(--danger)";
+      }
+    }catch(e){
+      document.getElementById("otpStatus").innerText = "Network error sending OTP";
+      document.getElementById("otpStatus").style.color = "var(--danger)";
+    }
+  }
+
+  async function verifyOtp(){
+    const momo = document.getElementById("momoNumber").value.trim();
+    const otp = document.getElementById("otpCode").value.trim();
+
+    if(!isPhone(momo)){
+      alert("Enter a valid MoMo number.");
+      return;
+    }
+    if(!/^\d{4,8}$/.test(otp)){
+      alert("Enter a valid OTP code.");
+      return;
+    }
+
+    document.getElementById("otpStatus").innerText = "Verifying OTP...";
+    document.getElementById("otpStatus").style.color = "var(--muted)";
+    setPayEnabled(false);
+
+    try{
+      const res = await fetch("/api/verify-momo-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          momo_number: momo,
+          otp,
+          session_id: otpSessionId
+        })
+      });
+
+      const out = await res.json();
+
+      if(out.ok){
+        otpVerified = true;
+        document.getElementById("otpStatus").innerText = "OTP verified ✅ You can proceed";
+        document.getElementById("otpStatus").style.color = "green";
+        setPayEnabled(true);
+      }else{
+        otpVerified = false;
+        document.getElementById("otpStatus").innerText = out.message || "OTP verification failed";
+        document.getElementById("otpStatus").style.color = "var(--danger)";
+        setPayEnabled(false);
+      }
+    }catch(e){
+      otpVerified = false;
+      document.getElementById("otpStatus").innerText = "Network error verifying OTP";
+      document.getElementById("otpStatus").style.color = "var(--danger)";
+      setPayEnabled(false);
+    }
+  }
+
+  // ✅ Updated poll logic (MTN-style)
+  async function pollPaymentStatus(){
+    if(!currentTransactionId) return;
+
+    let tries = 0;
+    if(pollTimer) clearInterval(pollTimer);
+
+    pollTimer = setInterval(async () => {
+      tries++;
+
+      try{
+        const res = await fetch(`/api/theteller-status?transaction_id=${encodeURIComponent(currentTransactionId)}`);
+        const data = await res.json();
+
+        const st = String(data.status || "").toLowerCase();
+        const finalized = !!data.finalized;
+
+        if(data.message){
+          document.getElementById("overlayStatus").innerText = data.message;
+        }else{
+          document.getElementById("overlayStatus").innerText = "⏳ Awaiting approval...";
+        }
+
+        if(finalized || st === "approved" || st === "successful" || st === "success" || st === "completed"){
+          clearInterval(pollTimer);
+          showSuccess("Payment successful! Order saved. Data will be delivered shortly.");
+          setTimeout(() => closeOverlay(), 2500);
+          return;
+        }
+
+        if(st === "failed" || st === "cancelled" || st === "declined"){
+          clearInterval(pollTimer);
+          showError("❌ Payment failed or cancelled.");
+          return;
+        }
+
+        if(tries > 25){
+          clearInterval(pollTimer);
+          showError("⏳ Payment timeout. If you approved, please try again.");
+        }
+      }catch(e){
+        clearInterval(pollTimer);
+        showError("Unable to confirm payment status.");
+      }
+    }, 3000);
+  }
+
+  async function submitPurchase(){
+    const momo = document.getElementById("momoNumber").value.trim();
+    const recipient = document.getElementById("recipientNumber").value.trim();
+
+    if(!selectedPackage) return alert("Select a package again.");
+    if(!isPhone(momo)) return alert("Enter a valid MoMo number.");
+    if(!isPhone(recipient)) return alert("Enter a valid recipient number.");
+
+    // ✅ MUST verify OTP first
+    if(!otpVerified){
+      alert("Please verify OTP before proceeding.");
+      return;
+    }
+
+    lastRecipient = recipient;
+
+    closeModal();
+    openOverlay("Initiating payment request...");
+
+    const vendor_id = localStorage.getItem("vendor_id") || 1;
+
+    try{
+      const res = await fetch("/api/buy-data-theteller", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          package_id: selectedPackage.id,
+          momo_number: momo,
+          recipient_number: recipient,
+          vendor_id
+        })
+      });
+
+      const out = await res.json();
+
+      if(out.ok){
+        currentTransactionId = out.transaction_id || null;
+
+        if(!currentTransactionId){
+          showError("Missing transaction id from server. Please try again.");
+          return;
+        }
+
+        openOverlay("Waiting for payment approval...");
+        pollPaymentStatus();
+      }else{
+        showError(out.message || "Payment failed to start.");
+      }
+
+    }catch(e){
+      showError("Network error. Please try again.");
+    }
+  }
+
+  loadPackages();
+</script>
+
+</body>
+</html>
