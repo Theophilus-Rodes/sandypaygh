@@ -114,7 +114,7 @@
 
   <div class="wrap">
     <div class="topbar">
-      <button class="back" onclick="location.href='buy-data.html'">← Back</button>
+      <button class="back" onclick="location.href='index.html'">← Back</button>
       <div style="color:var(--muted);font-size:12px">Select a bundle to buy</div>
     </div>
 
@@ -176,6 +176,7 @@
 
   <script>
     const NETWORK = "mtn";
+    const API_BASE = "https://sandipay.co";
 
     let selectedPackage = null;
     let currentTransactionId = null;
@@ -210,7 +211,7 @@
       document.getElementById("empty").innerText = "Loading MTN packages...";
 
       try{
-        const res = await fetch(`/api/admin-data?network=${encodeURIComponent(NETWORK)}`);
+        const res = await fetch(`${API_BASE}/api/admin-data?network=${encodeURIComponent(NETWORK)}`);
         const data = await res.json();
 
         if(!Array.isArray(data) || data.length === 0){
