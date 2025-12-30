@@ -99,7 +99,17 @@ function checkAccess(req, res, next) {
 
 // ✅ INITIALIZE APP
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    "https://sandypay.com",
+    "https://www.sandypay.com",
+    "https://sandypay.co",
+    "https://www.sandypay.co"
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 app.use(bodyParser.json());
 //Continue ussd
 app.use("/api/moolre", moolreRouter);
