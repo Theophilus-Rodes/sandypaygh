@@ -176,6 +176,10 @@
 
   <script>
     const NETWORK = "mtn";
+
+    // ✅ IMPORTANT: API_BASE must be your BACKEND domain
+    // If your backend is on vendor.sandypay.co, use that:
+    // const API_BASE = "https://vendor.sandypay.co";
     const API_BASE = "https://sandipay.co";
 
     let selectedPackage = null;
@@ -248,7 +252,6 @@
       document.getElementById("recipientNumber").value = "";
       document.getElementById("otpCode").value = "";
 
-      // reset OTP UI
       otpSent = false;
       otpSessionId = null;
       document.getElementById("otpFieldWrap").style.display = "none";
@@ -270,12 +273,18 @@
       openOverlay("Sending OTP", "Sending OTP to the MoMo number...");
 
       try{
-      fetch(`${API_BASE}/api/send-momo-otp`, {
-  method: "POST",
-  headers: { "Content-Type":"application/json" },
-  body: JSON.stringify({ momo_number: momo })
-});
+        // ✅ FIX: you MUST store the fetch response in "res"
+        const res = await fetch(`${API_BASE}/api/send-momo-otp`, {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          body: JSON.stringify({ momo_number: momo })
+        });
 
+        if(!res.ok){
+          showError(`Server error (${res.status}).`);
+          setTimeout(closeOverlay, 1800);
+          return;
+        }
 
         const out = await res.json();
 
@@ -313,11 +322,11 @@
       openOverlay("Verifying OTP", "Please wait...");
 
       try{
-      const vr = await fetch(`${API_BASE}/api/verify-momo-otp`, {
-  method: "POST",
-  headers: { "Content-Type":"application/json" },
-  body: JSON.stringify({ momo_number: momo, otp, session_id: otpSessionId })
-});
+        const vr = await fetch(`${API_BASE}/api/verify-momo-otp`, {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          body: JSON.stringify({ momo_number: momo, otp, session_id: otpSessionId })
+        });
 
         const vout = await vr.json();
 
@@ -327,7 +336,6 @@
           return;
         }
 
-        // OTP ok → start TheTeller
         document.getElementById("overlayTitle").innerText = "Starting Payment";
         document.getElementById("overlayStatus").innerText = "OTP verified. Starting MoMo prompt...";
 
@@ -383,24 +391,21 @@
     }
 
     async function startTheTellerPayment(momo, recipient){
-      // keep modal closed
       closeModal();
 
-      // overlay already open
       try{
         const vendor_id = localStorage.getItem("vendor_id") || 1;
 
-     const res = await fetch(`${API_BASE}/api/buy-data-theteller`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    package_id: selectedPackage.id,
-    momo_number: momo,
-    recipient_number: recipient,
-    vendor_id
-  })
-});
-
+        const res = await fetch(`${API_BASE}/api/buy-data-theteller`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            package_id: selectedPackage.id,
+            momo_number: momo,
+            recipient_number: recipient,
+            vendor_id
+          })
+        });
 
         const out = await res.json();
 
