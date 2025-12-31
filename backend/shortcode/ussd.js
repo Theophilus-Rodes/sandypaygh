@@ -138,28 +138,22 @@ const PAGE_SIZE = 6; // how many packages per page
 function detectPayerNetwork(msisdn) {
   const d = String(msisdn || "").replace(/\D/g, "");
 
-  // get prefix like 024 / 050 / 027
-  let prefix = "";
-  if (d.startsWith("233") && d.length >= 12) {
-    // 233 + (2-digit operator prefix) + rest
-    // Example: 233504602107 -> prefix should be 050
-    prefix = "0" + d.slice(3, 5 + 1); // ✅ slice(3,6)
-  } else {
-    // Example: 0504602107 -> prefix 050
-    prefix = d.slice(0, 3);
-  }
+  // Convert to local format 0XXXXXXXXX first, then take prefix (first 3 digits)
+  const local10 = d.startsWith("233") ? ("0" + d.slice(3)) : d;
+  const prefix = local10.slice(0, 3); // ✅ always 3 digits like 053, 024, 050
 
-  // MTN: 024, 054, 055, 059
-if (["024", "025", "053", "054", "055", "059"].includes(prefix)) return "mtn";
+  // MTN prefixes
+  if (["023", "024", "025", "053", "054", "055", "059"].includes(prefix)) return "mtn";
 
-  // Vodafone/Telecel: 020, 050
+  // Vodafone/Telecel prefixes
   if (["020", "050"].includes(prefix)) return "vodafone";
 
-  // AirtelTigo: 026, 056, 027, 057
+  // AirtelTigo prefixes
   if (["026", "056", "027", "057"].includes(prefix)) return "airteltigo";
 
   return "";
 }
+
 
 function getPayerSwitchCode(payerNet) {
   switch (String(payerNet || "").toLowerCase()) {
@@ -587,11 +581,11 @@ if (!rSwitch) {
   console.error("❌ Unsupported payer network for TheTeller r-switch:", {
     payerNet,
     momo_number,
-    detectedPrefix: (() => {
-      const d = String(momo_number || "").replace(/\D/g, "");
-      const prefix = d.startsWith("233") ? "0" + d.slice(3, 6) : d.slice(0, 3);
-      return prefix;
-    })(),
+   detectedPrefix: (() => {
+  const d = String(momo_number || "").replace(/\D/g, "");
+  const local10 = d.startsWith("233") ? ("0" + d.slice(3)) : d;
+  return local10.slice(0, 3); // ✅ always 3 digits (e.g. 053, 024, 050)
+})(),
   });
   return;
 }
