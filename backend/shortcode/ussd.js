@@ -134,6 +134,49 @@ const sessions = {};
 
 const PAGE_SIZE = 6; // how many packages per page
 
+
+function detectPayerNetwork(msisdn) {
+  const d = String(msisdn || "").replace(/\D/g, "");
+
+  // get prefix like 024 / 050 / 027
+  let prefix = "";
+  if (d.startsWith("233") && d.length >= 12) {
+    // 233 + (2-digit operator prefix) + rest
+    // Example: 233504602107 -> prefix should be 050
+    prefix = "0" + d.slice(3, 5 + 1); // ✅ slice(3,6)
+  } else {
+    // Example: 0504602107 -> prefix 050
+    prefix = d.slice(0, 3);
+  }
+
+  // MTN: 024, 054, 055, 059
+if (["024", "025", "053", "054", "055", "059"].includes(prefix)) return "mtn";
+
+  // Vodafone/Telecel: 020, 050
+  if (["020", "050"].includes(prefix)) return "vodafone";
+
+  // AirtelTigo: 026, 056, 027, 057
+  if (["026", "056", "027", "057"].includes(prefix)) return "airteltigo";
+
+  return "";
+}
+
+function getPayerSwitchCode(payerNet) {
+  switch (String(payerNet || "").toLowerCase()) {
+    case "mtn":
+      return "MTN";
+    case "vodafone":
+    case "telecel":
+      return "VDF";
+    case "airteltigo":
+      return "ATL";
+    default:
+      return null;
+  }
+}
+
+
+
 // ✅ PACKAGES LIST WITH PAGINATION
 function renderPackages(state) {
   const list = Array.isArray(state.packageList) ? state.packageList : [];
@@ -530,7 +573,9 @@ function handleSession(sessionId, input, msisdn, res) {
           // Fire TheTeller + DB logging in the background
           (async () => {
             try {
-              const rSwitch = getSwitchCode(network);
+              // ✅ r-switch MUST be payer (dialer) wallet network, not bundle network
+const payerNet = state.payerNetwork || detectPayerNetwork(momo_number);
+const rSwitch = getPayerSwitchCode(payerNet);
               if (!rSwitch) {
                 console.error(
                   "❌ Unsupported network for TheTeller r-switch:",
@@ -557,6 +602,14 @@ function handleSession(sessionId, input, msisdn, res) {
               };
 
               console.log("📤 Sending USSD data payment to TheTeller:", payload);
+              console.log("💳 PAY DEBUG:", {
+  momo_number,
+  formattedMoMo,
+  payerNet,
+  rSwitch,
+  selectedBundleNetwork: network
+});
+
 
               const response = await axios.post(
                 THETELLER.endpoint,
@@ -569,6 +622,7 @@ function handleSession(sessionId, input, msisdn, res) {
                   },
                 }
               );
+       
 
               console.log("📥 TheTeller USSD response:", response.data);
 
@@ -817,16 +871,20 @@ router.post("/", (req, res) => {
         }
 
         sessions[sessionId] = {
-          step: "start",
-          vendorId: 1,
-          brandName: "SandyPay",
-          isPlain: true,
-          network: "",
-          selectedPkg: "",
-          recipient: "",
-          packageList: [],
-          packagePage: 0,
-        };
+  step: "start",
+  vendorId: 1,
+  brandName: "SandyPay",
+  isPlain: true,
+
+  payerNetwork: detectPayerNetwork(msisdn), // ✅ add this
+
+  network: "",
+  selectedPkg: "",
+  recipient: "",
+  packageList: [],
+  packagePage: 0,
+};
+
 
         console.log("🟦 CREATED PLAIN SESSION:", sessions[sessionId]);
         return handleSession(sessionId, "", String(msisdn || ""), res);
@@ -890,18 +948,22 @@ router.post("/", (req, res) => {
             if (!err && rows && rows.length && rows[0].username) {
               brandName = rows[0].username;
             }
+sessions[sessionId] = {
+  step: "start",
+  vendorId,
+  brandName,
+  isPlain: false,
 
-            sessions[sessionId] = {
-              step: "start",
-              vendorId,
-              brandName,
-              isPlain: false,
-              network: "",
-              selectedPkg: "",
-              recipient: "",
-              packageList: [],
-              packagePage: 0,
-            };
+  payerNetwork: detectPayerNetwork(msisdn), // ✅ add this
+
+  network: "",
+  selectedPkg: "",
+  recipient: "",
+  packageList: [],
+  packagePage: 0,
+};
+
+
 
             console.log("🟩 CREATED VENDOR SESSION:", sessions[sessionId]);
             return handleSession(sessionId, "", String(msisdn || ""), res);
