@@ -713,19 +713,28 @@ function isInitAccepted(data) {
 
 
 // ✅ MSISDN -> 233XXXXXXXXX
-function formatMsisdnForTheTeller(number) {
-  let msisdn = String(number || "").replace(/\D/g, "");
+function formatMsisdnForTheTeller(msisdn) {
+  let n = String(msisdn || "").trim().replace(/[^\d]/g, "");
 
-  // +233XXXXXXXXX -> 233XXXXXXXXX
-  if (msisdn.startsWith("+")) msisdn = msisdn.slice(1);
-
-  // 0XXXXXXXXX -> 233XXXXXXXXX
-  if (msisdn.startsWith("0") && msisdn.length === 10) {
-    msisdn = "233" + msisdn.slice(1);
+  // If it starts with 0 and length is 10 => convert to 233 + 9 digits
+  if (n.startsWith("0") && n.length === 10) {
+    n = "233" + n.slice(1);
   }
 
-  return msisdn;
+  // If user typed 9 digits e.g. 20xxxxxxx => convert to 233 + 9
+  if (n.length === 9) {
+    n = "233" + n;
+  }
+
+  // If already 233 + 9 digits (12) keep it
+  if (n.startsWith("233") && n.length === 12) {
+    return n;
+  }
+
+  // fallback: return digits as-is
+  return n;
 }
+
 
 // ✅ Unique transaction id
 function makeTransactionId() {
@@ -968,12 +977,21 @@ app.get("/api/theteller-status", async (req, res) => {
       code === "099";
 
     // ✅ More tolerant “failed”
-    const failed =
-      ["failed", "declined", "cancelled", "canceled", "reversed"].includes(status) ||
-      status.includes("fail") ||
-      status.includes("decline") ||
-      status.includes("cancel") ||
-      code === "999";
+   const failed =
+  ["failed", "declined", "cancelled", "canceled", "reversed"].includes(status) ||
+  status.includes("fail") ||
+  status.includes("decline") ||
+  status.includes("cancel");
+
+  // If not approved and not failed, keep waiting (even if code is weird)
+return res.json({
+  ok: true,
+  status: status || "unknown",
+  finalized: false,
+  message: "⏳ Awaiting approval... (still checking)",
+  raw,
+});
+
 
     // ✅ If approved, finalize by inserting into admin_orders
     if (approved) {
