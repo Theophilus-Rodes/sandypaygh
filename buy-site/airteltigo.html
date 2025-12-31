@@ -134,23 +134,40 @@
       </div>
 
       <div class="row">
+   
+
         <div class="field">
+          <label>Recipient Number (to receive data)</label>
+          <input id="recipientNumber" inputmode="numeric" placeholder="e.g. 055XXXXXXX" />
+        </div>
+
+             <div class="field">
           <label>MoMo Number (to deduct from)</label>
           <input id="momoNumber" inputmode="numeric" placeholder="e.g. 027XXXXXXX" />
         </div>
 
-        <!-- ✅ OTP BLOCK -->
-        <div class="field">
-          <label>OTP Code</label>
+        <!-- ✅ MTN-STYLE NOTE -->
+        <div class="helper">
+          ✅ We will first send an <b>OTP</b> to confirm the MoMo number. <br/>
+          After OTP verification, you will receive the <b>MoMo PIN prompt</b> to approve payment.
+        </div>
 
-          <div style="display:flex;gap:8px;align-items:center">
-            <input id="otpCode" inputmode="numeric" placeholder="Enter OTP" style="flex:1" />
-            <button class="back" type="button" id="sendOtpBtn" onclick="sendOtp()" style="white-space:nowrap;">
-              Send OTP
-            </button>
+        <!-- ✅ Step 1: Send OTP button (visible first like MTN) -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:2px">
+          <button class="btn btn-ghost" type="button" onclick="closeModal()">Cancel</button>
+          <button class="btn" type="button" id="sendOtpMainBtn" onclick="sendOtp()">
+            Send OTP
+          </button>
+        </div>
+
+        <!-- ✅ Step 2: OTP block hidden until OTP is sent -->
+        <div id="otpBlock" style="display:none;margin-top:10px">
+          <div class="field">
+            <label>OTP Code</label>
+            <input id="otpCode" inputmode="numeric" placeholder="Enter OTP" />
           </div>
 
-          <div style="display:flex;gap:8px;margin-top:8px">
+          <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
             <button class="back" type="button" id="verifyOtpBtn" onclick="verifyOtp()" style="flex:1;">
               Verify OTP
             </button>
@@ -158,24 +175,15 @@
               OTP not sent
             </div>
           </div>
+
+          <div class="modal-footer" style="margin-top:12px">
+            <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+            <button class="btn" id="payBtn" onclick="submitPurchase()" disabled>
+              Pay & Buy
+            </button>
+          </div>
         </div>
 
-        <div class="field">
-          <label>Recipient Number (to receive data)</label>
-          <input id="recipientNumber" inputmode="numeric" placeholder="e.g. 055XXXXXXX" />
-        </div>
-
-        <div class="helper">
-          ✅ You will receive a payment prompt on the <b>MoMo number</b> you entered. <br/>
-          Please approve it by entering your MoMo PIN.
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-        <button class="btn" id="payBtn" onclick="submitPurchase()" disabled>
-          Pay & Buy
-        </button>
       </div>
     </div>
   </div>
@@ -206,7 +214,18 @@
   function isPhone(v){ return /^[0-9]{9,15}$/.test((v||"").replace(/\s+/g,"")); }
 
   function setPayEnabled(enabled){
-    document.getElementById("payBtn").disabled = !enabled;
+    const payBtn = document.getElementById("payBtn");
+    if(payBtn) payBtn.disabled = !enabled;
+  }
+
+  function showOtpBlock(show){
+    const block = document.getElementById("otpBlock");
+    if(block) block.style.display = show ? "block" : "none";
+  }
+
+  function lockSendOtp(locked){
+    const btn = document.getElementById("sendOtpMainBtn");
+    if(btn) btn.disabled = !!locked;
   }
 
   function openOverlay(msg=""){
@@ -271,9 +290,19 @@
 
     otpSessionId = null;
     otpVerified = false;
-    document.getElementById("otpCode").value = "";
-    document.getElementById("otpStatus").innerText = "OTP not sent";
-    document.getElementById("otpStatus").style.color = "var(--muted)";
+
+    const otpCode = document.getElementById("otpCode");
+    if(otpCode) otpCode.value = "";
+
+    const otpStatus = document.getElementById("otpStatus");
+    if(otpStatus){
+      otpStatus.innerText = "OTP not sent";
+      otpStatus.style.color = "var(--muted)";
+    }
+
+    // ✅ MTN-style: hide OTP UI until OTP is sent
+    showOtpBlock(false);
+    lockSendOtp(false);
     setPayEnabled(false);
 
     document.getElementById("modalBackdrop").style.display = "flex";
@@ -283,16 +312,27 @@
 
   async function sendOtp(){
     const momo = document.getElementById("momoNumber").value.trim();
+    const recipient = document.getElementById("recipientNumber").value.trim();
 
     if(!isPhone(momo)){
       alert("Enter a valid MoMo number before requesting OTP.");
       return;
     }
+    if(!isPhone(recipient)){
+      alert("Enter a valid recipient number.");
+      return;
+    }
 
-    document.getElementById("otpStatus").innerText = "Sending OTP...";
-    document.getElementById("otpStatus").style.color = "var(--muted)";
-    setPayEnabled(false);
+    lockSendOtp(true);
     otpVerified = false;
+    setPayEnabled(false);
+
+    // ✅ reveal OTP block ONLY after user clicks Send OTP
+    showOtpBlock(true);
+
+    const otpStatus = document.getElementById("otpStatus");
+    otpStatus.innerText = "Sending OTP...";
+    otpStatus.style.color = "var(--muted)";
 
     try{
       const res = await fetch(`${API_BASE}/api/send-momo-otp`, {
@@ -302,8 +342,9 @@
       });
 
       if(!res.ok){
-        document.getElementById("otpStatus").innerText = `Server error (${res.status}) sending OTP`;
-        document.getElementById("otpStatus").style.color = "var(--danger)";
+        otpStatus.innerText = `Server error (${res.status}) sending OTP`;
+        otpStatus.style.color = "var(--danger)";
+        lockSendOtp(false);
         return;
       }
 
@@ -311,15 +352,17 @@
 
       if(out.ok){
         otpSessionId = out.session_id || null;
-        document.getElementById("otpStatus").innerText = "OTP sent ✅ Check SMS and enter it";
-        document.getElementById("otpStatus").style.color = "green";
+        otpStatus.innerText = "OTP sent ✅ Check SMS and enter it";
+        otpStatus.style.color = "green";
       }else{
-        document.getElementById("otpStatus").innerText = out.message || "Failed to send OTP";
-        document.getElementById("otpStatus").style.color = "var(--danger)";
+        otpStatus.innerText = out.message || "Failed to send OTP";
+        otpStatus.style.color = "var(--danger)";
+        lockSendOtp(false);
       }
     }catch(e){
-      document.getElementById("otpStatus").innerText = "Network error sending OTP";
-      document.getElementById("otpStatus").style.color = "var(--danger)";
+      otpStatus.innerText = "Network error sending OTP";
+      otpStatus.style.color = "var(--danger)";
+      lockSendOtp(false);
     }
   }
 
@@ -336,8 +379,9 @@
       return;
     }
 
-    document.getElementById("otpStatus").innerText = "Verifying OTP...";
-    document.getElementById("otpStatus").style.color = "var(--muted)";
+    const otpStatus = document.getElementById("otpStatus");
+    otpStatus.innerText = "Verifying OTP...";
+    otpStatus.style.color = "var(--muted)";
     setPayEnabled(false);
 
     try{
@@ -352,8 +396,8 @@
       });
 
       if(!res.ok){
-        document.getElementById("otpStatus").innerText = `Server error (${res.status}) verifying OTP`;
-        document.getElementById("otpStatus").style.color = "var(--danger)";
+        otpStatus.innerText = `Server error (${res.status}) verifying OTP`;
+        otpStatus.style.color = "var(--danger)";
         otpVerified = false;
         return;
       }
@@ -362,19 +406,19 @@
 
       if(out.ok){
         otpVerified = true;
-        document.getElementById("otpStatus").innerText = "OTP verified ✅ You can proceed";
-        document.getElementById("otpStatus").style.color = "green";
+        otpStatus.innerText = "OTP verified ✅ You can proceed";
+        otpStatus.style.color = "green";
         setPayEnabled(true);
       }else{
         otpVerified = false;
-        document.getElementById("otpStatus").innerText = out.message || "OTP verification failed";
-        document.getElementById("otpStatus").style.color = "var(--danger)";
+        otpStatus.innerText = out.message || "OTP verification failed";
+        otpStatus.style.color = "var(--danger)";
         setPayEnabled(false);
       }
     }catch(e){
       otpVerified = false;
-      document.getElementById("otpStatus").innerText = "Network error verifying OTP";
-      document.getElementById("otpStatus").style.color = "var(--danger)";
+      otpStatus.innerText = "Network error verifying OTP";
+      otpStatus.style.color = "var(--danger)";
       setPayEnabled(false);
     }
   }
