@@ -975,27 +975,22 @@ app.get("/api/theteller-status", async (req, res) => {
       status.includes("paid");
 
     // ✅ More tolerant “pending”
-    const pending =
-      ["pending", "processing", "in progress", "in_progress"].includes(status) ||
-      status.includes("pending") ||
-      status.includes("processing") ||
-      code === "099";
+  const pending =
+  ["pending", "processing", "in progress", "in_progress", "initiated", "inprogress", "queued"].includes(status) ||
+  status.includes("pending") ||
+  status.includes("processing") ||
+  status.includes("progress") ||
+  status.includes("initiated") ||
+  status.includes("queued") ||
+  code === "099";
 
-    // ✅ More tolerant “failed”
-   const failed =
+// ✅ More tolerant “failed”
+const failed =
   ["failed", "declined", "cancelled", "canceled", "reversed"].includes(status) ||
   status.includes("fail") ||
   status.includes("decline") ||
   status.includes("cancel");
 
-  // If not approved and not failed, keep waiting (even if code is weird)
-return res.json({
-  ok: true,
-  status: status || "unknown",
-  finalized: false,
-  message: "⏳ Awaiting approval... (still checking)",
-  raw,
-});
 
 
     // ✅ If approved, finalize by inserting into admin_orders
