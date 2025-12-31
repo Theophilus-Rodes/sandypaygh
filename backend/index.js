@@ -2248,29 +2248,55 @@ app.post("/api/submit-afa-payment", async (req, res) => {
 });
 
 
+function normalizeGhanaMsisdn(input) {
+  let n = String(input || "").trim();
+
+  // remove spaces, +, -, etc
+  n = n.replace(/[^\d]/g, "");
+
+  // Handle Ghana formats:
+  // +233XXXXXXXXX  -> 233XXXXXXXXX
+  // 233XXXXXXXXX   -> 233XXXXXXXXX
+  // 0XXXXXXXXX     -> 0XXXXXXXXX
+
+  // If starts with 233 and length is 12 (233 + 9 digits), convert to local 0XXXXXXXXX
+  if (n.startsWith("233") && n.length === 12) {
+    n = "0" + n.slice(3);
+  }
+
+  // If user enters 9 digits only (e.g. 24xxxxxxx), make it 0XXXXXXXXX
+  if (n.length === 9) {
+    n = "0" + n;
+  }
+
+  // If user enters 10 digits, assume it's already 0XXXXXXXXX
+  return n;
+}
+
 function detectMomoNetwork(msisdn) {
-  const n = String(msisdn || "").replace(/\D/g, "");
+  const local = normalizeGhanaMsisdn(msisdn);
 
-  // remove leading 233 if user enters it
-  const local = n.startsWith("233") ? "0" + n.slice(3) : n;
+  // Must be Ghana local format 0XXXXXXXXX
+  if (!/^0\d{9}$/.test(local)) return null;
 
-  // Ghana starts with 0 then 9 digits
   const prefix = local.slice(0, 3); // e.g. 024
 
-  // MTN prefixes (common)
-  const mtn = ["024","054","055","059","025"];
-  // AirtelTigo prefixes (common)
-  const at = ["026","056","027","057"];
-  // Telecel/Vodafone prefixes (common)
-  const vdf = ["020","050"];
+  // ✅ MTN prefixes (Ghana)
+  const MTN = new Set(["024","025","053","054","055","059"]);
 
-  if (mtn.includes(prefix)) return "mtn";
-  if (at.includes(prefix)) return "airteltigo";
-  if (vdf.includes(prefix)) return "telecel";
+  // ✅ AirtelTigo prefixes (Ghana)
+  const AT = new Set(["026","027","056","057"]);
 
-  // fallback: try first 2 digits after 0 (less accurate)
+  // ✅ Telecel/Vodafone prefixes (Ghana)
+  const VDF = new Set(["020","050"]);
+
+  if (MTN.has(prefix)) return "mtn";
+  if (AT.has(prefix)) return "airteltigo";
+  if (VDF.has(prefix)) return "telecel";
+
   return null;
 }
+
 
 
 
@@ -2774,6 +2800,12 @@ app.post("/api/load-wallet-the-teller", async (req, res) => {
       default: return null;
     }
   }
+const localMomo = normalizeGhanaMsisdn(momo_number);
+const payerNet = detectMomoNetwork(momo_number);
+
+console.log("MoMo raw:", momo_number);
+console.log("MoMo normalized:", localMomo);
+console.log("Detected payerNet:", payerNet);
 
   const rSwitch = getSwitchCode(network);
   if (!rSwitch) return res.status(400).send("Unsupported network selected");
