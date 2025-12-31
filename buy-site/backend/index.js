@@ -678,6 +678,40 @@ function getSwitchCode(network) {
   return null;
 }
 
+function isInitAccepted(data) {
+  const status = String(data?.status || "").toLowerCase();
+  const code = String(data?.code || "");
+
+  // Common “good” words from gateways
+  const goodStatusWords = [
+    "approved",
+    "success",
+    "successful",
+    "pending",
+    "processing",
+    "initiated",
+    "inprogress",
+    "in_progress",
+    "queued",
+    "accepted",
+    "ok",
+  ];
+
+  // If status contains any good word, accept
+  if (goodStatusWords.some(w => status.includes(w))) return true;
+
+  // If code looks like a success/pending code, accept
+  // (Gateways often use 00 / 000 / 200 / 201 / 202 for OK-ish init responses)
+  const goodCodes = new Set(["00", "000", "200", "201", "202", "100", "101", "102"]);
+  if (goodCodes.has(code)) return true;
+
+  // Sometimes response includes transaction id / reference even if status text is odd
+  if (data?.transaction_id || data?.transactionId || data?.reference || data?.checkout_url) return true;
+
+  return false;
+}
+
+
 // ✅ MSISDN -> 233XXXXXXXXX
 function formatMsisdnForTheTeller(number) {
   let msisdn = String(number || "").replace(/\D/g, "");
@@ -703,23 +737,34 @@ function makePackageId() {
   return `PKG-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
 
-// ✅ status helpers
+// ✅ status helpers (used by INIT)
 function isApprovedStatus(status, code) {
-  const s = String(status || "").toLowerCase();
-  const c = String(code || "");
+  const s = String(status || "").toLowerCase().trim();
+  const c = String(code || "").trim();
+
   return (
-    s === "approved" ||
-    s === "successful" ||
-    s === "success" ||
-    s === "completed" ||
-    c === "000"
+    c === "000" || c === "00" || c === "0" ||
+    ["approved", "successful", "success", "completed", "paid", "done"].includes(s) ||
+    s.includes("success") ||
+    s.includes("approved") ||
+    s.includes("complete") ||
+    s.includes("paid")
   );
 }
 
 function isPendingStatus(status, code) {
-  const s = String(status || "").toLowerCase();
-  const c = String(code || "");
-  return s === "pending" || s === "processing" || c === "099";
+  const s = String(status || "").toLowerCase().trim();
+  const c = String(code || "").trim();
+
+  return (
+    c === "099" ||
+    ["pending", "processing", "in progress", "in_progress", "initiated", "inprogress", "queued"].includes(s) ||
+    s.includes("pending") ||
+    s.includes("processing") ||
+    s.includes("progress") ||
+    s.includes("initiated") ||
+    s.includes("queued")
+  );
 }
 
 // ===============================
@@ -801,17 +846,26 @@ app.post("/api/buy-data-theteller", async (req, res) => {
     console.log("📥 TheTeller INIT response:", tt.data);
 
     const status = String(tt.data?.status || "").toLowerCase();
-    const code = String(tt.data?.code || "");
+const code = String(tt.data?.code || "");
+const message =
+  tt.data?.message ||
+  tt.data?.reason ||
+  tt.data?.response_message ||
+  tt.data?.status_message ||
+  "";
 
-    const accepted = isApprovedStatus(status, code) || isPendingStatus(status, code);
+// ✅ Accept more INIT statuses/codes (TheTeller varies by switch)
+const accepted = isInitAccepted(tt.data);
 
-    if (!accepted) {
-      return res.json({
-        ok: false,
-        message: "Payment prompt not accepted.",
-        theteller: tt.data,
-      });
-    }
+if (!accepted) {
+  console.log("❌ INIT not accepted raw:", tt.data);
+  return res.json({
+    ok: false,
+    message: `Payment prompt not accepted (status=${tt.data?.status}, code=${tt.data?.code}) ${message}`.trim(),
+    theteller: tt.data,
+  });
+}
+
 
     // ✅ Store pending info so STATUS can auto-insert after approval
     pendingOrders.set(transactionId, {
@@ -2134,17 +2188,16 @@ app.post("/api/submit-afa-payment", async (req, res) => {
     const revenueAmount = (amount * 0.02).toFixed(2);
     const vendorAmount = (amount - revenueAmount).toFixed(2);
 
-    function getSwitchCode(net) {
-      switch (net.toLowerCase()) {
-        case "mtn": return "MTN";
-        case "vodafone":
-        case "telecel": return "VDF";
-        case "airteltigo":
-        case "airtel": return "ATL";
-        case "tigo": return "TGO";
-        default: return null;
-      }
-    }
+  function getSwitchCode(net) {
+  const n = String(net || "").toLowerCase().trim();
+
+  if (n === "mtn") return "MTN";
+  if (n === "airteltigo" || n === "airtel" || n === "tigo" || n === "atl") return "ATL";
+  if (n === "telecel" || n === "vodafone" || n === "vdf") return "VDF";
+
+  return null;
+}
+
 
     const rSwitch = getSwitchCode(network);
     const formattedMoMo = momo_number.replace(/^0/, "233");
