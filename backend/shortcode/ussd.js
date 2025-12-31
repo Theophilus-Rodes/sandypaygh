@@ -574,15 +574,27 @@ function handleSession(sessionId, input, msisdn, res) {
           (async () => {
             try {
               // ✅ r-switch MUST be payer (dialer) wallet network, not bundle network
-const payerNet = state.payerNetwork || detectPayerNetwork(momo_number);
-const rSwitch = getPayerSwitchCode(payerNet);
-              if (!rSwitch) {
-                console.error(
-                  "❌ Unsupported network for TheTeller r-switch:",
-                  network
-                );
-                return;
-              }
+const payerNet = (state.payerNetwork || detectPayerNetwork(momo_number) || "").toLowerCase();
+
+// Force r-switch mapping (no function ambiguity)
+const rSwitch =
+  payerNet === "mtn" ? "MTN" :
+  payerNet === "vodafone" || payerNet === "telecel" ? "VDF" :
+  payerNet === "airteltigo" ? "ATL" :
+  null;
+
+if (!rSwitch) {
+  console.error("❌ Unsupported payer network for TheTeller r-switch:", {
+    payerNet,
+    momo_number,
+    detectedPrefix: (() => {
+      const d = String(momo_number || "").replace(/\D/g, "");
+      const prefix = d.startsWith("233") ? "0" + d.slice(3, 6) : d.slice(0, 3);
+      return prefix;
+    })(),
+  });
+  return;
+}
 
               const formattedMoMo = formatMsisdnForTheTeller(momo_number);
               const amountFormatted = String(Math.round(amount * 100)).padStart(
