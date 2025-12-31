@@ -743,7 +743,7 @@ app.post("/api/buy-data-theteller", async (req, res) => {
   }
 
   try {
-    // 1) Fetch package
+    // 1) Fetch package (this is the DATA bundle network)
     const [rows] = await db
       .promise()
       .query(
@@ -757,10 +757,12 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
     const pkg = rows[0];
 
-    // 2) Map network to r-switch
-    const rSwitch = getSwitchCode(pkg.network);
+    // ✅ 2) Detect payer MoMo network from momo_number (NOT from pkg.network)
+    const payerNet = detectMomoNetwork(momo_number); // 'mtn' | 'airteltigo' | 'telecel'
+    const rSwitch = getSwitchCode(payerNet);
+
     if (!rSwitch) {
-      return res.json({ ok: false, message: "Unsupported network." });
+      return res.json({ ok: false, message: "Unsupported payer network." });
     }
 
     // 3) Build payload
@@ -772,19 +774,25 @@ app.post("/api/buy-data-theteller", async (req, res) => {
       transaction_id: transactionId,
       desc: `Sandypay Data - ${pkg.package_name}`,
       merchant_id: THETELLER.merchantId,
+
+      // ✅ payer number (can be MTN/AT/Telecel)
       subscriber_number: formatMsisdnForTheTeller(momo_number),
+
+      // ✅ payer switch (based on momo_number)
       "r-switch": rSwitch,
+
       redirect_url: "https://sandipay.co/payment-callback",
     };
 
     console.log("📤 TheTeller INIT payload:", payload);
     console.log("🔐 Using merchant:", THETELLER.merchantId);
+    console.log("💳 Payer network:", payerNet, " | Bundle network:", String(pkg.network || "").toLowerCase());
 
-    // 4) Call TheTeller INIT  ✅ FIXED AUTH
+    // 4) Call TheTeller INIT
     const tt = await axios.post(THETELLER.endpoint, payload, {
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Basic ${THETELLER.basicToken}`, // ✅ FIXED
+        Authorization: `Basic ${THETELLER.basicToken}`,
         "Cache-Control": "no-cache",
       },
       timeout: 30000,
@@ -811,7 +819,13 @@ app.post("/api/buy-data-theteller", async (req, res) => {
       recipient_number,
       package_name: pkg.package_name,
       amount: Number(pkg.price),
+
+      // ✅ this remains the bundle network (delivery network)
       network: String(pkg.network || "").toLowerCase(),
+
+      // optional: store payer network too (if you later add DB column)
+      payer_network: payerNet,
+
       package_id: makePackageId(),
     });
 
@@ -830,7 +844,6 @@ app.post("/api/buy-data-theteller", async (req, res) => {
     });
   }
 });
-
 
 // =====================================================
 // GET /api/theteller-status?transaction_id=...
@@ -2180,6 +2193,32 @@ app.post("/api/submit-afa-payment", async (req, res) => {
     }
   });
 });
+
+
+function detectMomoNetwork(msisdn) {
+  const n = String(msisdn || "").replace(/\D/g, "");
+
+  // remove leading 233 if user enters it
+  const local = n.startsWith("233") ? "0" + n.slice(3) : n;
+
+  // Ghana starts with 0 then 9 digits
+  const prefix = local.slice(0, 3); // e.g. 024
+
+  // MTN prefixes (common)
+  const mtn = ["024","054","055","059","025"];
+  // AirtelTigo prefixes (common)
+  const at = ["026","056","027","057"];
+  // Telecel/Vodafone prefixes (common)
+  const vdf = ["020","050"];
+
+  if (mtn.includes(prefix)) return "mtn";
+  if (at.includes(prefix)) return "airteltigo";
+  if (vdf.includes(prefix)) return "telecel";
+
+  // fallback: try first 2 digits after 0 (less accurate)
+  return null;
+}
+
 
 
 
