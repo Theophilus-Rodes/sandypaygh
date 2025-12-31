@@ -3951,7 +3951,7 @@ app.get("/api/get-pending-counts", (req, res) => {
     const counts = { MTN: 0, TELECEL: 0, AT: 0 };
     results.forEach(row => {
       const key = row.network.toUpperCase();
-      if (key === "MTN" || key === "TELECEL" || key === "AT") {
+      if (key === "MTN" || key === "TELECEL" || key === "airteltigo") {
         counts[key] = row.count;
       }
     });
