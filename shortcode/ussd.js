@@ -135,24 +135,32 @@ const sessions = {};
 const PAGE_SIZE = 6; // how many packages per page
 
 
-// Detect payer (dialer) network from msisdn prefix (Ghana)
 function detectPayerNetwork(msisdn) {
   const d = String(msisdn || "").replace(/\D/g, "");
-  const local = d.startsWith("233") ? "0" + d.slice(3, 5) : d.slice(0, 3);
+
+  // get prefix like 024 / 050 / 027
+  let prefix = "";
+  if (d.startsWith("233") && d.length >= 12) {
+    // 233 + (2-digit operator prefix) + rest
+    // Example: 233504602107 -> prefix should be 050
+    prefix = "0" + d.slice(3, 5 + 1); // ✅ slice(3,6)
+  } else {
+    // Example: 0504602107 -> prefix 050
+    prefix = d.slice(0, 3);
+  }
 
   // MTN: 024, 054, 055, 059
-  if (["024", "054", "055", "059"].includes(local)) return "mtn";
+  if (["024", "054", "055", "059"].includes(prefix)) return "mtn";
 
   // Vodafone/Telecel: 020, 050
-  if (["020", "050"].includes(local)) return "vodafone";
+  if (["020", "050"].includes(prefix)) return "vodafone";
 
   // AirtelTigo: 026, 056, 027, 057
-  if (["026", "056", "027", "057"].includes(local)) return "airteltigo";
+  if (["026", "056", "027", "057"].includes(prefix)) return "airteltigo";
 
-  return ""; // unknown
+  return "";
 }
 
-// Convert payer network name to TheTeller r-switch code
 function getPayerSwitchCode(payerNet) {
   switch (String(payerNet || "").toLowerCase()) {
     case "mtn":
@@ -161,10 +169,7 @@ function getPayerSwitchCode(payerNet) {
     case "telecel":
       return "VDF";
     case "airteltigo":
-    case "airtel":
       return "ATL";
-    case "tigo":
-      return "TGO";
     default:
       return null;
   }
@@ -609,6 +614,13 @@ const rSwitch = getPayerSwitchCode(payerNet);
                   },
                 }
               );
+              console.log("💳 PAY DEBUG:", {
+  momo_number,
+  formattedMoMo,
+  payerNet,
+  rSwitch,
+  selectedBundleNetwork: network
+});
 
               console.log("📥 TheTeller USSD response:", response.data);
 
