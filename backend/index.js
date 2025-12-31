@@ -99,7 +99,17 @@ function checkAccess(req, res, next) {
 
 // ✅ INITIALIZE APP
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    "https://sandypay.com",
+    "https://www.sandypay.com",
+    "https://sandypay.co",
+    "https://www.sandypay.co"
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 app.use(bodyParser.json());
 //Continue ussd
 app.use("/api/moolre", moolreRouter);
@@ -668,6 +678,40 @@ function getSwitchCode(network) {
   return null;
 }
 
+function isInitAccepted(data) {
+  const status = String(data?.status || "").toLowerCase();
+  const code = String(data?.code || "");
+
+  // Common “good” words from gateways
+  const goodStatusWords = [
+    "approved",
+    "success",
+    "successful",
+    "pending",
+    "processing",
+    "initiated",
+    "inprogress",
+    "in_progress",
+    "queued",
+    "accepted",
+    "ok",
+  ];
+
+  // If status contains any good word, accept
+  if (goodStatusWords.some(w => status.includes(w))) return true;
+
+  // If code looks like a success/pending code, accept
+  // (Gateways often use 00 / 000 / 200 / 201 / 202 for OK-ish init responses)
+  const goodCodes = new Set(["00", "000", "200", "201", "202", "100", "101", "102"]);
+  if (goodCodes.has(code)) return true;
+
+  // Sometimes response includes transaction id / reference even if status text is odd
+  if (data?.transaction_id || data?.transactionId || data?.reference || data?.checkout_url) return true;
+
+  return false;
+}
+
+
 // ✅ MSISDN -> 233XXXXXXXXX
 function formatMsisdnForTheTeller(number) {
   let msisdn = String(number || "").replace(/\D/g, "");
@@ -693,23 +737,34 @@ function makePackageId() {
   return `PKG-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
 
-// ✅ status helpers
+// ✅ status helpers (used by INIT)
 function isApprovedStatus(status, code) {
-  const s = String(status || "").toLowerCase();
-  const c = String(code || "");
+  const s = String(status || "").toLowerCase().trim();
+  const c = String(code || "").trim();
+
   return (
-    s === "approved" ||
-    s === "successful" ||
-    s === "success" ||
-    s === "completed" ||
-    c === "000"
+    c === "000" || c === "00" || c === "0" ||
+    ["approved", "successful", "success", "completed", "paid", "done"].includes(s) ||
+    s.includes("success") ||
+    s.includes("approved") ||
+    s.includes("complete") ||
+    s.includes("paid")
   );
 }
 
 function isPendingStatus(status, code) {
-  const s = String(status || "").toLowerCase();
-  const c = String(code || "");
-  return s === "pending" || s === "processing" || c === "099";
+  const s = String(status || "").toLowerCase().trim();
+  const c = String(code || "").trim();
+
+  return (
+    c === "099" ||
+    ["pending", "processing", "in progress", "in_progress", "initiated", "inprogress", "queued"].includes(s) ||
+    s.includes("pending") ||
+    s.includes("processing") ||
+    s.includes("progress") ||
+    s.includes("initiated") ||
+    s.includes("queued")
+  );
 }
 
 // ===============================
@@ -733,7 +788,7 @@ app.post("/api/buy-data-theteller", async (req, res) => {
   }
 
   try {
-    // 1) Fetch package
+    // 1) Fetch package (this is the DATA bundle network)
     const [rows] = await db
       .promise()
       .query(
@@ -747,10 +802,12 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
     const pkg = rows[0];
 
-    // 2) Map network to r-switch
-    const rSwitch = getSwitchCode(pkg.network);
+    // ✅ 2) Detect payer MoMo network from momo_number (NOT from pkg.network)
+    const payerNet = detectMomoNetwork(momo_number); // 'mtn' | 'airteltigo' | 'telecel'
+    const rSwitch = getSwitchCode(payerNet);
+
     if (!rSwitch) {
-      return res.json({ ok: false, message: "Unsupported network." });
+      return res.json({ ok: false, message: "Unsupported payer network." });
     }
 
     // 3) Build payload
@@ -762,19 +819,25 @@ app.post("/api/buy-data-theteller", async (req, res) => {
       transaction_id: transactionId,
       desc: `Sandypay Data - ${pkg.package_name}`,
       merchant_id: THETELLER.merchantId,
+
+      // ✅ payer number (can be MTN/AT/Telecel)
       subscriber_number: formatMsisdnForTheTeller(momo_number),
+
+      // ✅ payer switch (based on momo_number)
       "r-switch": rSwitch,
+
       redirect_url: "https://sandipay.co/payment-callback",
     };
 
     console.log("📤 TheTeller INIT payload:", payload);
     console.log("🔐 Using merchant:", THETELLER.merchantId);
+    console.log("💳 Payer network:", payerNet, " | Bundle network:", String(pkg.network || "").toLowerCase());
 
-    // 4) Call TheTeller INIT  ✅ FIXED AUTH
+    // 4) Call TheTeller INIT
     const tt = await axios.post(THETELLER.endpoint, payload, {
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Basic ${THETELLER.basicToken}`, // ✅ FIXED
+        Authorization: `Basic ${THETELLER.basicToken}`,
         "Cache-Control": "no-cache",
       },
       timeout: 30000,
@@ -783,17 +846,26 @@ app.post("/api/buy-data-theteller", async (req, res) => {
     console.log("📥 TheTeller INIT response:", tt.data);
 
     const status = String(tt.data?.status || "").toLowerCase();
-    const code = String(tt.data?.code || "");
+const code = String(tt.data?.code || "");
+const message =
+  tt.data?.message ||
+  tt.data?.reason ||
+  tt.data?.response_message ||
+  tt.data?.status_message ||
+  "";
 
-    const accepted = isApprovedStatus(status, code) || isPendingStatus(status, code);
+// ✅ Accept more INIT statuses/codes (TheTeller varies by switch)
+const accepted = isInitAccepted(tt.data);
 
-    if (!accepted) {
-      return res.json({
-        ok: false,
-        message: "Payment prompt not accepted.",
-        theteller: tt.data,
-      });
-    }
+if (!accepted) {
+  console.log("❌ INIT not accepted raw:", tt.data);
+  return res.json({
+    ok: false,
+    message: `Payment prompt not accepted (status=${tt.data?.status}, code=${tt.data?.code}) ${message}`.trim(),
+    theteller: tt.data,
+  });
+}
+
 
     // ✅ Store pending info so STATUS can auto-insert after approval
     pendingOrders.set(transactionId, {
@@ -801,7 +873,13 @@ app.post("/api/buy-data-theteller", async (req, res) => {
       recipient_number,
       package_name: pkg.package_name,
       amount: Number(pkg.price),
+
+      // ✅ this remains the bundle network (delivery network)
       network: String(pkg.network || "").toLowerCase(),
+
+      // optional: store payer network too (if you later add DB column)
+      payer_network: payerNet,
+
       package_id: makePackageId(),
     });
 
@@ -820,7 +898,6 @@ app.post("/api/buy-data-theteller", async (req, res) => {
     });
   }
 });
-
 
 // =====================================================
 // GET /api/theteller-status?transaction_id=...
@@ -2111,17 +2188,16 @@ app.post("/api/submit-afa-payment", async (req, res) => {
     const revenueAmount = (amount * 0.02).toFixed(2);
     const vendorAmount = (amount - revenueAmount).toFixed(2);
 
-    function getSwitchCode(net) {
-      switch (net.toLowerCase()) {
-        case "mtn": return "MTN";
-        case "vodafone":
-        case "telecel": return "VDF";
-        case "airteltigo":
-        case "airtel": return "ATL";
-        case "tigo": return "TGO";
-        default: return null;
-      }
-    }
+  function getSwitchCode(net) {
+  const n = String(net || "").toLowerCase().trim();
+
+  if (n === "mtn") return "MTN";
+  if (n === "airteltigo" || n === "airtel" || n === "tigo" || n === "atl") return "ATL";
+  if (n === "telecel" || n === "vodafone" || n === "vdf") return "VDF";
+
+  return null;
+}
+
 
     const rSwitch = getSwitchCode(network);
     const formattedMoMo = momo_number.replace(/^0/, "233");
@@ -2171,6 +2247,7 @@ app.post("/api/submit-afa-payment", async (req, res) => {
   });
 });
 
+
 function detectMomoNetwork(msisdn) {
   const n = String(msisdn || "").replace(/\D/g, "");
 
@@ -2194,6 +2271,8 @@ function detectMomoNetwork(msisdn) {
   // fallback: try first 2 digits after 0 (less accurate)
   return null;
 }
+
+
 
 
 
