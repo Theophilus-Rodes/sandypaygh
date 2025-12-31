@@ -837,6 +837,11 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
       redirect_url: "https://sandipay.co/payment-callback",
     };
+    console.log("🧾 Bundle network:", pkg.network);
+console.log("💳 MoMo number raw:", momo_number);
+console.log("💳 Detected payerNet:", payerNet);
+console.log("💳 Using r-switch:", rSwitch);
+console.log("💳 subscriber_number:", formatMsisdnForTheTeller(momo_number));
 
     console.log("📤 TheTeller INIT payload:", payload);
     console.log("🔐 Using merchant:", THETELLER.merchantId);
