@@ -2171,6 +2171,29 @@ app.post("/api/submit-afa-payment", async (req, res) => {
   });
 });
 
+function detectMomoNetwork(msisdn) {
+  const n = String(msisdn || "").replace(/\D/g, "");
+
+  // remove leading 233 if user enters it
+  const local = n.startsWith("233") ? "0" + n.slice(3) : n;
+
+  // Ghana starts with 0 then 9 digits
+  const prefix = local.slice(0, 3); // e.g. 024
+
+  // MTN prefixes (common)
+  const mtn = ["024","054","055","059","025"];
+  // AirtelTigo prefixes (common)
+  const at = ["026","056","027","057"];
+  // Telecel/Vodafone prefixes (common)
+  const vdf = ["020","050"];
+
+  if (mtn.includes(prefix)) return "mtn";
+  if (at.includes(prefix)) return "airteltigo";
+  if (vdf.includes(prefix)) return "telecel";
+
+  // fallback: try first 2 digits after 0 (less accurate)
+  return null;
+}
 
 
 
