@@ -776,6 +776,137 @@ function isPendingStatus(status, code) {
   );
 }
 
+// ===========================
+// ✅ SERVER-SIDE AUTO CONFIRM
+// ===========================
+const watching = new Set();
+
+async function finalizeOrderIfApproved(transaction_id) {
+  const p = pendingOrders.get(transaction_id);
+  if (!p) return; // nothing to finalize
+
+  // Prevent duplicates
+  const [exists] = await db
+    .promise()
+    .query("SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1", [
+      transaction_id,
+    ]);
+
+  if (!exists.length) {
+    await db.promise().query(
+      `INSERT INTO admin_orders
+        (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
+       VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
+      [
+        p.vendor_id,
+        p.recipient_number,
+        p.package_name,
+        Number(p.amount),
+        String(p.network).toLowerCase(),
+        p.package_id,
+        transaction_id,
+      ]
+    );
+  }
+
+  pendingOrders.delete(transaction_id);
+}
+
+async function checkTheTellerStatusOnce(transaction_id) {
+  const url = `${THETELLER.statusBase}/${encodeURIComponent(transaction_id)}/status`;
+
+  const resp = await axios.get(url, {
+    headers: {
+      Authorization: `Basic ${THETELLER.basicToken}`,
+      "Merchant-Id": THETELLER.merchantId,
+      "Cache-Control": "no-cache",
+    },
+    timeout: 30000,
+  });
+
+  const raw = resp.data || {};
+
+  const statusRaw =
+    raw.status ??
+    raw.Status ??
+    raw.transaction_status ??
+    raw.transactionStatus ??
+    raw.response_status ??
+    raw.state ??
+    "";
+
+  const codeRaw =
+    raw.code ??
+    raw.Code ??
+    raw.response_code ??
+    raw.responseCode ??
+    raw.status_code ??
+    raw.statusCode ??
+    "";
+
+  const status = String(statusRaw).toLowerCase().trim();
+  const code = String(codeRaw).trim();
+
+  const approved =
+    code === "000" ||
+    code === "00" ||
+    code === "0" ||
+    ["approved", "successful", "success", "completed", "paid", "done"].includes(status) ||
+    status.includes("success") ||
+    status.includes("approved") ||
+    status.includes("complete") ||
+    status.includes("paid");
+
+  const failed =
+    ["failed", "declined", "cancelled", "canceled", "reversed"].includes(status) ||
+    status.includes("fail") ||
+    status.includes("decline") ||
+    status.includes("cancel");
+
+  return { approved, failed, status, code, raw };
+}
+
+function startServerSideWatcher(transaction_id, opts = {}) {
+  // don’t start twice
+  if (watching.has(transaction_id)) return;
+  watching.add(transaction_id);
+
+  const intervalMs = opts.intervalMs ?? 5000;     // check every 5s
+  const maxMinutes = opts.maxMinutes ?? 6;        // watch for 6 minutes
+  const maxTries = Math.ceil((maxMinutes * 60 * 1000) / intervalMs);
+
+  let tries = 0;
+
+  const timer = setInterval(async () => {
+    tries++;
+
+    try {
+      const { approved, failed } = await checkTheTellerStatusOnce(transaction_id);
+
+      if (approved) {
+        await finalizeOrderIfApproved(transaction_id);
+        clearInterval(timer);
+        watching.delete(transaction_id);
+        return;
+      }
+
+      if (failed || tries >= maxTries) {
+        // stop watching (leave it for manual check if you want)
+        clearInterval(timer);
+        watching.delete(transaction_id);
+        return;
+      }
+    } catch (e) {
+      // If status endpoint temporarily fails, keep trying until maxTries
+      if (tries >= maxTries) {
+        clearInterval(timer);
+        watching.delete(transaction_id);
+      }
+    }
+  }, intervalMs);
+}
+
+
 // ===============================
 //  PENDING ORDERS STORE (MEMORY)
 // ===============================
@@ -896,6 +1027,9 @@ if (!accepted) {
 
       package_id: makePackageId(),
     });
+    // ✅ Start backend auto-confirm so even if user closes page, it will still insert when approved
+startServerSideWatcher(transactionId, { intervalMs: 5000, maxMinutes: 6 });
+
 
     return res.json({
       ok: true,
