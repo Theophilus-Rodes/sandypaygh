@@ -4070,7 +4070,6 @@ app.post("/api/update-package-amount", (req, res) => {
 
 
 
-//DISPLAY FOR BADGES
 app.get("/api/get-pending-counts", (req, res) => {
   const sql = `
     SELECT network, COUNT(*) AS count
@@ -4083,15 +4082,19 @@ app.get("/api/get-pending-counts", (req, res) => {
     if (err) return res.status(500).send("DB error");
 
     const counts = { MTN: 0, TELECEL: 0, AT: 0 };
+
     results.forEach(row => {
-      const key = row.network.toUpperCase();
-      if (key === "MTN" || key === "TELECEL" || key === "airteltigo") {
-        counts[key] = row.count;
-      }
+      const net = String(row.network || "").toLowerCase();
+
+      if (net === "mtn") counts.MTN = row.count;
+      else if (net === "telecel") counts.TELECEL = row.count;
+      else if (net === "airteltigo") counts.AT = row.count; // ✅ mapped
     });
+
     res.json(counts);
   });
 });
+
 
 
 
