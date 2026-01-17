@@ -2,58 +2,94 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Live Phone Number Search</title>
 
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       font-family: Arial, sans-serif;
-      padding: 30px;
+      padding: 20px;
       background: #f9f9f9;
+      display: flex;
+      justify-content: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 400px;
+    }
+
+    h3 {
+      text-align: center;
+      margin-bottom: 15px;
     }
 
     input {
-      width: 320px;
-      padding: 12px;
+      width: 100%;
+      padding: 14px;
       font-size: 16px;
       border: 1px solid #ccc;
-      border-radius: 4px;
+      border-radius: 6px;
+      outline: none;
     }
 
     ul {
-      width: 320px;
+      width: 100%;
       list-style: none;
       padding: 0;
       margin-top: 0;
       background: #fff;
       border: 1px solid #ccc;
       border-top: none;
-      max-height: 220px;
+      max-height: 250px;
       overflow-y: auto;
+      border-radius: 0 0 6px 6px;
     }
 
     li {
-      padding: 10px;
+      padding: 12px;
       border-bottom: 1px solid #eee;
       cursor: pointer;
+      font-size: 15px;
+    }
+
+    li:last-child {
+      border-bottom: none;
     }
 
     li:hover {
       background: #f1f1f1;
     }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 15px;
+      }
+
+      li {
+        font-size: 16px;
+      }
+    }
   </style>
 </head>
 <body>
 
-  <h3>Search Phone Number</h3>
+  <div class="container">
+    <h3>Search Phone Number</h3>
 
-  <input
-    type="text"
-    id="searchInput"
-    placeholder="Start typing a number..."
-    autocomplete="off"
-  />
+    <input
+      type="text"
+      id="searchInput"
+      placeholder="Start typing a number..."
+      autocomplete="off"
+    />
 
-  <ul id="results"></ul>
+    <ul id="results"></ul>
+  </div>
 
   <script>
     const searchInput = document.getElementById("searchInput");
