@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Live Phone Number Search</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 30px;
+      background: #f9f9f9;
+    }
+
+    input {
+      width: 320px;
+      padding: 12px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    ul {
+      width: 320px;
+      list-style: none;
+      padding: 0;
+      margin-top: 0;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-top: none;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    li {
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+
+    li:hover {
+      background: #f1f1f1;
+    }
+  </style>
+</head>
+<body>
+
+  <h3>Search Phone Number</h3>
+
+  <input
+    type="text"
+    id="searchInput"
+    placeholder="Start typing a number..."
+    autocomplete="off"
+  />
+
+  <ul id="results"></ul>
+
+  <script>
+    const searchInput = document.getElementById("searchInput");
+    const resultsBox = document.getElementById("results");
+    let controller;
+
+    searchInput.addEventListener("keyup", async () => {
+      const query = searchInput.value.trim();
+      resultsBox.innerHTML = "";
+
+      if (query.length < 2) return;
+
+      if (controller) controller.abort();
+      controller = new AbortController();
+
+      try {
+        const response = await fetch("/api/search-numbers?q=" + query, {
+          signal: controller.signal
+        });
+
+        const data = await response.json();
+
+        if (data.length === 0) {
+          resultsBox.innerHTML = "<li>No results found</li>";
+          return;
+        }
+
+        data.forEach(row => {
+          const li = document.createElement("li");
+          li.textContent = row.phone_number;
+
+          li.onclick = () => {
+            searchInput.value = row.phone_number;
+            resultsBox.innerHTML = "";
+          };
+
+          resultsBox.appendChild(li);
+        });
+
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          console.error("Error:", err);
+        }
+      }
+    });
+  </script>
+
+</body>
+</html>
