@@ -1272,6 +1272,28 @@ app.post("/api/buy-data-confirm", async (req, res) => {
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+app.get("/api/search-numbers", (req, res) => {
+  const search = req.query.q;
+
+  if (!search) return res.json([]);
+
+  const sql = `
+    SELECT phone_number
+    FROM telephone_numbers
+    WHERE phone_number LIKE ?
+    ORDER BY phone_number
+    LIMIT 10
+  `;
+
+  db.query(sql, [`${search}%`], (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json([]);
+    }
+
+    res.json(results);
+  });
+});
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
