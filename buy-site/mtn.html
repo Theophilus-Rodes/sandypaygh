@@ -182,7 +182,7 @@
     // ✅ IMPORTANT: API_BASE must be your BACKEND domain
     // If your backend is on vendor.sandypay.co, use that:
     // const API_BASE = "https://vendor.sandypay.co";
-    const API_BASE = "https://sandipay.co";
+   const API_BASE = "";
 
     let selectedPackage = null;
     let currentTransactionId = null;
@@ -212,36 +212,66 @@
       document.getElementById("overlayError").style.display = "none";
     }
 
-    async function loadPackages(){
-      document.getElementById("packages").innerHTML = "";
-      document.getElementById("empty").innerText = "Loading MTN packages...";
 
-      try{
-        const res = await fetch(`${API_BASE}/api/admin-data?network=${encodeURIComponent(NETWORK)}`);
-        const data = await res.json();
+async function loadPackages(){
+  const packagesEl = document.getElementById("packages");
+  const emptyEl = document.getElementById("empty");
 
-        if(!Array.isArray(data) || data.length === 0){
-          document.getElementById("empty").innerText = "No MTN packages available.";
-          return;
-        }
+  packagesEl.innerHTML = "";
+  emptyEl.innerText = "Loading MTN packages...";
 
-        document.getElementById("empty").innerText = "";
+  const url = `${API_BASE}/api/admin-data?network=${encodeURIComponent(NETWORK)}`;
 
-        data.forEach(pkg => {
-          document.getElementById("packages").innerHTML += `
-            <div class="pkg">
-              <h4>${pkg.package_name}</h4>
-              <div class="price">GHS ${money(pkg.price)}</div>
-              <div class="meta">Network: ${String(pkg.network || "").toUpperCase()}</div>
-              <button class="btn" onclick='openModal(${JSON.stringify(pkg)})'>Buy Bundle</button>
-            </div>
-          `;
-        });
+  console.log("📡 Fetching:", url);
 
-      }catch(e){
-        document.getElementById("empty").innerText = "Failed to load packages. Please try again.";
-      }
+  try{
+    const res = await fetch(url);
+
+    console.log("📥 Response status:", res.status);
+
+    const rawText = await res.text();
+    console.log("📦 Raw response:", rawText);
+
+    if(!res.ok){
+      emptyEl.innerText = `Server error (${res.status})`;
+      console.error("❌ HTTP Error:", res.status);
+      return;
     }
+
+    let data;
+
+    try{
+      data = JSON.parse(rawText);
+    }catch(parseErr){
+      emptyEl.innerText = "Response is not valid JSON.";
+      console.error("❌ JSON Parse Error:", parseErr);
+      console.error("Response was:", rawText);
+      return;
+    }
+
+    if(!Array.isArray(data) || data.length === 0){
+      emptyEl.innerText = "No MTN packages available.";
+      return;
+    }
+
+    emptyEl.innerText = "";
+
+    data.forEach(pkg => {
+      packagesEl.innerHTML += `
+        <div class="pkg">
+          <h4>${pkg.package_name}</h4>
+          <div class="price">GHS ${money(pkg.price)}</div>
+          <div class="meta">Network: ${String(pkg.network || "").toUpperCase()}</div>
+          <button class="btn" onclick='openModal(${JSON.stringify(pkg)})'>Buy Bundle</button>
+        </div>
+      `;
+    });
+
+  }catch(err){
+    emptyEl.innerText = "Network error. Check console.";
+    console.error("🚨 Fetch failed:", err);
+  }
+}
 
     function openModal(pkg){
       selectedPackage = pkg;
