@@ -212,36 +212,42 @@
       document.getElementById("overlayError").style.display = "none";
     }
 
-    async function loadPackages(){
-      document.getElementById("packages").innerHTML = "";
-      document.getElementById("empty").innerText = "Loading MTN packages...";
+ async function loadPackages(){
+  document.getElementById("packages").innerHTML = "";
+  document.getElementById("empty").innerText = "Loading MTN packages...";
 
-      try{
-        const res = await fetch(`${API_BASE}/api/admin-data?network=${encodeURIComponent(NETWORK)}`);
-        const data = await res.json();
+  try{
+    const res = await fetch(`${API_BASE}/api/admin-data?network=${encodeURIComponent(NETWORK)}`);
 
-        if(!Array.isArray(data) || data.length === 0){
-          document.getElementById("empty").innerText = "No MTN packages available.";
-          return;
-        }
-
-        document.getElementById("empty").innerText = "";
-
-        data.forEach(pkg => {
-          document.getElementById("packages").innerHTML += `
-            <div class="pkg">
-              <h4>${pkg.package_name}</h4>
-              <div class="price">GHS ${money(pkg.price)}</div>
-              <div class="meta">Network: ${String(pkg.network || "").toUpperCase()}</div>
-              <button class="btn" onclick='openModal(${JSON.stringify(pkg)})'>Buy Bundle</button>
-            </div>
-          `;
-        });
-
-      }catch(e){
-        document.getElementById("empty").innerText = "Failed to load packages. Please try again.";
-      }
+    if(!res.ok){
+      throw new Error(`HTTP ${res.status}`);
     }
+
+    const data = await res.json();
+
+    if(!Array.isArray(data) || data.length === 0){
+      document.getElementById("empty").innerText = "No MTN packages available.";
+      return;
+    }
+
+    document.getElementById("empty").innerText = "";
+
+    data.forEach(pkg => {
+      document.getElementById("packages").innerHTML += `
+        <div class="pkg">
+          <h4>${pkg.package_name}</h4>
+          <div class="price">GHS ${money(pkg.price)}</div>
+          <div class="meta">Network: ${String(pkg.network || "").toUpperCase()}</div>
+          <button class="btn" onclick='openModal(${JSON.stringify(pkg)})'>Buy Bundle</button>
+        </div>
+      `;
+    });
+
+  }catch(e){
+    document.getElementById("empty").innerText = "Failed to load packages. Please try again.";
+    console.error("Load packages error:", e);
+  }
+}
 
     function openModal(pkg){
       selectedPackage = pkg;
