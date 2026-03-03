@@ -114,7 +114,7 @@
 
   <div class="wrap">
     <div class="topbar">
-      <button class="back" onclick="location.href='buy-data.html'">← Back</button>
+      <button class="back" onclick="location.href='index.html'">← Back</button>
       <div style="color:var(--muted);font-size:12px">Select a bundle to buy</div>
     </div>
 
@@ -134,14 +134,16 @@
       </div>
 
       <div class="row">
-        <div class="field">
-          <label>MoMo Number (to deduct from)</label>
-          <input id="momoNumber" inputmode="numeric" placeholder="e.g. 024XXXXXXX" />
-        </div>
+       
 
         <div class="field">
           <label>Recipient Number (to receive data)</label>
           <input id="recipientNumber" inputmode="numeric" placeholder="e.g. 055XXXXXXX" />
+        </div>
+
+         <div class="field">
+          <label>MoMo Number (to deduct from)</label>
+          <input id="momoNumber" inputmode="numeric" placeholder="e.g. 024XXXXXXX" />
         </div>
 
         <!-- OTP Field (hidden until OTP is sent) -->
@@ -177,6 +179,11 @@
   <script>
     const NETWORK = "mtn";
 
+    // ✅ IMPORTANT: API_BASE must be your BACKEND domain
+    // If your backend is on vendor.sandypay.co, use that:
+    // const API_BASE = "https://vendor.sandypay.co";
+    const API_BASE = "https://sandipay.co";
+
     let selectedPackage = null;
     let currentTransactionId = null;
     let pollTimer = null;
@@ -210,7 +217,7 @@
       document.getElementById("empty").innerText = "Loading MTN packages...";
 
       try{
-        const res = await fetch(`/api/admin-data?network=${encodeURIComponent(NETWORK)}`);
+        const res = await fetch(`${API_BASE}/api/admin-data?network=${encodeURIComponent(NETWORK)}`);
         const data = await res.json();
 
         if(!Array.isArray(data) || data.length === 0){
@@ -247,7 +254,6 @@
       document.getElementById("recipientNumber").value = "";
       document.getElementById("otpCode").value = "";
 
-      // reset OTP UI
       otpSent = false;
       otpSessionId = null;
       document.getElementById("otpFieldWrap").style.display = "none";
@@ -269,11 +275,18 @@
       openOverlay("Sending OTP", "Sending OTP to the MoMo number...");
 
       try{
-        const res = await fetch("/api/send-momo-otp", {
+        // ✅ FIX: you MUST store the fetch response in "res"
+        const res = await fetch(`${API_BASE}/api/send-momo-otp`, {
           method: "POST",
           headers: { "Content-Type":"application/json" },
           body: JSON.stringify({ momo_number: momo })
         });
+
+        if(!res.ok){
+          showError(`Server error (${res.status}).`);
+          setTimeout(closeOverlay, 1800);
+          return;
+        }
 
         const out = await res.json();
 
@@ -311,11 +324,12 @@
       openOverlay("Verifying OTP", "Please wait...");
 
       try{
-        const vr = await fetch("/api/verify-momo-otp", {
+        const vr = await fetch(`${API_BASE}/api/verify-momo-otp`, {
           method: "POST",
           headers: { "Content-Type":"application/json" },
           body: JSON.stringify({ momo_number: momo, otp, session_id: otpSessionId })
         });
+
         const vout = await vr.json();
 
         if(!vout.ok){
@@ -324,7 +338,6 @@
           return;
         }
 
-        // OTP ok → start TheTeller
         document.getElementById("overlayTitle").innerText = "Starting Payment";
         document.getElementById("overlayStatus").innerText = "OTP verified. Starting MoMo prompt...";
 
@@ -346,7 +359,7 @@
         tries++;
 
         try{
-          const res = await fetch(`/api/theteller-status?transaction_id=${encodeURIComponent(currentTransactionId)}`);
+          const res = await fetch(`${API_BASE}/api/theteller-status?transaction_id=${encodeURIComponent(currentTransactionId)}`);
           const data = await res.json();
 
           const st = String(data.status || "").toLowerCase();
@@ -380,14 +393,12 @@
     }
 
     async function startTheTellerPayment(momo, recipient){
-      // keep modal closed
       closeModal();
 
-      // overlay already open
       try{
         const vendor_id = localStorage.getItem("vendor_id") || 1;
 
-        const res = await fetch("/api/buy-data-theteller", {
+        const res = await fetch(`${API_BASE}/api/buy-data-theteller`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
