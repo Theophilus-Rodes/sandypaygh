@@ -1168,20 +1168,29 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
   try {
     // 1) if session already exists, return it
-    const existingSession = await getPaymentSessionByClientRef(client_ref);
-    if (existingSession) {
-      console.log("ℹ️ Existing payment session found:", existingSession.client_ref);
+    // 1) if session already exists, return it
+const existingSession = await getPaymentSessionByClientRef(client_ref);
+if (existingSession) {
+  console.log("ℹ️ Existing payment session found:", existingSession.client_ref);
 
-      return res.json({
-        ok: true,
-        resumed: true,
-        client_ref: existingSession.client_ref,
-        transaction_id: existingSession.transaction_id || null,
-        status: existingSession.payment_status || existingSession.init_status || "created",
-        message: "Existing payment session found."
-      });
-    }
+  const alreadyApproved =
+    Number(existingSession.finalized) === 1 ||
+    String(existingSession.payment_status || "").toLowerCase() === "approved";
 
+  return res.json({
+    ok: true,
+    resumed: true,
+    client_ref: existingSession.client_ref,
+    transaction_id: existingSession.transaction_id || null,
+    status: alreadyApproved
+      ? "approved"
+      : (existingSession.payment_status || existingSession.init_status || "created"),
+    finalized: alreadyApproved,
+    message: alreadyApproved
+      ? "Payment already confirmed."
+      : "Existing payment session found."
+  });
+}
     // 2) Fetch package
     const [rows] = await db.promise().query(
       "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
@@ -1361,16 +1370,57 @@ app.post("/api/buy-data-theteller", async (req, res) => {
   }
 });
 
+
 // =====================================================
-// GET /api/theteller-status?transaction_id=...
+// GET /api/theteller-status?transaction_id=...&client_ref=...
 // =====================================================
 app.get("/api/theteller-status", async (req, res) => {
-  const transaction_id = String(req.query.transaction_id || "").trim();
-  if (!transaction_id) {
-    return res.json({ ok: false, status: "unknown", message: "transaction_id is required" });
+  let transaction_id = String(req.query.transaction_id || "").trim();
+  const client_ref = String(req.query.client_ref || "").trim();
+
+  if (!transaction_id && !client_ref) {
+    return res.json({
+      ok: false,
+      status: "unknown",
+      message: "transaction_id or client_ref is required"
+    });
   }
 
   try {
+    // 1) Load payment session first
+    let session = null;
+
+    if (transaction_id) {
+      session = await getPaymentSessionByTransactionId(transaction_id);
+    }
+
+    if (!session && client_ref) {
+      session = await getPaymentSessionByClientRef(client_ref);
+      if (session?.transaction_id) {
+        transaction_id = String(session.transaction_id).trim();
+      }
+    }
+
+    if (!transaction_id) {
+      return res.json({
+        ok: true,
+        status: "pending",
+        finalized: false,
+        message: "Payment session found but transaction is still being prepared."
+      });
+    }
+
+    // 2) If already finalized in DB, trust DB first
+    if (session && (Number(session.finalized) === 1 || String(session.payment_status || "").toLowerCase() === "approved")) {
+      return res.json({
+        ok: true,
+        status: "approved",
+        finalized: true,
+        message: "✅ Payment already confirmed. Order saved.",
+        transaction_id
+      });
+    }
+
     const url = `${THETELLER.statusBase}/${encodeURIComponent(transaction_id)}/status`;
 
     const resp = await axios.get(url, {
@@ -1402,11 +1452,19 @@ app.get("/api/theteller-status", async (req, res) => {
       raw.statusCode ??
       "";
 
+    const reasonRaw =
+      raw.reason ??
+      raw.message ??
+      raw.ResponseMessage ??
+      raw.response_message ??
+      "";
+
     const status = String(statusRaw).toLowerCase().trim();
     const code = String(codeRaw).trim();
+    const reason = String(reasonRaw).trim();
 
     console.log("📥 TheTeller STATUS raw:", raw);
-    console.log("✅ Parsed STATUS:", { status, code });
+    console.log("✅ Parsed STATUS:", { status, code, reason, transaction_id });
 
     const approved =
       code === "000" ||
@@ -1427,16 +1485,24 @@ app.get("/api/theteller-status", async (req, res) => {
       status.includes("queued") ||
       code === "099";
 
-    const failed =
-      ["failed", "declined", "cancelled", "canceled", "reversed"].includes(status) ||
+    // IMPORTANT:
+    // do NOT make declined/cancelled/etc permanently fail immediately
+    // because in your flow the user may approve later in MoMo approvals
+    const failedLike =
+      ["failed", "declined", "cancelled", "canceled", "reversed", "terminated", "expired"].includes(status) ||
       status.includes("fail") ||
       status.includes("decline") ||
-      status.includes("cancel");
+      status.includes("cancel") ||
+      status.includes("terminate") ||
+      code === "100";
 
+    // 3) Approved: finalize once
     if (approved) {
-      const s = await getPaymentSessionByTransactionId(transaction_id);
+      if (!session && transaction_id) {
+        session = await getPaymentSessionByTransactionId(transaction_id);
+      }
 
-      if (s) {
+      if (session) {
         const [exists] = await db.promise().query(
           "SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1",
           [transaction_id]
@@ -1448,12 +1514,12 @@ app.get("/api/theteller-status", async (req, res) => {
             (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
             VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
             [
-              s.vendor_id,
-              s.recipient_number,
-              s.package_name,
-              Number(s.amount),
-              String(s.network).toLowerCase(),
-              s.package_batch_id,
+              session.vendor_id,
+              session.recipient_number,
+              session.package_name,
+              Number(session.amount),
+              String(session.network || "").toLowerCase(),
+              session.package_batch_id,
               transaction_id
             ]
           );
@@ -1463,7 +1529,8 @@ app.get("/api/theteller-status", async (req, res) => {
           `UPDATE payment_sessions
            SET payment_status='approved',
                finalized=1,
-               updated_reference=?
+               updated_reference=?,
+               init_status='approved'
            WHERE transaction_id=?`,
           [transaction_id, transaction_id]
         );
@@ -1473,7 +1540,9 @@ app.get("/api/theteller-status", async (req, res) => {
           status: "approved",
           finalized: true,
           message: "✅ Payment successful. Order saved.",
-          raw,
+          transaction_id,
+          code,
+          raw
         });
       }
 
@@ -1482,13 +1551,18 @@ app.get("/api/theteller-status", async (req, res) => {
         status: "approved",
         finalized: false,
         message: "✅ Payment successful, but payment session not found.",
-        raw,
+        transaction_id,
+        code,
+        raw
       });
     }
 
+    // 4) Normal pending
     if (pending) {
       await db.promise().query(
-        "UPDATE payment_sessions SET payment_status='pending' WHERE transaction_id=?",
+        `UPDATE payment_sessions
+         SET payment_status='pending'
+         WHERE transaction_id=?`,
         [transaction_id]
       );
 
@@ -1497,37 +1571,60 @@ app.get("/api/theteller-status", async (req, res) => {
         status: "pending",
         finalized: false,
         message: "⏳ Awaiting approval...",
-        raw,
+        transaction_id,
+        code,
+        raw
       });
     }
 
-    if (failed) {
+    // 5) Failed-like from TheTeller:
+    // KEEP IT RETRYABLE
+    if (failedLike) {
       await db.promise().query(
-        "UPDATE payment_sessions SET payment_status='failed' WHERE transaction_id=?",
+        `UPDATE payment_sessions
+         SET payment_status='pending'
+         WHERE transaction_id=?`,
         [transaction_id]
       );
 
       return res.json({
         ok: true,
-        status: "failed",
+        status: "pending",
         finalized: false,
-        message: "❌ Payment failed/declined/cancelled.",
-        raw,
+        message: reason
+          ? `${reason} If you have approved on your phone already, tap again shortly.`
+          : "Payment is not yet confirmed. If you have approved on your phone already, tap again shortly.",
+        transaction_id,
+        code,
+        raw
       });
     }
 
+    // 6) Anything unknown -> still retryable
+    await db.promise().query(
+      `UPDATE payment_sessions
+       SET payment_status='pending'
+       WHERE transaction_id=?`,
+      [transaction_id]
+    );
+
     return res.json({
       ok: true,
-      status: status || "unknown",
+      status: "pending",
       finalized: false,
       message: "⏳ Checking payment status...",
-      raw,
+      transaction_id,
+      code,
+      raw
     });
+
   } catch (e) {
     console.error("❌ TheTeller status error:", e.response?.data || e.message);
+
     return res.json({
       ok: false,
       status: "unknown",
+      finalized: false,
       message: "Could not check payment status"
     });
   }
