@@ -197,14 +197,14 @@
         Please complete the authorisation process by inputting your PIN on your mobile device
       </div>
 
-      <button class="big-btn" id="doneBtn" type="button" onclick="manualCheckStatus()">I've completed the payment</button>
-      <button class="ghost-btn" id="cancelSmallBtn" type="button" onclick="cancelPayment()">Cancel</button>
+      <button class="big-btn" id="doneBtn">I've completed the payment</button>
+      <button class="ghost-btn" id="cancelSmallBtn">Cancel</button>
 
       <div class="status-box" id="statusBox">
         Starting payment request...
       </div>
 
-      <button class="danger-btn" id="cancelPaymentBtn" type="button" onclick="cancelPayment()">✕ Cancel Payment</button>
+      <button class="danger-btn" id="cancelPaymentBtn">✕ Cancel Payment</button>
 
       <div class="secured">🔒 Secured by Sandypay</div>
       <div class="small">
@@ -237,10 +237,11 @@
     let autoChecking = false;
     let tries = 0;
     let startingPayment = false;
-    let recoveryInProgress = false;
 
     const mainLoader = document.getElementById("mainLoader");
     const doneBtn = document.getElementById("doneBtn");
+    const cancelSmallBtn = document.getElementById("cancelSmallBtn");
+    const cancelPaymentBtn = document.getElementById("cancelPaymentBtn");
 
     function setStatus(msg, type = "normal") {
       const box = document.getElementById("statusBox");
@@ -299,59 +300,19 @@
       );
     }
 
-    async function getSessionStatus() {
+    async function recoverTransactionId() {
       if (!paymentData.client_ref) return null;
 
       try {
         const res = await fetch(`${API_BASE}/api/payment-session-status?client_ref=${encodeURIComponent(paymentData.client_ref)}`);
-        const out = await res.json().catch(() => ({}));
-        if (res.ok && out.ok) return out;
-      } catch (err) {
-        console.error("getSessionStatus error:", err);
-      }
+        const out = await res.json();
 
-      return null;
-    }
-
-    async function callRecoverEndpoint() {
-      if (!paymentData.client_ref || recoveryInProgress) return null;
-
-      recoveryInProgress = true;
-      try {
-        const retryRes = await fetch(`${API_BASE}/api/payment-session-recover`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ client_ref: paymentData.client_ref })
-        });
-
-        const retryOut = await retryRes.json().catch(() => ({}));
-
-        if (retryRes.ok && retryOut.ok && retryOut.transaction_id) {
-          transactionId = retryOut.transaction_id;
+        if (res.ok && out.ok && out.transaction_id) {
+          transactionId = out.transaction_id;
           return transactionId;
         }
       } catch (err) {
-        console.error("callRecoverEndpoint error:", err);
-      } finally {
-        recoveryInProgress = false;
-      }
-
-      return null;
-    }
-
-    async function recoverTransactionId(forceRecover = false) {
-      if (!paymentData.client_ref) return null;
-
-      const session = await getSessionStatus();
-
-      if (session && session.transaction_id) {
-        transactionId = session.transaction_id;
-        return transactionId;
-      }
-
-      if (forceRecover || (session && !session.transaction_id)) {
-        const recovered = await callRecoverEndpoint();
-        if (recovered) return recovered;
+        console.error("recoverTransactionId error:", err);
       }
 
       return null;
@@ -405,24 +366,25 @@
         }
 
         if (!transactionId) {
-          await recoverTransactionId(true);
+          await recoverTransactionId();
         }
 
         if (!transactionId) {
-          mainLoader.style.display = "none";
+          setStatus("Payment request may still be processing. If prompt appears on your phone, approve it, then tap 'I've completed the payment'.");
           doneBtn.disabled = false;
           doneBtn.innerText = "I've completed the payment";
-          setStatus("Payment request is taking longer than expected. If the prompt appears on your phone, approve it and tap 'I've completed the payment'.");
+          mainLoader.style.display = "none";
           startingPayment = false;
           return;
         }
 
         setStatus("Payment prompt sent. Please complete the authorisation on your phone. We are checking automatically...");
         startPolling();
+
       } catch (err) {
         console.error("startPayment error:", err);
 
-        const recovered = await recoverTransactionId(true);
+        const recovered = await recoverTransactionId();
 
         if (recovered) {
           setStatus("Connection delayed, but payment session was found. We are checking the payment automatically...");
@@ -438,9 +400,9 @@
       }
     }
 
-    async function fetchPaymentStatus(forceRecover = false) {
+    async function fetchPaymentStatus() {
       if (!transactionId) {
-        await recoverTransactionId(forceRecover);
+        await recoverTransactionId();
       }
 
       if (!transactionId) {
@@ -448,36 +410,27 @@
           status: "unknown",
           code: "",
           finalized: false,
-          message: "We found your payment session, but the transaction is not ready yet. Please wait a few seconds and tap again."
+          message: "Payment session found but transaction is still being prepared. Please tap again shortly."
         };
       }
 
+      const res = await fetch(`${API_BASE}/api/theteller-status?transaction_id=${encodeURIComponent(transactionId)}`);
+
+      let out = {};
       try {
-        const res = await fetch(`${API_BASE}/api/theteller-status?transaction_id=${encodeURIComponent(transactionId)}`);
-        let out = {};
-        try {
-          out = await res.json();
-        } catch (e) {
-          out = {};
-        }
-
-        console.log("Status response:", out);
-
-        return {
-          status: String(out.status || "").toLowerCase(),
-          code: String(out.code || "").toLowerCase(),
-          finalized: !!out.finalized,
-          message: out.message || out.reason || "Waiting for approval"
-        };
-      } catch (err) {
-        console.error("fetchPaymentStatus error:", err);
-        return {
-          status: "unknown",
-          code: "",
-          finalized: false,
-          message: "Could not check payment right now. Please tap again."
-        };
+        out = await res.json();
+      } catch (e) {
+        out = {};
       }
+
+      console.log("Status response:", out);
+
+      return {
+        status: String(out.status || "").toLowerCase(),
+        code: String(out.code || "").toLowerCase(),
+        finalized: !!out.finalized,
+        message: out.message || out.reason || "Waiting for approval"
+      };
     }
 
     async function autoCheckStatus() {
@@ -485,7 +438,7 @@
 
       autoChecking = true;
       try {
-        const result = await fetchPaymentStatus(false);
+        const result = await fetchPaymentStatus();
 
         if (isApproved(result)) {
           finished = true;
@@ -520,17 +473,14 @@
     }
 
     async function manualCheckStatus() {
-      console.log("✅ manualCheckStatus clicked");
-
       if (finished || manualChecking) return;
 
       manualChecking = true;
       doneBtn.disabled = true;
       doneBtn.innerText = "Checking...";
-      mainLoader.style.display = "block";
 
       try {
-        const result = await fetchPaymentStatus(true);
+        const result = await fetchPaymentStatus();
         console.log("Manual payment check:", result);
 
         if (isApproved(result)) {
@@ -549,20 +499,17 @@
         if (isFailed(result)) {
           doneBtn.disabled = false;
           doneBtn.innerText = "I've completed the payment";
-          mainLoader.style.display = "none";
           setStatus(result.message || "Payment failed or was cancelled.", "error");
           return;
         }
 
         doneBtn.disabled = false;
         doneBtn.innerText = "I've completed the payment";
-        mainLoader.style.display = "none";
         setStatus(result.message || "Payment is not yet confirmed. If you already approved on your phone, wait a few seconds and tap again.");
       } catch (err) {
         console.error("manualCheckStatus error:", err);
         doneBtn.disabled = false;
         doneBtn.innerText = "I've completed the payment";
-        mainLoader.style.display = "none";
         setStatus("Could not check payment right now. Please tap again in a few seconds.", "error");
       } finally {
         manualChecking = false;
@@ -599,12 +546,14 @@
       window.location.href = paymentData.source_page || "mtn.html";
     }
 
-    window.manualCheckStatus = manualCheckStatus;
-    window.cancelPayment = cancelPayment;
-
-    window.addEventListener("DOMContentLoaded", () => {
+    function init() {
+      doneBtn.addEventListener("click", manualCheckStatus);
+      cancelSmallBtn.addEventListener("click", cancelPayment);
+      cancelPaymentBtn.addEventListener("click", cancelPayment);
       startPayment();
-    });
+    }
+
+    init();
   </script>
 </body>
 </html>
