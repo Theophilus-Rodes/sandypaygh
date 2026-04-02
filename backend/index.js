@@ -1448,7 +1448,22 @@ app.get("/api/payment-session-status", async (req, res) => {
 
   try {
     const [rows] = await db.promise().query(
-      "SELECT * FROM payment_sessions WHERE client_ref=? LIMIT 1",
+      `SELECT
+         id,
+         client_ref,
+         transaction_id,
+         init_status,
+         payment_status,
+         finalized,
+         updated_reference,
+         package_id,
+         momo_number,
+         recipient_number,
+         vendor_id,
+         source_page
+       FROM payment_sessions
+       WHERE client_ref=?
+       LIMIT 1`,
       [client_ref]
     );
 
@@ -1460,15 +1475,21 @@ app.get("/api/payment-session-status", async (req, res) => {
 
     return res.json({
       ok: true,
+      found: true,
       client_ref: row.client_ref,
-      transaction_id: row.transaction_id,
-      init_status: row.init_status,
-      payment_status: row.payment_status,
+      transaction_id: row.transaction_id || null,
+      init_status: row.init_status || "",
+      payment_status: row.payment_status || "",
       finalized: !!row.finalized,
-      updated_reference: row.updated_reference || null
+      updated_reference: row.updated_reference || null,
+      package_id: row.package_id || null,
+      momo_number: row.momo_number || null,
+      recipient_number: row.recipient_number || null,
+      vendor_id: row.vendor_id || null,
+      source_page: row.source_page || "mtn.html"
     });
   } catch (err) {
-    console.error("payment-session-status error:", err.message);
+    console.error("payment-session-status error:", err);
     return res.status(500).json({
       ok: false,
       message: "Could not fetch payment session."
@@ -1476,6 +1497,128 @@ app.get("/api/payment-session-status", async (req, res) => {
   }
 });
 
+app.post("/api/payment-session-recover", async (req, res) => {
+  const client_ref = String(req.body.client_ref || "").trim();
+
+  if (!client_ref) {
+    return res.json({ ok: false, message: "client_ref is required." });
+  }
+
+  try {
+    const [rows] = await db.promise().query(
+      `SELECT * FROM payment_sessions WHERE client_ref=? LIMIT 1`,
+      [client_ref]
+    );
+
+    if (!rows.length) {
+      return res.json({ ok: false, message: "Payment session not found." });
+    }
+
+    const s = rows[0];
+
+    // if transaction already exists, just return it
+    if (s.transaction_id) {
+      return res.json({
+        ok: true,
+        resumed: true,
+        transaction_id: s.transaction_id,
+        init_status: s.init_status || "",
+        payment_status: s.payment_status || ""
+      });
+    }
+
+    // if required data is missing, cannot recover
+    if (!s.package_id || !s.momo_number || !s.recipient_number) {
+      return res.json({
+        ok: false,
+        message: "Payment session exists but required fields are missing."
+      });
+    }
+
+    // fetch package
+    const [pkgRows] = await db.promise().query(
+      "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
+      [s.package_id]
+    );
+
+    if (!pkgRows.length) {
+      return res.json({ ok: false, message: "Package not found or inactive." });
+    }
+
+    const pkg = pkgRows[0];
+
+    const payerNet = detectMomoNetwork(s.momo_number);
+    const rSwitch = getSwitchCode(payerNet);
+
+    if (!rSwitch) {
+      return res.json({ ok: false, message: "Unsupported payer network." });
+    }
+
+    const transactionId = makeTransactionId();
+
+    const payload = {
+      amount: thetellerAmount12(pkg.price),
+      processing_code: "000200",
+      transaction_id: transactionId,
+      desc: `Sandypay Data - ${pkg.package_name}`,
+      merchant_id: THETELLER.merchantId,
+      subscriber_number: formatMsisdnForTheTeller(s.momo_number),
+      "r-switch": rSwitch,
+      redirect_url: "https://sandipay.co/payment-callback",
+    };
+
+    const tt = await axios.post(THETELLER.endpoint, payload, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${THETELLER.basicToken}`,
+        "Cache-Control": "no-cache",
+      },
+      timeout: 30000,
+    });
+
+    const accepted = isInitAccepted(tt.data);
+
+    if (!accepted) {
+      await db.promise().query(
+        `UPDATE payment_sessions
+         SET init_status='failed', payment_status='failed'
+         WHERE client_ref=?`,
+        [client_ref]
+      );
+
+      return res.json({
+        ok: false,
+        message: tt.data?.message || "Payment prompt not accepted.",
+        theteller: tt.data
+      });
+    }
+
+    await db.promise().query(
+      `UPDATE payment_sessions
+       SET transaction_id=?,
+           init_status='prompt_sent',
+           payment_status='pending'
+       WHERE client_ref=?`,
+      [transactionId, client_ref]
+    );
+
+    startServerSideWatcher(transactionId, { intervalMs: 5000, maxMinutes: 6 });
+
+    return res.json({
+      ok: true,
+      resumed: true,
+      transaction_id: transactionId,
+      message: "Payment session recovered successfully."
+    });
+
+  } catch (err) {
+    console.error("payment-session-recover error:", err.response?.data || err.message);
+    return res.status(500).json({
+      ok: false,
+      message: "Could not recover payment session."
+    });
+  }
+});
 
 
 // =====================================================
