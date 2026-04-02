@@ -1851,6 +1851,250 @@ app.get("/api/payment-session-status", async (req, res) => {
 
 
 // =====================================================
+// POST /api/reconcile-payment
+// Strong manual re-check for delayed MoMo approvals
+// =====================================================
+app.post("/api/reconcile-payment", async (req, res) => {
+  const client_ref = String(req.body.client_ref || "").trim();
+  let transaction_id = String(req.body.transaction_id || "").trim();
+
+  if (!client_ref && !transaction_id) {
+    return res.json({
+      ok: false,
+      finalized: false,
+      status: "unknown",
+      message: "client_ref or transaction_id is required"
+    });
+  }
+
+  try {
+    let session = null;
+
+    if (transaction_id) {
+      session = await getPaymentSessionByTransactionId(transaction_id);
+    }
+
+    if (!session && client_ref) {
+      session = await getPaymentSessionByClientRef(client_ref);
+      if (session?.transaction_id) {
+        transaction_id = String(session.transaction_id).trim();
+      }
+    }
+
+    if (!session) {
+      return res.json({
+        ok: false,
+        finalized: false,
+        status: "unknown",
+        message: "Payment session not found."
+      });
+    }
+
+    // if already finalized locally, trust DB immediately
+    if (
+      Number(session.finalized) === 1 ||
+      String(session.payment_status || "").toLowerCase() === "approved"
+    ) {
+      return res.json({
+        ok: true,
+        finalized: true,
+        status: "approved",
+        transaction_id: session.transaction_id || transaction_id || null,
+        message: "Payment already confirmed locally."
+      });
+    }
+
+    // try several times because provider may delay
+    const attempts = 6;
+    const delayMs = 3500;
+
+    for (let i = 0; i < attempts; i++) {
+      // reload latest session each round
+      const latestSession = await getPaymentSessionByClientRef(session.client_ref);
+
+      if (
+        latestSession &&
+        (
+          Number(latestSession.finalized) === 1 ||
+          String(latestSession.payment_status || "").toLowerCase() === "approved"
+        )
+      ) {
+        await db.promise().query(
+          `INSERT INTO payment_reconcile_logs
+           (client_ref, transaction_id, check_source, provider_status, provider_code, local_payment_status, local_finalized, resolved, note)
+           VALUES (?, ?, 'manual', ?, ?, ?, ?, 1, ?)`,
+          [
+            latestSession.client_ref,
+            latestSession.transaction_id || null,
+            "approved",
+            "LOCAL_DB",
+            latestSession.payment_status || "",
+            Number(latestSession.finalized) === 1 ? 1 : 0,
+            "Resolved from local DB during manual reconcile"
+          ]
+        ).catch(() => {});
+
+        return res.json({
+          ok: true,
+          finalized: true,
+          status: "approved",
+          transaction_id: latestSession.transaction_id || null,
+          message: "Payment successful. Order saved."
+        });
+      }
+
+      const txIdToCheck = latestSession?.transaction_id || transaction_id;
+
+      if (txIdToCheck) {
+        // reuse your own existing endpoint logic internally by checking provider directly here
+        const url = `${THETELLER.statusBase}/${encodeURIComponent(txIdToCheck)}/status`;
+
+        try {
+          const resp = await axios.get(url, {
+            headers: {
+              Authorization: `Basic ${THETELLER.basicToken}`,
+              "Merchant-Id": THETELLER.merchantId,
+              "Cache-Control": "no-cache",
+            },
+            timeout: 30000,
+          });
+
+          const raw = resp.data || {};
+
+          const statusRaw =
+            raw.status ??
+            raw.Status ??
+            raw.transaction_status ??
+            raw.transactionStatus ??
+            raw.response_status ??
+            raw.state ??
+            "";
+
+          const codeRaw =
+            raw.code ??
+            raw.Code ??
+            raw.response_code ??
+            raw.responseCode ??
+            raw.status_code ??
+            raw.statusCode ??
+            "";
+
+          const reasonRaw =
+            raw.reason ??
+            raw.message ??
+            raw.ResponseMessage ??
+            raw.response_message ??
+            "";
+
+          const status = String(statusRaw).toLowerCase().trim();
+          const code = String(codeRaw).trim();
+          const reason = String(reasonRaw).trim();
+
+          const approved =
+            code === "000" ||
+            code === "00" ||
+            code === "0" ||
+            ["approved", "successful", "success", "completed", "paid", "done"].includes(status) ||
+            status.includes("success") ||
+            status.includes("approved") ||
+            status.includes("complete") ||
+            status.includes("paid");
+
+          await db.promise().query(
+            `INSERT INTO payment_reconcile_logs
+             (client_ref, transaction_id, check_source, provider_status, provider_code, local_payment_status, local_finalized, resolved, note, raw_response)
+             VALUES (?, ?, 'manual', ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              session.client_ref,
+              txIdToCheck,
+              status || null,
+              code || null,
+              latestSession?.payment_status || null,
+              latestSession?.finalized ? 1 : 0,
+              approved ? 1 : 0,
+              reason || `Manual reconcile attempt ${i + 1}`,
+              JSON.stringify(raw)
+            ]
+          ).catch(() => {});
+
+          if (approved) {
+            const freshSession = await getPaymentSessionByTransactionId(txIdToCheck);
+
+            if (freshSession) {
+              const [exists] = await db.promise().query(
+                "SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1",
+                [txIdToCheck]
+              );
+
+              if (!exists.length) {
+                await db.promise().query(
+                  `INSERT INTO admin_orders
+                  (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
+                  VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
+                  [
+                    freshSession.vendor_id,
+                    freshSession.recipient_number,
+                    freshSession.package_name,
+                    Number(freshSession.amount),
+                    String(freshSession.network || "").toLowerCase(),
+                    freshSession.package_batch_id,
+                    txIdToCheck
+                  ]
+                );
+              }
+
+              await db.promise().query(
+                `UPDATE payment_sessions
+                 SET payment_status='approved',
+                     finalized=1,
+                     updated_reference=?,
+                     init_status='approved'
+                 WHERE transaction_id=?`,
+                [txIdToCheck, txIdToCheck]
+              );
+            }
+
+            return res.json({
+              ok: true,
+              finalized: true,
+              status: "approved",
+              transaction_id: txIdToCheck,
+              message: "Payment successful. Order saved."
+            });
+          }
+        } catch (providerErr) {
+          console.error("reconcile provider check error:", providerErr.response?.data || providerErr.message);
+        }
+      }
+
+      if (i < attempts - 1) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+
+    const lastSession = await getPaymentSessionByClientRef(session.client_ref);
+
+    return res.json({
+      ok: true,
+      finalized: !!lastSession?.finalized,
+      status: String(lastSession?.payment_status || "pending").toLowerCase(),
+      transaction_id: lastSession?.transaction_id || transaction_id || null,
+      message: "Payment is still being confirmed. If money was deducted, do not start again. Tap again shortly."
+    });
+
+  } catch (err) {
+    console.error("reconcile-payment error:", err);
+    return res.status(500).json({
+      ok: false,
+      finalized: false,
+      status: "unknown",
+      message: "Could not reconcile payment right now."
+    });
+  }
+});
+
+
+// =====================================================
 // POST /api/payment-session-recover
 // =====================================================
 app.post("/api/payment-session-recover", async (req, res) => {
