@@ -195,7 +195,7 @@
 
   <script>
     const NETWORK = "mtn";
-     const API_BASE = "https://sandipay.co";;
+     const API_BASE = "https://sandipay.co";
 
     let selectedPackage = null;
     let otpSent = false;
@@ -415,16 +415,16 @@
           created_at: Date.now()
         };
 
-        const paymentKey = "sandypay_payment_" + Date.now();
-        sessionStorage.setItem(paymentKey, JSON.stringify(paymentData));
+      const paymentKey = "sandypay_payment_" + Date.now();
+localStorage.setItem(paymentKey, JSON.stringify(paymentData));
 
         closeOverlay();
         closeModal();
 
-        const payWindow = window.open(
-          `payment_wait.html?key=${encodeURIComponent(paymentKey)}`,
-          "_blank"
-        );
+       const payWindow = window.open(
+  `payment_wait.html?key=${encodeURIComponent(paymentKey)}`,
+  "_blank"
+);
 
         if(!payWindow){
           alert("Popup was blocked. Please allow popups for this site.");

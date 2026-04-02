@@ -245,7 +245,7 @@
   </div>
 
 <script>
-  const API_BASE = "https://sandipay.co";
+   const API_BASE = "https://sandipay.co";
   const params = new URLSearchParams(window.location.search);
   const storageKey = params.get("key");
 
@@ -277,45 +277,26 @@
     }
   }
 
-  function persistTransactionId(id) {
-    if (!id) return;
-    transactionId = id;
-    sessionStorage.setItem("sandypay_last_transaction_id", id);
-    if (storageKey) {
-      const raw = sessionStorage.getItem(storageKey);
-      if (raw) {
-        try {
-          const obj = JSON.parse(raw);
-          obj.transaction_id = id;
-          sessionStorage.setItem(storageKey, JSON.stringify(obj));
-        } catch (e) {}
-      }
+  function savePaymentData() {
+    if (!storageKey || !paymentData) return;
+    localStorage.setItem(storageKey, JSON.stringify(paymentData));
+  }
+
+  function loadPaymentData() {
+    if (!storageKey) return null;
+
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return null;
+
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      return null;
     }
   }
 
-  function restoreTransactionId() {
-    if (transactionId) return transactionId;
-
-    if (storageKey) {
-      const raw = sessionStorage.getItem(storageKey);
-      if (raw) {
-        try {
-          const obj = JSON.parse(raw);
-          if (obj.transaction_id) {
-            transactionId = obj.transaction_id;
-            return transactionId;
-          }
-        } catch (e) {}
-      }
-    }
-
-    const last = sessionStorage.getItem("sandypay_last_transaction_id");
-    if (last) {
-      transactionId = last;
-      return transactionId;
-    }
-
-    return null;
+  function removePaymentData() {
+    if (storageKey) localStorage.removeItem(storageKey);
   }
 
   function safeCloseToSource(successMessage) {
@@ -375,19 +356,20 @@
         return;
       }
 
-      const txid =
+      transactionId =
         out.transaction_id ||
         out.transactionId ||
         out.data?.transaction_id ||
         out.data?.transactionId ||
         null;
 
-      if (!txid) {
+      if (!transactionId) {
         failAndStay("Transaction ID missing from server response.");
         return;
       }
 
-      persistTransactionId(txid);
+      paymentData.transaction_id = transactionId;
+      savePaymentData();
 
       setStatus("Payment prompt sent. Please complete the authorisation on your phone. We are checking automatically...");
       startPolling();
@@ -396,6 +378,19 @@
       console.error("startPayment error:", err);
       failAndStay("Network error while starting payment.");
     }
+  }
+
+  function restoreTransactionId() {
+    if (transactionId) return transactionId;
+
+    const fresh = loadPaymentData();
+    if (fresh && fresh.transaction_id) {
+      paymentData = fresh;
+      transactionId = fresh.transaction_id;
+      return transactionId;
+    }
+
+    return null;
   }
 
   async function fetchPaymentStatus() {
@@ -428,8 +423,8 @@
     return {
       httpOk: res.ok,
       raw: out,
-      status: String(out.status || out.payment_status || out.transaction_status || "").toLowerCase(),
-      code: String(out.code || out.status_code || out.transaction_code || "").toLowerCase(),
+      status: String(out.status || "").toLowerCase(),
+      code: String(out.code || "").toLowerCase(),
       finalized: !!out.finalized,
       message: out.message || out.reason || "Waiting for approval"
     };
@@ -473,10 +468,7 @@
         doneBtn.innerText = "Payment Confirmed";
         setStatus("Payment successful. Redirecting back now...", "success");
 
-        if (storageKey) {
-          sessionStorage.removeItem(storageKey);
-        }
-        sessionStorage.removeItem("sandypay_last_transaction_id");
+        removePaymentData();
 
         setTimeout(() => {
           safeCloseToSource("Payment successful. Order saved.");
@@ -516,12 +508,11 @@
       if (!txid) {
         doneBtn.disabled = false;
         doneBtn.innerText = "I've completed the payment";
-        setStatus("Transaction ID is missing on this page. Start the payment again.", "error");
+        setStatus("Transaction ID is missing on this page.", "error");
         return;
       }
 
       const result = await fetchPaymentStatus();
-
       console.log("Manual payment check:", result);
 
       if (isApproved(result)) {
@@ -531,10 +522,7 @@
         doneBtn.innerText = "Payment Confirmed";
         setStatus("Payment successful. Redirecting back now...", "success");
 
-        if (storageKey) {
-          sessionStorage.removeItem(storageKey);
-        }
-        sessionStorage.removeItem("sandypay_last_transaction_id");
+        removePaymentData();
 
         setTimeout(() => {
           safeCloseToSource("Payment successful. Order saved.");
@@ -603,28 +591,22 @@
       return;
     }
 
-    const raw = sessionStorage.getItem(storageKey);
+    paymentData = loadPaymentData();
 
-    if (!raw) {
+    if (!paymentData) {
       failAndStay("Payment session not found or expired.");
       return;
     }
 
-    try {
-      paymentData = JSON.parse(raw);
-      if (paymentData.transaction_id) {
-        transactionId = paymentData.transaction_id;
-      }
-    } catch (e) {
-      failAndStay("Invalid payment session.");
-      return;
+    if (paymentData.transaction_id) {
+      transactionId = paymentData.transaction_id;
     }
 
     doneBtn.addEventListener("click", manualCheckStatus);
     cancelSmallBtn.addEventListener("click", cancelPayment);
     cancelPaymentBtn.addEventListener("click", cancelPayment);
 
-    if (restoreTransactionId()) {
+    if (transactionId) {
       setStatus("Recovered payment session. Checking payment status...");
       startPolling();
     } else {
@@ -634,5 +616,7 @@
 
   init();
 </script>
+
+
 </body>
 </html>
