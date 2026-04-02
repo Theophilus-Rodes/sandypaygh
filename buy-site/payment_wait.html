@@ -219,6 +219,7 @@
     const params = new URLSearchParams(window.location.search);
 
     const paymentData = {
+      client_ref: params.get("client_ref") || "",
       package_id: params.get("package_id") || "",
       package_name: params.get("package_name") || "",
       amount: params.get("amount") || "",
@@ -235,6 +236,7 @@
     let manualChecking = false;
     let autoChecking = false;
     let tries = 0;
+    let startingPayment = false;
 
     const mainLoader = document.getElementById("mainLoader");
     const doneBtn = document.getElementById("doneBtn");
@@ -298,9 +300,31 @@
       );
     }
 
+    async function recoverTransactionId() {
+      if (!paymentData.client_ref) return null;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/payment-session-status?client_ref=${encodeURIComponent(paymentData.client_ref)}`);
+        const out = await res.json();
+
+        if (res.ok && out.ok && out.transaction_id) {
+          transactionId = out.transaction_id;
+          return transactionId;
+        }
+      } catch (err) {
+        console.error("recoverTransactionId error:", err);
+      }
+
+      return null;
+    }
+
     async function startPayment() {
-      if (!paymentData.package_id || !paymentData.momo_number || !paymentData.recipient_number) {
+      if (startingPayment) return;
+      startingPayment = true;
+
+      if (!paymentData.package_id || !paymentData.momo_number || !paymentData.recipient_number || !paymentData.client_ref) {
         failAndStay("Missing payment details.");
+        startingPayment = false;
         return;
       }
 
@@ -314,10 +338,12 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            client_ref: paymentData.client_ref,
             package_id: paymentData.package_id,
             momo_number: paymentData.momo_number,
             recipient_number: paymentData.recipient_number,
-            vendor_id: paymentData.vendor_id
+            vendor_id: paymentData.vendor_id,
+            source_page: paymentData.source_page
           })
         });
 
@@ -330,20 +356,25 @@
 
         console.log("Start payment response:", out);
 
-        if (!res.ok || !out.ok) {
-          failAndStay(out.message || "Payment could not be started.");
-          return;
+        if (res.ok && out.ok) {
+          transactionId =
+            out.transaction_id ||
+            out.transactionId ||
+            out.data?.transaction_id ||
+            out.data?.transactionId ||
+            null;
         }
 
-        transactionId =
-          out.transaction_id ||
-          out.transactionId ||
-          out.data?.transaction_id ||
-          out.data?.transactionId ||
-          null;
+        if (!transactionId) {
+          await recoverTransactionId();
+        }
 
         if (!transactionId) {
-          failAndStay("Transaction ID missing from server response.");
+          setStatus("Payment request may still be processing. If prompt appears on your phone, approve it, then tap 'I've completed the payment'.");
+          doneBtn.disabled = false;
+          doneBtn.innerText = "I've completed the payment";
+          mainLoader.style.display = "none";
+          startingPayment = false;
           return;
         }
 
@@ -352,17 +383,34 @@
 
       } catch (err) {
         console.error("startPayment error:", err);
-        failAndStay("Network error while starting payment.");
+
+        const recovered = await recoverTransactionId();
+
+        if (recovered) {
+          setStatus("Connection delayed, but payment session was found. We are checking the payment automatically...");
+          startPolling();
+        } else {
+          mainLoader.style.display = "none";
+          doneBtn.disabled = false;
+          doneBtn.innerText = "I've completed the payment";
+          setStatus("Network delayed while starting payment. If you approved on your phone already, tap 'I've completed the payment' to check again.", "error");
+        }
+      } finally {
+        startingPayment = false;
       }
     }
 
     async function fetchPaymentStatus() {
       if (!transactionId) {
+        await recoverTransactionId();
+      }
+
+      if (!transactionId) {
         return {
-          status: "",
+          status: "unknown",
           code: "",
           finalized: false,
-          message: "Transaction ID is missing."
+          message: "Payment session found but transaction is still being prepared. Please tap again shortly."
         };
       }
 
@@ -386,7 +434,7 @@
     }
 
     async function autoCheckStatus() {
-      if (finished || autoChecking || !transactionId) return;
+      if (finished || autoChecking) return;
 
       autoChecking = true;
       try {
@@ -432,13 +480,6 @@
       doneBtn.innerText = "Checking...";
 
       try {
-        if (!transactionId) {
-          doneBtn.disabled = false;
-          doneBtn.innerText = "I've completed the payment";
-          setStatus("Payment has not started correctly. Please try again.", "error");
-          return;
-        }
-
         const result = await fetchPaymentStatus();
         console.log("Manual payment check:", result);
 

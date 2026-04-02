@@ -202,6 +202,10 @@
     function money(n){ return Number(n).toFixed(2); }
     function isPhone(v){ return /^[0-9]{9,15}$/.test((v || "").replace(/\s+/g, "")); }
 
+    function makeClientRef() {
+      return "PAY-" + Date.now() + "-" + Math.random().toString(36).slice(2, 10).toUpperCase();
+    }
+
     function openOverlay(title="Please wait", msg="Processing..."){
       document.getElementById("overlayTitle").innerText = title;
       document.getElementById("overlayStatus").innerText = msg;
@@ -400,8 +404,12 @@
         }
 
         const vendor_id = localStorage.getItem("vendor_id") || 1;
+        const client_ref = makeClientRef();
+
+        sessionStorage.setItem("last_client_ref", client_ref);
 
         const qs = new URLSearchParams({
+          client_ref,
           package_id: String(selectedPackage.id || ""),
           package_name: String(selectedPackage.package_name || ""),
           amount: String(selectedPackage.price || ""),
