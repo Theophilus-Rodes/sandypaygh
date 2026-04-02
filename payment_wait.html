@@ -510,12 +510,14 @@
         }
 
         if (isFailed(result)) {
-          finished = true;
-          stopPolling();
           mainLoader.style.display = "none";
           doneBtn.disabled = false;
           doneBtn.innerText = "I've completed the payment";
-          setStatus(result.message || "Payment failed or was cancelled.", "error");
+          setStatus(
+            (result.message || "Payment was not yet confirmed.") +
+            " If you later approve it on your phone, tap 'I've completed the payment' again.",
+            "error"
+          );
           return;
         }
 
@@ -537,7 +539,6 @@
       lastManualTapAt = Date.now();
 
       try {
-        // First attempt
         let result = await fetchPaymentStatus();
         console.log("Manual payment check #1:", result);
 
@@ -546,15 +547,6 @@
           return;
         }
 
-        if (isFailed(result)) {
-          doneBtn.disabled = false;
-          doneBtn.innerText = "I've completed the payment";
-          mainLoader.style.display = "none";
-          setStatus(result.message || "Payment failed or was cancelled.", "error");
-          return;
-        }
-
-        // Wait a bit and try again because approval may have just happened
         await sleep(2500);
         result = await fetchPaymentStatus();
         console.log("Manual payment check #2:", result);
@@ -564,22 +556,22 @@
           return;
         }
 
-        if (isFailed(result)) {
-          doneBtn.disabled = false;
-          doneBtn.innerText = "I've completed the payment";
-          mainLoader.style.display = "none";
-          setStatus(result.message || "Payment failed or was cancelled.", "error");
-          return;
-        }
-
         doneBtn.disabled = false;
         doneBtn.innerText = "I've completed the payment";
         mainLoader.style.display = "none";
-        setStatus(
-          result.message || "Payment is not yet confirmed. If you already approved on your phone, wait a few seconds and tap again."
-        );
 
-        // Continue polling after manual tap
+        if (isFailed(result)) {
+          setStatus(
+            (result.message || "Payment is still not confirmed.") +
+            " If you have now approved it on your phone, tap again in a few seconds.",
+            "error"
+          );
+        } else {
+          setStatus(
+            result.message || "Payment is not yet confirmed. If you already approved on your phone, wait a few seconds and tap again."
+          );
+        }
+
         startPolling();
 
       } catch (err) {
@@ -627,7 +619,6 @@
     function handleReturnToPage() {
       if (finished) return;
 
-      // When user comes back from MoMo approvals, check again
       if (document.visibilityState === "visible") {
         setTimeout(() => {
           if (!finished && !manualChecking && !autoChecking) {
