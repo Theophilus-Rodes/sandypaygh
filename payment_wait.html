@@ -197,14 +197,14 @@
         Please complete the authorisation process by inputting your PIN on your mobile device
       </div>
 
-      <button class="big-btn" id="doneBtn">I've completed the payment</button>
-      <button class="ghost-btn" id="cancelSmallBtn">Cancel</button>
+      <button class="big-btn" id="doneBtn" type="button" onclick="manualCheckStatus()">I've completed the payment</button>
+      <button class="ghost-btn" id="cancelSmallBtn" type="button" onclick="cancelPayment()">Cancel</button>
 
       <div class="status-box" id="statusBox">
         Starting payment request...
       </div>
 
-      <button class="danger-btn" id="cancelPaymentBtn">✕ Cancel Payment</button>
+      <button class="danger-btn" id="cancelPaymentBtn" type="button" onclick="cancelPayment()">✕ Cancel Payment</button>
 
       <div class="secured">🔒 Secured by Sandypay</div>
       <div class="small">
@@ -241,8 +241,6 @@
 
     const mainLoader = document.getElementById("mainLoader");
     const doneBtn = document.getElementById("doneBtn");
-    const cancelSmallBtn = document.getElementById("cancelSmallBtn");
-    const cancelPaymentBtn = document.getElementById("cancelPaymentBtn");
 
     function setStatus(msg, type = "normal") {
       const box = document.getElementById("statusBox");
@@ -307,10 +305,7 @@
       try {
         const res = await fetch(`${API_BASE}/api/payment-session-status?client_ref=${encodeURIComponent(paymentData.client_ref)}`);
         const out = await res.json().catch(() => ({}));
-
-        if (res.ok && out.ok) {
-          return out;
-        }
+        if (res.ok && out.ok) return out;
       } catch (err) {
         console.error("getSessionStatus error:", err);
       }
@@ -335,14 +330,13 @@
           transactionId = retryOut.transaction_id;
           return transactionId;
         }
-
-        return null;
       } catch (err) {
         console.error("callRecoverEndpoint error:", err);
-        return null;
       } finally {
         recoveryInProgress = false;
       }
+
+      return null;
     }
 
     async function recoverTransactionId(forceRecover = false) {
@@ -425,7 +419,6 @@
 
         setStatus("Payment prompt sent. Please complete the authorisation on your phone. We are checking automatically...");
         startPolling();
-
       } catch (err) {
         console.error("startPayment error:", err);
 
@@ -459,23 +452,32 @@
         };
       }
 
-      const res = await fetch(`${API_BASE}/api/theteller-status?transaction_id=${encodeURIComponent(transactionId)}`);
-
-      let out = {};
       try {
-        out = await res.json();
-      } catch (e) {
-        out = {};
+        const res = await fetch(`${API_BASE}/api/theteller-status?transaction_id=${encodeURIComponent(transactionId)}`);
+        let out = {};
+        try {
+          out = await res.json();
+        } catch (e) {
+          out = {};
+        }
+
+        console.log("Status response:", out);
+
+        return {
+          status: String(out.status || "").toLowerCase(),
+          code: String(out.code || "").toLowerCase(),
+          finalized: !!out.finalized,
+          message: out.message || out.reason || "Waiting for approval"
+        };
+      } catch (err) {
+        console.error("fetchPaymentStatus error:", err);
+        return {
+          status: "unknown",
+          code: "",
+          finalized: false,
+          message: "Could not check payment right now. Please tap again."
+        };
       }
-
-      console.log("Status response:", out);
-
-      return {
-        status: String(out.status || "").toLowerCase(),
-        code: String(out.code || "").toLowerCase(),
-        finalized: !!out.finalized,
-        message: out.message || out.reason || "Waiting for approval"
-      };
     }
 
     async function autoCheckStatus() {
@@ -518,6 +520,8 @@
     }
 
     async function manualCheckStatus() {
+      console.log("✅ manualCheckStatus clicked");
+
       if (finished || manualChecking) return;
 
       manualChecking = true;
@@ -595,14 +599,12 @@
       window.location.href = paymentData.source_page || "mtn.html";
     }
 
-    function init() {
-      doneBtn.addEventListener("click", manualCheckStatus);
-      cancelSmallBtn.addEventListener("click", cancelPayment);
-      cancelPaymentBtn.addEventListener("click", cancelPayment);
-      startPayment();
-    }
+    window.manualCheckStatus = manualCheckStatus;
+    window.cancelPayment = cancelPayment;
 
-    init();
+    window.addEventListener("DOMContentLoaded", () => {
+      startPayment();
+    });
   </script>
 </body>
 </html>
