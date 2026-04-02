@@ -237,6 +237,7 @@
     let autoChecking = false;
     let tries = 0;
     let startingPayment = false;
+    let lastManualTapAt = 0;
 
     const mainLoader = document.getElementById("mainLoader");
     const doneBtn = document.getElementById("doneBtn");
@@ -256,6 +257,10 @@
         clearInterval(pollTimer);
         pollTimer = null;
       }
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     function safeCloseToSource(successMessage) {
@@ -278,25 +283,45 @@
       setStatus(msg, "error");
     }
 
+    function normalizeStatus(v) {
+      return String(v || "").trim().toLowerCase();
+    }
+
+    function normalizeCode(v) {
+      return String(v || "").trim().toLowerCase();
+    }
+
     function isApproved(result) {
       return (
-        result.finalized ||
-        result.status === "approved" ||
-        result.status === "successful" ||
-        result.status === "success" ||
-        result.status === "completed" ||
-        result.code === "000" ||
-        result.code === "00" ||
-        result.code === "0"
+        result.finalized === true ||
+        ["approved", "successful", "success", "completed", "paid"].includes(normalizeStatus(result.status)) ||
+        ["000", "00", "0"].includes(normalizeCode(result.code))
       );
     }
 
     function isFailed(result) {
       return (
-        result.status === "failed" ||
-        result.status === "cancelled" ||
-        result.status === "declined" ||
-        result.status === "reversed"
+        ["failed", "cancelled", "declined", "reversed", "expired"].includes(normalizeStatus(result.status))
+      );
+    }
+
+    function pickTransactionId(obj) {
+      if (!obj || typeof obj !== "object") return null;
+
+      return (
+        obj.transaction_id ||
+        obj.transactionId ||
+        obj.trans_id ||
+        obj.transId ||
+        obj.data?.transaction_id ||
+        obj.data?.transactionId ||
+        obj.data?.trans_id ||
+        obj.data?.transId ||
+        obj.session?.transaction_id ||
+        obj.session?.transactionId ||
+        obj.payment_session?.transaction_id ||
+        obj.payment_session?.transactionId ||
+        null
       );
     }
 
@@ -304,15 +329,37 @@
       if (!paymentData.client_ref) return null;
 
       try {
-        const res = await fetch(`${API_BASE}/api/payment-session-status?client_ref=${encodeURIComponent(paymentData.client_ref)}`);
-        const out = await res.json();
+        const res = await fetch(`${API_BASE}/api/payment-session-status?client_ref=${encodeURIComponent(paymentData.client_ref)}`, {
+          cache: "no-store"
+        });
 
-        if (res.ok && out.ok && out.transaction_id) {
-          transactionId = out.transaction_id;
+        let out = {};
+        try {
+          out = await res.json();
+        } catch (e) {
+          out = {};
+        }
+
+        const recoveredId = pickTransactionId(out);
+
+        if (res.ok && recoveredId) {
+          transactionId = recoveredId;
           return transactionId;
         }
       } catch (err) {
         console.error("recoverTransactionId error:", err);
+      }
+
+      return null;
+    }
+
+    async function recoverTransactionIdWithRetries() {
+      if (transactionId) return transactionId;
+
+      for (let i = 0; i < 4; i++) {
+        const recovered = await recoverTransactionId();
+        if (recovered) return recovered;
+        await sleep(1500);
       }
 
       return null;
@@ -357,23 +404,19 @@
         console.log("Start payment response:", out);
 
         if (res.ok && out.ok) {
-          transactionId =
-            out.transaction_id ||
-            out.transactionId ||
-            out.data?.transaction_id ||
-            out.data?.transactionId ||
-            null;
+          transactionId = pickTransactionId(out);
         }
 
         if (!transactionId) {
-          await recoverTransactionId();
+          await recoverTransactionIdWithRetries();
         }
 
         if (!transactionId) {
-          setStatus("Payment request may still be processing. If prompt appears on your phone, approve it, then tap 'I've completed the payment'.");
+          setStatus("Payment request sent. If the prompt appears on your phone, approve it, then tap 'I've completed the payment'. We will check again.");
           doneBtn.disabled = false;
           doneBtn.innerText = "I've completed the payment";
           mainLoader.style.display = "none";
+          startPolling();
           startingPayment = false;
           return;
         }
@@ -384,7 +427,7 @@
       } catch (err) {
         console.error("startPayment error:", err);
 
-        const recovered = await recoverTransactionId();
+        const recovered = await recoverTransactionIdWithRetries();
 
         if (recovered) {
           setStatus("Connection delayed, but payment session was found. We are checking the payment automatically...");
@@ -394,6 +437,7 @@
           doneBtn.disabled = false;
           doneBtn.innerText = "I've completed the payment";
           setStatus("Network delayed while starting payment. If you approved on your phone already, tap 'I've completed the payment' to check again.", "error");
+          startPolling();
         }
       } finally {
         startingPayment = false;
@@ -402,7 +446,7 @@
 
     async function fetchPaymentStatus() {
       if (!transactionId) {
-        await recoverTransactionId();
+        await recoverTransactionIdWithRetries();
       }
 
       if (!transactionId) {
@@ -410,11 +454,13 @@
           status: "unknown",
           code: "",
           finalized: false,
-          message: "Payment session found but transaction is still being prepared. Please tap again shortly."
+          message: "Payment session found but transaction is still being prepared. If you already approved on your phone, tap again in a few seconds."
         };
       }
 
-      const res = await fetch(`${API_BASE}/api/theteller-status?transaction_id=${encodeURIComponent(transactionId)}`);
+      const res = await fetch(`${API_BASE}/api/theteller-status?transaction_id=${encodeURIComponent(transactionId)}&client_ref=${encodeURIComponent(paymentData.client_ref)}`, {
+        cache: "no-store"
+      });
 
       let out = {};
       try {
@@ -425,12 +471,30 @@
 
       console.log("Status response:", out);
 
+      const maybeRecoveredId = pickTransactionId(out);
+      if (maybeRecoveredId && !transactionId) {
+        transactionId = maybeRecoveredId;
+      }
+
       return {
-        status: String(out.status || "").toLowerCase(),
-        code: String(out.code || "").toLowerCase(),
+        status: normalizeStatus(out.status),
+        code: normalizeCode(out.code),
         finalized: !!out.finalized,
         message: out.message || out.reason || "Waiting for approval"
       };
+    }
+
+    async function finalizeApprovedPayment() {
+      finished = true;
+      stopPolling();
+      mainLoader.style.display = "none";
+      doneBtn.disabled = true;
+      doneBtn.innerText = "Payment Confirmed";
+      setStatus("Payment successful. Redirecting back now...", "success");
+
+      setTimeout(() => {
+        safeCloseToSource("Payment successful. Order saved.");
+      }, 1200);
     }
 
     async function autoCheckStatus() {
@@ -441,16 +505,7 @@
         const result = await fetchPaymentStatus();
 
         if (isApproved(result)) {
-          finished = true;
-          stopPolling();
-          mainLoader.style.display = "none";
-          doneBtn.disabled = true;
-          doneBtn.innerText = "Payment Confirmed";
-          setStatus("Payment successful. Redirecting back now...", "success");
-
-          setTimeout(() => {
-            safeCloseToSource("Payment successful. Order saved.");
-          }, 1500);
+          await finalizeApprovedPayment();
           return;
         }
 
@@ -478,38 +533,60 @@
       manualChecking = true;
       doneBtn.disabled = true;
       doneBtn.innerText = "Checking...";
+      mainLoader.style.display = "block";
+      lastManualTapAt = Date.now();
 
       try {
-        const result = await fetchPaymentStatus();
-        console.log("Manual payment check:", result);
+        // First attempt
+        let result = await fetchPaymentStatus();
+        console.log("Manual payment check #1:", result);
 
         if (isApproved(result)) {
-          finished = true;
-          stopPolling();
-          mainLoader.style.display = "none";
-          doneBtn.innerText = "Payment Confirmed";
-          setStatus("Payment successful. Redirecting back now...", "success");
-
-          setTimeout(() => {
-            safeCloseToSource("Payment successful. Order saved.");
-          }, 1200);
+          await finalizeApprovedPayment();
           return;
         }
 
         if (isFailed(result)) {
           doneBtn.disabled = false;
           doneBtn.innerText = "I've completed the payment";
+          mainLoader.style.display = "none";
+          setStatus(result.message || "Payment failed or was cancelled.", "error");
+          return;
+        }
+
+        // Wait a bit and try again because approval may have just happened
+        await sleep(2500);
+        result = await fetchPaymentStatus();
+        console.log("Manual payment check #2:", result);
+
+        if (isApproved(result)) {
+          await finalizeApprovedPayment();
+          return;
+        }
+
+        if (isFailed(result)) {
+          doneBtn.disabled = false;
+          doneBtn.innerText = "I've completed the payment";
+          mainLoader.style.display = "none";
           setStatus(result.message || "Payment failed or was cancelled.", "error");
           return;
         }
 
         doneBtn.disabled = false;
         doneBtn.innerText = "I've completed the payment";
-        setStatus(result.message || "Payment is not yet confirmed. If you already approved on your phone, wait a few seconds and tap again.");
+        mainLoader.style.display = "none";
+        setStatus(
+          result.message || "Payment is not yet confirmed. If you already approved on your phone, wait a few seconds and tap again."
+        );
+
+        // Continue polling after manual tap
+        startPolling();
+
       } catch (err) {
         console.error("manualCheckStatus error:", err);
         doneBtn.disabled = false;
         doneBtn.innerText = "I've completed the payment";
+        mainLoader.style.display = "none";
         setStatus("Could not check payment right now. Please tap again in a few seconds.", "error");
       } finally {
         manualChecking = false;
@@ -518,12 +595,13 @@
 
     function startPolling() {
       stopPolling();
+      tries = 0;
 
       pollTimer = setInterval(async () => {
         tries++;
         await autoCheckStatus();
 
-        if (tries >= 40 && !finished) {
+        if (tries >= 60 && !finished) {
           stopPolling();
           mainLoader.style.display = "none";
           doneBtn.disabled = false;
@@ -546,10 +624,31 @@
       window.location.href = paymentData.source_page || "mtn.html";
     }
 
+    function handleReturnToPage() {
+      if (finished) return;
+
+      // When user comes back from MoMo approvals, check again
+      if (document.visibilityState === "visible") {
+        setTimeout(() => {
+          if (!finished && !manualChecking && !autoChecking) {
+            autoCheckStatus();
+          }
+        }, 1200);
+      }
+    }
+
     function init() {
       doneBtn.addEventListener("click", manualCheckStatus);
       cancelSmallBtn.addEventListener("click", cancelPayment);
       cancelPaymentBtn.addEventListener("click", cancelPayment);
+
+      document.addEventListener("visibilitychange", handleReturnToPage);
+      window.addEventListener("focus", () => {
+        if (!finished && Date.now() - lastManualTapAt > 1000) {
+          setTimeout(() => autoCheckStatus(), 1200);
+        }
+      });
+
       startPayment();
     }
 
