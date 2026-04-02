@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Sandypay | MTN Bundles</title>
-
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet" />
 
   <style>
@@ -170,14 +169,14 @@
 
         <div class="helper">
           ✅ First, we send OTP to confirm the MoMo number.<br/>
-          ✅ After OTP verification, a payment page will open for approval.
+          ✅ After OTP verification, payment starts before the waiting page opens.
         </div>
       </div>
 
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
         <button class="btn" id="sendOtpBtn" onclick="sendOtp()">Send OTP</button>
-        <button class="btn" id="verifyPayBtn" onclick="verifyOtpAndOpenPayment()" style="display:none;">Verify & Pay</button>
+        <button class="btn" id="verifyPayBtn" onclick="verifyOtpAndPay()" style="display:none;">Verify & Pay</button>
       </div>
     </div>
   </div>
@@ -358,7 +357,7 @@
       }
     }
 
-    async function verifyOtpAndOpenPayment(){
+    async function verifyOtpAndPay(){
       const momo = document.getElementById("momoNumber").value.trim();
       const recipient = document.getElementById("recipientNumber").value.trim();
       const otp = document.getElementById("otpCode").value.trim();
@@ -381,7 +380,7 @@
       openOverlay("Verifying OTP", "Please wait while we verify your OTP...");
 
       try{
-        const res = await fetch(`${API_BASE}/api/verify-momo-otp`, {
+        const vr = await fetch(`${API_BASE}/api/verify-momo-otp`, {
           method: "POST",
           headers: { "Content-Type":"application/json" },
           body: JSON.stringify({
@@ -391,24 +390,54 @@
           })
         });
 
-        const out = await res.json();
+        const vout = await vr.json();
 
-        if(!res.ok || !out.ok){
-          showOverlayError(out.message || "OTP verification failed.");
+        if(!vr.ok || !vout.ok){
+          showOverlayError(vout.message || "OTP verification failed.");
           setTimeout(closeOverlay, 2000);
           return;
         }
 
+        document.getElementById("overlayTitle").innerText = "Starting Payment";
+        document.getElementById("overlayStatus").innerText = "OTP verified. Starting payment prompt...";
+
         const vendor_id = localStorage.getItem("vendor_id") || 1;
 
+        const pr = await fetch(`${API_BASE}/api/buy-data-theteller`, {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          body: JSON.stringify({
+            package_id: selectedPackage.id,
+            momo_number: momo,
+            recipient_number: recipient,
+            vendor_id: vendor_id
+          })
+        });
+
+        const pout = await pr.json();
+
+        if(!pr.ok || !pout.ok){
+          showOverlayError(pout.message || "Payment could not be started.");
+          setTimeout(closeOverlay, 2500);
+          return;
+        }
+
+        const transactionId =
+          pout.transaction_id ||
+          pout.transactionId ||
+          pout.data?.transaction_id ||
+          pout.data?.transactionId ||
+          "";
+
+        if(!transactionId){
+          showOverlayError("Transaction ID missing from payment response.");
+          setTimeout(closeOverlay, 2500);
+          return;
+        }
+
         const qs = new URLSearchParams({
-          package_id: String(selectedPackage.id || ""),
-          package_name: String(selectedPackage.package_name || ""),
+          transaction_id: transactionId,
           amount: String(selectedPackage.price || ""),
-          network: String(selectedPackage.network || ""),
-          momo_number: momo,
-          recipient_number: recipient,
-          vendor_id: String(vendor_id),
           source_page: "mtn.html"
         });
 
@@ -423,8 +452,9 @@
         }
 
       }catch(err){
-        showOverlayError("Network error verifying OTP.");
-        setTimeout(closeOverlay, 2000);
+        console.error(err);
+        showOverlayError("Network error while starting payment.");
+        setTimeout(closeOverlay, 2500);
       }
     }
 
