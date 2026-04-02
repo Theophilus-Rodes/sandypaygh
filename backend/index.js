@@ -1336,74 +1336,93 @@ const failed =
 
 
     // ✅ If approved, finalize by inserting into admin_orders
-    if (approved) {
-      const p = pendingOrders.get(transaction_id);
+   if (approved) {
+  const [sessionRows] = await db.promise().query(
+    "SELECT * FROM payment_sessions WHERE transaction_id=? LIMIT 1",
+    [transaction_id]
+  );
 
-      if (p) {
-        // prevent duplicates
-        const [exists] = await db
-          .promise()
-          .query("SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1", [
-            transaction_id,
-          ]);
+  if (sessionRows.length) {
+    const s = sessionRows[0];
 
-        if (!exists.length) {
-          await db.promise().query(
-            `INSERT INTO admin_orders
-              (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
-             VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
-            [
-              p.vendor_id,
-              p.recipient_number,
-              p.package_name,
-              Number(p.amount),
-              String(p.network).toLowerCase(),
-              p.package_id,
-              transaction_id,
-            ]
-          );
-        }
+    const [exists] = await db.promise().query(
+      "SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1",
+      [transaction_id]
+    );
 
-        pendingOrders.delete(transaction_id);
-
-        return res.json({
-          ok: true,
-          status: "approved",
-          finalized: true,
-          message: "✅ Payment successful. Order saved.",
-          raw,
-        });
-      }
-
-      // Approved but pendingOrders lost (server restart etc.)
-      return res.json({
-        ok: true,
-        status: "approved",
-        finalized: false,
-        message: "✅ Payment successful, but pending order data not found (server restarted).",
-        raw,
-      });
+    if (!exists.length) {
+      await db.promise().query(
+        `INSERT INTO admin_orders
+        (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
+        VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
+        [
+          s.vendor_id,
+          s.recipient_number,
+          s.package_name,
+          Number(s.amount),
+          String(s.network).toLowerCase(),
+          s.package_batch_id,
+          transaction_id
+        ]
+      );
     }
 
-    if (pending) {
-      return res.json({
-        ok: true,
-        status: "pending",
-        finalized: false,
-        message: "⏳ Awaiting approval...",
-        raw,
-      });
-    }
+    await db.promise().query(
+      `UPDATE payment_sessions
+       SET payment_status='approved',
+           finalized=1,
+           updated_reference=?
+       WHERE transaction_id=?`,
+      [transaction_id, transaction_id]
+    );
 
-    if (failed) {
-      return res.json({
-        ok: true,
-        status: "failed",
-        finalized: false,
-        message: "❌ Payment failed/declined/cancelled.",
-        raw,
-      });
-    }
+    return res.json({
+      ok: true,
+      status: "approved",
+      finalized: true,
+      message: "✅ Payment successful. Order saved.",
+      raw,
+    });
+  }
+
+  return res.json({
+    ok: true,
+    status: "approved",
+    finalized: false,
+    message: "✅ Payment successful, but payment session not found.",
+    raw,
+  });
+}
+
+   if (pending) {
+  await db.promise().query(
+    "UPDATE payment_sessions SET payment_status='pending' WHERE transaction_id=?",
+    [transaction_id]
+  );
+
+  return res.json({
+    ok: true,
+    status: "pending",
+    finalized: false,
+    message: "⏳ Awaiting approval...",
+    raw,
+  });
+}
+
+if (failed) {
+  await db.promise().query(
+    "UPDATE payment_sessions SET payment_status='failed' WHERE transaction_id=?",
+    [transaction_id]
+  );
+
+  return res.json({
+    ok: true,
+    status: "failed",
+    finalized: false,
+    message: "❌ Payment failed/declined/cancelled.",
+    raw,
+  });
+}
 
     // Unknown state — don't claim failure too early
     return res.json({
@@ -1416,6 +1435,44 @@ const failed =
   } catch (e) {
     console.error("❌ TheTeller status error:", e.response?.data || e.message);
     return res.json({ ok: false, status: "unknown" });
+  }
+});
+
+
+app.get("/api/payment-session-status", async (req, res) => {
+  const client_ref = String(req.query.client_ref || "").trim();
+
+  if (!client_ref) {
+    return res.json({ ok: false, message: "client_ref is required." });
+  }
+
+  try {
+    const [rows] = await db.promise().query(
+      "SELECT * FROM payment_sessions WHERE client_ref=? LIMIT 1",
+      [client_ref]
+    );
+
+    if (!rows.length) {
+      return res.json({ ok: false, message: "Payment session not found." });
+    }
+
+    const row = rows[0];
+
+    return res.json({
+      ok: true,
+      client_ref: row.client_ref,
+      transaction_id: row.transaction_id,
+      init_status: row.init_status,
+      payment_status: row.payment_status,
+      finalized: !!row.finalized,
+      updated_reference: row.updated_reference || null
+    });
+  } catch (err) {
+    console.error("payment-session-status error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      message: "Could not fetch payment session."
+    });
   }
 });
 
