@@ -17,7 +17,6 @@
       --muted:#64748B;
       --line:#E2E8F0;
       --danger:#ef4444;
-      --success:#16a34a;
     }
     *{box-sizing:border-box;font-family:Poppins,system-ui,Segoe UI,Roboto,Arial}
     body{margin:0;background:var(--bg);color:var(--text)}
@@ -38,7 +37,6 @@
       padding:8px 12px;border-radius:999px;font-size:12px;white-space:nowrap;
     }
     .wrap{max-width:1100px;margin:0 auto;padding:18px 16px}
-
     .topbar{
       display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;
     }
@@ -171,8 +169,8 @@
         </div>
 
         <div class="helper">
-          ✅ First, we send an OTP to confirm the MoMo number.<br/>
-          ✅ After OTP verification, a new payment page will open for payment approval.
+          ✅ First, we send OTP to confirm the MoMo number.<br/>
+          ✅ After OTP verification, a payment page will open for approval.
         </div>
       </div>
 
@@ -195,7 +193,7 @@
 
   <script>
     const NETWORK = "mtn";
-    const API_BASE = "";
+    const API_BASE = "https://sandipay.co";
 
     let selectedPackage = null;
     let otpSent = false;
@@ -203,6 +201,10 @@
 
     function money(n){ return Number(n).toFixed(2); }
     function isPhone(v){ return /^[0-9]{9,15}$/.test((v || "").replace(/\s+/g, "")); }
+
+    function makeClientRef() {
+      return "PAY-" + Date.now() + "-" + Math.random().toString(36).slice(2, 10).toUpperCase();
+    }
 
     function openOverlay(title="Please wait", msg="Processing..."){
       document.getElementById("overlayTitle").innerText = title;
@@ -402,29 +404,26 @@
         }
 
         const vendor_id = localStorage.getItem("vendor_id") || 1;
+        const client_ref = makeClientRef();
 
-        const paymentData = {
-          package_id: selectedPackage.id,
-          package_name: selectedPackage.package_name,
-          amount: selectedPackage.price,
-          network: selectedPackage.network,
+        sessionStorage.setItem("last_client_ref", client_ref);
+
+        const qs = new URLSearchParams({
+          client_ref,
+          package_id: String(selectedPackage.id || ""),
+          package_name: String(selectedPackage.package_name || ""),
+          amount: String(selectedPackage.price || ""),
+          network: String(selectedPackage.network || ""),
           momo_number: momo,
           recipient_number: recipient,
-          vendor_id: vendor_id,
-          source_page: "mtn.html",
-          created_at: Date.now()
-        };
-
-        const paymentKey = "sandypay_payment_" + Date.now();
-        sessionStorage.setItem(paymentKey, JSON.stringify(paymentData));
+          vendor_id: String(vendor_id),
+          source_page: "mtn.html"
+        });
 
         closeOverlay();
         closeModal();
 
-        const payWindow = window.open(
-          `payment_wait.html?key=${encodeURIComponent(paymentKey)}`,
-          "_blank"
-        );
+        const payWindow = window.open(`payment_wait.html?${qs.toString()}`, "_blank");
 
         if(!payWindow){
           alert("Popup was blocked. Please allow popups for this site.");
