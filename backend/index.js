@@ -1144,6 +1144,11 @@ async function getPaymentSessionByTransactionId(transaction_id) {
 // =====================================================
 // POST /api/buy-data-theteller
 // =====================================================
+
+
+// =====================================================
+// POST /api/buy-data-theteller
+// =====================================================
 app.post("/api/buy-data-theteller", async (req, res) => {
   const {
     client_ref,
@@ -1160,6 +1165,11 @@ app.post("/api/buy-data-theteller", async (req, res) => {
   console.log("📥 BODY:", req.body);
 
   if (!client_ref || !package_id || !momo_number || !recipient_number) {
+    console.log("➡️ INIT RESPONSE TO FRONTEND:", {
+      ok: false,
+      message: "Missing required fields."
+    });
+
     return res.json({
       ok: false,
       message: "Missing required fields."
@@ -1168,29 +1178,32 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
   try {
     // 1) if session already exists, return it
-    // 1) if session already exists, return it
-const existingSession = await getPaymentSessionByClientRef(client_ref);
-if (existingSession) {
-  console.log("ℹ️ Existing payment session found:", existingSession.client_ref);
+    const existingSession = await getPaymentSessionByClientRef(client_ref);
+    if (existingSession) {
+      console.log("ℹ️ Existing payment session found:", existingSession.client_ref);
 
-  const alreadyApproved =
-    Number(existingSession.finalized) === 1 ||
-    String(existingSession.payment_status || "").toLowerCase() === "approved";
+      const alreadyApproved =
+        Number(existingSession.finalized) === 1 ||
+        String(existingSession.payment_status || "").toLowerCase() === "approved";
 
-  return res.json({
-    ok: true,
-    resumed: true,
-    client_ref: existingSession.client_ref,
-    transaction_id: existingSession.transaction_id || null,
-    status: alreadyApproved
-      ? "approved"
-      : (existingSession.payment_status || existingSession.init_status || "created"),
-    finalized: alreadyApproved,
-    message: alreadyApproved
-      ? "Payment already confirmed."
-      : "Existing payment session found."
-  });
-}
+      const payload = {
+        ok: true,
+        resumed: true,
+        client_ref: existingSession.client_ref,
+        transaction_id: existingSession.transaction_id || null,
+        status: alreadyApproved
+          ? "approved"
+          : (existingSession.payment_status || existingSession.init_status || "created"),
+        finalized: alreadyApproved,
+        message: alreadyApproved
+          ? "Payment already confirmed."
+          : "Existing payment session found."
+      };
+
+      console.log("➡️ INIT RESPONSE TO FRONTEND:", payload);
+      return res.json(payload);
+    }
+
     // 2) Fetch package
     const [rows] = await db.promise().query(
       "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
@@ -1198,6 +1211,11 @@ if (existingSession) {
     );
 
     if (!rows.length) {
+      console.log("➡️ INIT RESPONSE TO FRONTEND:", {
+        ok: false,
+        message: "Package not found or inactive."
+      });
+
       return res.json({
         ok: false,
         message: "Package not found or inactive."
@@ -1211,6 +1229,11 @@ if (existingSession) {
     const rSwitch = getSwitchCode(payerNet);
 
     if (!rSwitch) {
+      console.log("➡️ INIT RESPONSE TO FRONTEND:", {
+        ok: false,
+        message: "Unsupported payer network."
+      });
+
       return res.json({
         ok: false,
         message: "Unsupported payer network."
@@ -1308,11 +1331,14 @@ if (existingSession) {
         [client_ref]
       );
 
-      return res.json({
+      const out = {
         ok: false,
         message: `Payment prompt not accepted (status=${tt.data?.status}, code=${tt.data?.code}) ${tt.data?.message || tt.data?.reason || ""}`.trim(),
         theteller: tt.data,
-      });
+      };
+
+      console.log("➡️ INIT RESPONSE TO FRONTEND:", out);
+      return res.json(out);
     }
 
     // 8) Update session after successful init
@@ -1338,13 +1364,16 @@ if (existingSession) {
     // 10) server-side watcher
     startServerSideWatcher(transactionId, { intervalMs: 5000, maxMinutes: 6 });
 
-    return res.json({
+    const out = {
       ok: true,
       message: "✅ Prompt sent. Please approve on your phone.",
       client_ref,
       transaction_id: transactionId,
       vendor_id: vid,
-    });
+    };
+
+    console.log("➡️ INIT RESPONSE TO FRONTEND:", out);
+    return res.json(out);
 
   } catch (err) {
     console.error("❌ TheTeller INIT error:", err.response?.data || err.message);
@@ -1362,11 +1391,14 @@ if (existingSession) {
       }
     }
 
-    return res.status(500).json({
+    const out = {
       ok: false,
       message: "Payment could not be initiated. Try again.",
       error: err.response?.data || err.message,
-    });
+    };
+
+    console.log("➡️ INIT RESPONSE TO FRONTEND:", out);
+    return res.status(500).json(out);
   }
 });
 
@@ -1379,11 +1411,15 @@ app.get("/api/theteller-status", async (req, res) => {
   const client_ref = String(req.query.client_ref || "").trim();
 
   if (!transaction_id && !client_ref) {
-    return res.json({
+    const out = {
       ok: false,
       status: "unknown",
+      finalized: false,
       message: "transaction_id or client_ref is required"
-    });
+    };
+
+    console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
+    return res.json(out);
   }
 
   try {
@@ -1402,23 +1438,40 @@ app.get("/api/theteller-status", async (req, res) => {
     }
 
     if (!transaction_id) {
-      return res.json({
+      const out = {
         ok: true,
         status: "pending",
         finalized: false,
         message: "Payment session found but transaction is still being prepared."
-      });
+      };
+
+      console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
+      return res.json(out);
     }
 
     // 2) If already finalized in DB, trust DB first
-    if (session && (Number(session.finalized) === 1 || String(session.payment_status || "").toLowerCase() === "approved")) {
-      return res.json({
+    if (
+      session &&
+      (
+        Number(session.finalized) === 1 ||
+        String(session.payment_status || "").toLowerCase() === "approved"
+      )
+    ) {
+      const out = {
         ok: true,
         status: "approved",
         finalized: true,
         message: "✅ Payment already confirmed. Order saved.",
         transaction_id
+      };
+
+      console.log("🟢 Session already finalized in DB:", {
+        transaction_id,
+        payment_status: session.payment_status,
+        finalized: session.finalized
       });
+      console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
+      return res.json(out);
     }
 
     const url = `${THETELLER.statusBase}/${encodeURIComponent(transaction_id)}/status`;
@@ -1523,6 +1576,15 @@ app.get("/api/theteller-status", async (req, res) => {
               transaction_id
             ]
           );
+
+          console.log("✅ admin_orders inserted:", {
+            transaction_id,
+            vendor_id: session.vendor_id,
+            recipient_number: session.recipient_number,
+            package_name: session.package_name
+          });
+        } else {
+          console.log("ℹ️ admin_orders already exists for:", transaction_id);
         }
 
         await db.promise().query(
@@ -1535,7 +1597,7 @@ app.get("/api/theteller-status", async (req, res) => {
           [transaction_id, transaction_id]
         );
 
-        return res.json({
+        const out = {
           ok: true,
           status: "approved",
           finalized: true,
@@ -1543,10 +1605,13 @@ app.get("/api/theteller-status", async (req, res) => {
           transaction_id,
           code,
           raw
-        });
+        };
+
+        console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
+        return res.json(out);
       }
 
-      return res.json({
+      const out = {
         ok: true,
         status: "approved",
         finalized: false,
@@ -1554,7 +1619,10 @@ app.get("/api/theteller-status", async (req, res) => {
         transaction_id,
         code,
         raw
-      });
+      };
+
+      console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
+      return res.json(out);
     }
 
     // 4) Normal pending
@@ -1566,7 +1634,7 @@ app.get("/api/theteller-status", async (req, res) => {
         [transaction_id]
       );
 
-      return res.json({
+      const out = {
         ok: true,
         status: "pending",
         finalized: false,
@@ -1574,12 +1642,59 @@ app.get("/api/theteller-status", async (req, res) => {
         transaction_id,
         code,
         raw
+      };
+
+      console.log("➡️ STATUS RESPONSE TO FRONTEND:", {
+        transaction_id,
+        returned_status: "pending",
+        finalized: false,
+        provider_status: status,
+        provider_code: code
       });
+
+      return res.json(out);
     }
 
     // 5) Failed-like from TheTeller:
-    // KEEP IT RETRYABLE
+    // KEEP IT RETRYABLE, and trust our DB if already finalized elsewhere
     if (failedLike) {
+      const [sessionRows] = await db.promise().query(
+        `SELECT finalized, payment_status, updated_reference
+         FROM payment_sessions
+         WHERE transaction_id=?
+         LIMIT 1`,
+        [transaction_id]
+      );
+
+      const localSession = sessionRows[0];
+
+      if (
+        localSession &&
+        (
+          Number(localSession.finalized) === 1 ||
+          String(localSession.payment_status || "").toLowerCase() === "approved"
+        )
+      ) {
+        const out = {
+          ok: true,
+          status: "approved",
+          finalized: true,
+          message: "✅ Payment successful. Order saved.",
+          transaction_id,
+          code,
+          raw
+        };
+
+        console.log("🟢 Local DB says payment is already approved despite provider failed-like response:", {
+          transaction_id,
+          payment_status: localSession.payment_status,
+          finalized: localSession.finalized,
+          updated_reference: localSession.updated_reference
+        });
+        console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
+        return res.json(out);
+      }
+
       await db.promise().query(
         `UPDATE payment_sessions
          SET payment_status='pending'
@@ -1587,7 +1702,14 @@ app.get("/api/theteller-status", async (req, res) => {
         [transaction_id]
       );
 
-      return res.json({
+      console.log("⚠️ TheTeller returned failed-like status, but keeping session retryable:", {
+        transaction_id,
+        status,
+        code,
+        reason
+      });
+
+      const out = {
         ok: true,
         status: "pending",
         finalized: false,
@@ -1597,7 +1719,18 @@ app.get("/api/theteller-status", async (req, res) => {
         transaction_id,
         code,
         raw
+      };
+
+      console.log("➡️ STATUS RESPONSE TO FRONTEND:", {
+        transaction_id,
+        returned_status: "pending",
+        finalized: false,
+        provider_status: status,
+        provider_code: code,
+        provider_reason: reason
       });
+
+      return res.json(out);
     }
 
     // 6) Anything unknown -> still retryable
@@ -1608,7 +1741,7 @@ app.get("/api/theteller-status", async (req, res) => {
       [transaction_id]
     );
 
-    return res.json({
+    const out = {
       ok: true,
       status: "pending",
       finalized: false,
@@ -1616,19 +1749,33 @@ app.get("/api/theteller-status", async (req, res) => {
       transaction_id,
       code,
       raw
+    };
+
+    console.log("➡️ STATUS RESPONSE TO FRONTEND:", {
+      transaction_id,
+      returned_status: "pending",
+      finalized: false,
+      provider_status: status,
+      provider_code: code
     });
+
+    return res.json(out);
 
   } catch (e) {
     console.error("❌ TheTeller status error:", e.response?.data || e.message);
 
-    return res.json({
+    const out = {
       ok: false,
       status: "unknown",
       finalized: false,
       message: "Could not check payment status"
-    });
+    };
+
+    console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
+    return res.json(out);
   }
 });
+
 
 // =====================================================
 // GET /api/payment-session-status
@@ -1637,7 +1784,9 @@ app.get("/api/payment-session-status", async (req, res) => {
   const client_ref = String(req.query.client_ref || "").trim();
 
   if (!client_ref) {
-    return res.json({ ok: false, message: "client_ref is required." });
+    const out = { ok: false, message: "client_ref is required." };
+    console.log("➡️ PAYMENT SESSION RESPONSE TO FRONTEND:", out);
+    return res.json(out);
   }
 
   try {
@@ -1662,12 +1811,14 @@ app.get("/api/payment-session-status", async (req, res) => {
     );
 
     if (!rows.length) {
-      return res.json({ ok: false, message: "Payment session not found." });
+      const out = { ok: false, message: "Payment session not found." };
+      console.log("➡️ PAYMENT SESSION RESPONSE TO FRONTEND:", out);
+      return res.json(out);
     }
 
     const row = rows[0];
 
-    return res.json({
+    const out = {
       ok: true,
       found: true,
       client_ref: row.client_ref,
@@ -1681,15 +1832,23 @@ app.get("/api/payment-session-status", async (req, res) => {
       recipient_number: row.recipient_number || null,
       vendor_id: row.vendor_id || null,
       source_page: row.source_page || "mtn.html"
-    });
+    };
+
+    console.log("➡️ PAYMENT SESSION RESPONSE TO FRONTEND:", out);
+    return res.json(out);
   } catch (err) {
     console.error("payment-session-status error:", err);
-    return res.status(500).json({
+
+    const out = {
       ok: false,
       message: "Could not fetch payment session."
-    });
+    };
+
+    console.log("➡️ PAYMENT SESSION RESPONSE TO FRONTEND:", out);
+    return res.status(500).json(out);
   }
 });
+
 
 // =====================================================
 // POST /api/payment-session-recover
