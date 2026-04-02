@@ -1122,71 +1122,159 @@ function startServerSideWatcher(transaction_id, opts = {}) {
 // Value: { vendor_id, recipient_number, package_name, amount, network, package_id }
 const pendingOrders = new Map();
 
+// =====================================================
+// PAYMENT SESSION HELPERS
+// =====================================================
+async function getPaymentSessionByClientRef(client_ref) {
+  const [rows] = await db.promise().query(
+    "SELECT * FROM payment_sessions WHERE client_ref=? LIMIT 1",
+    [client_ref]
+  );
+  return rows.length ? rows[0] : null;
+}
+
+async function getPaymentSessionByTransactionId(transaction_id) {
+  const [rows] = await db.promise().query(
+    "SELECT * FROM payment_sessions WHERE transaction_id=? LIMIT 1",
+    [transaction_id]
+  );
+  return rows.length ? rows[0] : null;
+}
 
 // =====================================================
-// POST /api/buy-data-theteller  (INITIATE PROMPT)
+// POST /api/buy-data-theteller
 // =====================================================
 app.post("/api/buy-data-theteller", async (req, res) => {
-  const { package_id, momo_number, recipient_number, vendor_id } = req.body;
+  const {
+    client_ref,
+    package_id,
+    momo_number,
+    recipient_number,
+    vendor_id,
+    source_page
+  } = req.body;
 
   const vid = Number(vendor_id || 1);
 
-  if (!package_id || !momo_number || !recipient_number) {
-    return res.json({ ok: false, message: "Missing required fields." });
+  console.log("🔥 HIT /api/buy-data-theteller");
+  console.log("📥 BODY:", req.body);
+
+  if (!client_ref || !package_id || !momo_number || !recipient_number) {
+    return res.json({
+      ok: false,
+      message: "Missing required fields."
+    });
   }
 
   try {
-    // 1) Fetch package (this is the DATA bundle network)
-    const [rows] = await db
-      .promise()
-      .query(
-        "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
-        [package_id]
-      );
+    // 1) if session already exists, return it
+    const existingSession = await getPaymentSessionByClientRef(client_ref);
+    if (existingSession) {
+      console.log("ℹ️ Existing payment session found:", existingSession.client_ref);
+
+      return res.json({
+        ok: true,
+        resumed: true,
+        client_ref: existingSession.client_ref,
+        transaction_id: existingSession.transaction_id || null,
+        status: existingSession.payment_status || existingSession.init_status || "created",
+        message: "Existing payment session found."
+      });
+    }
+
+    // 2) Fetch package
+    const [rows] = await db.promise().query(
+      "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
+      [package_id]
+    );
 
     if (!rows.length) {
-      return res.json({ ok: false, message: "Package not found or inactive." });
+      return res.json({
+        ok: false,
+        message: "Package not found or inactive."
+      });
     }
 
     const pkg = rows[0];
 
-    // ✅ 2) Detect payer MoMo network from momo_number (NOT from pkg.network)
+    // 3) Detect payer network from momo_number
     const payerNet = detectMomoNetwork(momo_number); // 'mtn' | 'airteltigo' | 'telecel'
     const rSwitch = getSwitchCode(payerNet);
 
     if (!rSwitch) {
-      return res.json({ ok: false, message: "Unsupported payer network." });
+      return res.json({
+        ok: false,
+        message: "Unsupported payer network."
+      });
     }
 
-    // 3) Build payload
+    // 4) Build ids
     const transactionId = makeTransactionId();
+    const packageBatchId = makePackageId();
 
+    // 5) INSERT payment session FIRST
+    await db.promise().query(
+      `INSERT INTO payment_sessions
+      (
+        client_ref,
+        transaction_id,
+        vendor_id,
+        package_id,
+        package_name,
+        amount,
+        network,
+        payer_network,
+        momo_number,
+        recipient_number,
+        package_batch_id,
+        source_page,
+        init_status,
+        payment_status
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'starting', 'starting')`,
+      [
+        client_ref,
+        transactionId,
+        vid,
+        Number(package_id),
+        pkg.package_name,
+        Number(pkg.price),
+        String(pkg.network || "").toLowerCase(),
+        payerNet,
+        momo_number,
+        recipient_number,
+        packageBatchId,
+        source_page || "mtn.html"
+      ]
+    );
+
+    console.log("✅ payment_sessions row inserted:", {
+      client_ref,
+      transactionId,
+      vendor_id: vid
+    });
+
+    // 6) Build TheTeller payload
     const payload = {
       amount: thetellerAmount12(pkg.price),
       processing_code: "000200",
       transaction_id: transactionId,
       desc: `Sandypay Data - ${pkg.package_name}`,
       merchant_id: THETELLER.merchantId,
-
-      // ✅ payer number (can be MTN/AT/Telecel)
       subscriber_number: formatMsisdnForTheTeller(momo_number),
-
-      // ✅ payer switch (based on momo_number)
       "r-switch": rSwitch,
-
       redirect_url: "https://sandipay.co/payment-callback",
     };
-    console.log("🧾 Bundle network:", pkg.network);
-console.log("💳 MoMo number raw:", momo_number);
-console.log("💳 Detected payerNet:", payerNet);
-console.log("💳 Using r-switch:", rSwitch);
-console.log("💳 subscriber_number:", formatMsisdnForTheTeller(momo_number));
 
+    console.log("🧾 Bundle network:", pkg.network);
+    console.log("💳 MoMo number raw:", momo_number);
+    console.log("💳 Detected payerNet:", payerNet);
+    console.log("💳 Using r-switch:", rSwitch);
+    console.log("💳 subscriber_number:", formatMsisdnForTheTeller(momo_number));
     console.log("📤 TheTeller INIT payload:", payload);
     console.log("🔐 Using merchant:", THETELLER.merchantId);
-    console.log("💳 Payer network:", payerNet, " | Bundle network:", String(pkg.network || "").toLowerCase());
 
-    // 4) Call TheTeller INIT
+    // 7) Call TheTeller INIT
     const tt = await axios.post(THETELLER.endpoint, payload, {
       headers: {
         "Content-Type": "application/json",
@@ -1198,55 +1286,73 @@ console.log("💳 subscriber_number:", formatMsisdnForTheTeller(momo_number));
 
     console.log("📥 TheTeller INIT response:", tt.data);
 
-    const status = String(tt.data?.status || "").toLowerCase();
-const code = String(tt.data?.code || "");
-const message =
-  tt.data?.message ||
-  tt.data?.reason ||
-  tt.data?.response_message ||
-  tt.data?.status_message ||
-  "";
+    const accepted = isInitAccepted(tt.data);
 
-// ✅ Accept more INIT statuses/codes (TheTeller varies by switch)
-const accepted = isInitAccepted(tt.data);
+    if (!accepted) {
+      console.log("❌ INIT not accepted raw:", tt.data);
 
-if (!accepted) {
-  console.log("❌ INIT not accepted raw:", tt.data);
-  return res.json({
-    ok: false,
-    message: `Payment prompt not accepted (status=${tt.data?.status}, code=${tt.data?.code}) ${message}`.trim(),
-    theteller: tt.data,
-  });
-}
+      await db.promise().query(
+        `UPDATE payment_sessions
+         SET init_status='failed',
+             payment_status='failed'
+         WHERE client_ref=?`,
+        [client_ref]
+      );
 
+      return res.json({
+        ok: false,
+        message: `Payment prompt not accepted (status=${tt.data?.status}, code=${tt.data?.code}) ${tt.data?.message || tt.data?.reason || ""}`.trim(),
+        theteller: tt.data,
+      });
+    }
 
-    // ✅ Store pending info so STATUS can auto-insert after approval
+    // 8) Update session after successful init
+    await db.promise().query(
+      `UPDATE payment_sessions
+       SET init_status='prompt_sent',
+           payment_status='pending'
+       WHERE client_ref=?`,
+      [client_ref]
+    );
+
+    // 9) optional memory cache too
     pendingOrders.set(transactionId, {
       vendor_id: vid,
       recipient_number,
       package_name: pkg.package_name,
       amount: Number(pkg.price),
-
-      // ✅ this remains the bundle network (delivery network)
       network: String(pkg.network || "").toLowerCase(),
-
-      // optional: store payer network too (if you later add DB column)
       payer_network: payerNet,
-
-      package_id: makePackageId(),
+      package_id: packageBatchId,
     });
-    // ✅ Start backend auto-confirm so even if user closes page, it will still insert when approved
-startServerSideWatcher(transactionId, { intervalMs: 5000, maxMinutes: 6 });
 
+    // 10) server-side watcher
+    startServerSideWatcher(transactionId, { intervalMs: 5000, maxMinutes: 6 });
 
     return res.json({
       ok: true,
       message: "✅ Prompt sent. Please approve on your phone.",
+      client_ref,
       transaction_id: transactionId,
       vendor_id: vid,
     });
+
   } catch (err) {
     console.error("❌ TheTeller INIT error:", err.response?.data || err.message);
+
+    if (client_ref) {
+      try {
+        await db.promise().query(
+          `UPDATE payment_sessions
+           SET init_status='network_error'
+           WHERE client_ref=?`,
+          [client_ref]
+        );
+      } catch (e) {
+        console.error("❌ Could not update session to network_error:", e.message);
+      }
+    }
+
     return res.status(500).json({
       ok: false,
       message: "Payment could not be initiated. Try again.",
@@ -1257,29 +1363,27 @@ startServerSideWatcher(transactionId, { intervalMs: 5000, maxMinutes: 6 });
 
 // =====================================================
 // GET /api/theteller-status?transaction_id=...
-// ✅ Robust parsing + auto-insert into admin_orders
 // =====================================================
 app.get("/api/theteller-status", async (req, res) => {
   const transaction_id = String(req.query.transaction_id || "").trim();
-  if (!transaction_id) return res.json({ ok: false, status: "unknown" });
+  if (!transaction_id) {
+    return res.json({ ok: false, status: "unknown", message: "transaction_id is required" });
+  }
 
   try {
     const url = `${THETELLER.statusBase}/${encodeURIComponent(transaction_id)}/status`;
 
-
     const resp = await axios.get(url, {
-     headers: {
-  Authorization: `Basic ${THETELLER.basicToken}`,
-  "Merchant-Id": THETELLER.merchantId,
-  "Cache-Control": "no-cache",
-},
-
+      headers: {
+        Authorization: `Basic ${THETELLER.basicToken}`,
+        "Merchant-Id": THETELLER.merchantId,
+        "Cache-Control": "no-cache",
+      },
       timeout: 30000,
     });
 
     const raw = resp.data || {};
 
-    // ✅ Some TheTeller responses use different key names
     const statusRaw =
       raw.status ??
       raw.Status ??
@@ -1301,11 +1405,9 @@ app.get("/api/theteller-status", async (req, res) => {
     const status = String(statusRaw).toLowerCase().trim();
     const code = String(codeRaw).trim();
 
-    // ✅ IMPORTANT: Log raw once for debugging
     console.log("📥 TheTeller STATUS raw:", raw);
     console.log("✅ Parsed STATUS:", { status, code });
 
-    // ✅ More tolerant “approved”
     const approved =
       code === "000" ||
       code === "00" ||
@@ -1316,115 +1418,104 @@ app.get("/api/theteller-status", async (req, res) => {
       status.includes("complete") ||
       status.includes("paid");
 
-    // ✅ More tolerant “pending”
-  const pending =
-  ["pending", "processing", "in progress", "in_progress", "initiated", "inprogress", "queued"].includes(status) ||
-  status.includes("pending") ||
-  status.includes("processing") ||
-  status.includes("progress") ||
-  status.includes("initiated") ||
-  status.includes("queued") ||
-  code === "099";
+    const pending =
+      ["pending", "processing", "in progress", "in_progress", "initiated", "inprogress", "queued"].includes(status) ||
+      status.includes("pending") ||
+      status.includes("processing") ||
+      status.includes("progress") ||
+      status.includes("initiated") ||
+      status.includes("queued") ||
+      code === "099";
 
-// ✅ More tolerant “failed”
-const failed =
-  ["failed", "declined", "cancelled", "canceled", "reversed"].includes(status) ||
-  status.includes("fail") ||
-  status.includes("decline") ||
-  status.includes("cancel");
+    const failed =
+      ["failed", "declined", "cancelled", "canceled", "reversed"].includes(status) ||
+      status.includes("fail") ||
+      status.includes("decline") ||
+      status.includes("cancel");
 
+    if (approved) {
+      const s = await getPaymentSessionByTransactionId(transaction_id);
 
+      if (s) {
+        const [exists] = await db.promise().query(
+          "SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1",
+          [transaction_id]
+        );
 
-    // ✅ If approved, finalize by inserting into admin_orders
-   if (approved) {
-  const [sessionRows] = await db.promise().query(
-    "SELECT * FROM payment_sessions WHERE transaction_id=? LIMIT 1",
-    [transaction_id]
-  );
+        if (!exists.length) {
+          await db.promise().query(
+            `INSERT INTO admin_orders
+            (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
+            VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
+            [
+              s.vendor_id,
+              s.recipient_number,
+              s.package_name,
+              Number(s.amount),
+              String(s.network).toLowerCase(),
+              s.package_batch_id,
+              transaction_id
+            ]
+          );
+        }
 
-  if (sessionRows.length) {
-    const s = sessionRows[0];
+        await db.promise().query(
+          `UPDATE payment_sessions
+           SET payment_status='approved',
+               finalized=1,
+               updated_reference=?
+           WHERE transaction_id=?`,
+          [transaction_id, transaction_id]
+        );
 
-    const [exists] = await db.promise().query(
-      "SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1",
-      [transaction_id]
-    );
+        return res.json({
+          ok: true,
+          status: "approved",
+          finalized: true,
+          message: "✅ Payment successful. Order saved.",
+          raw,
+        });
+      }
 
-    if (!exists.length) {
-      await db.promise().query(
-        `INSERT INTO admin_orders
-        (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
-        VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
-        [
-          s.vendor_id,
-          s.recipient_number,
-          s.package_name,
-          Number(s.amount),
-          String(s.network).toLowerCase(),
-          s.package_batch_id,
-          transaction_id
-        ]
-      );
+      return res.json({
+        ok: true,
+        status: "approved",
+        finalized: false,
+        message: "✅ Payment successful, but payment session not found.",
+        raw,
+      });
     }
 
-    await db.promise().query(
-      `UPDATE payment_sessions
-       SET payment_status='approved',
-           finalized=1,
-           updated_reference=?
-       WHERE transaction_id=?`,
-      [transaction_id, transaction_id]
-    );
+    if (pending) {
+      await db.promise().query(
+        "UPDATE payment_sessions SET payment_status='pending' WHERE transaction_id=?",
+        [transaction_id]
+      );
 
-    return res.json({
-      ok: true,
-      status: "approved",
-      finalized: true,
-      message: "✅ Payment successful. Order saved.",
-      raw,
-    });
-  }
+      return res.json({
+        ok: true,
+        status: "pending",
+        finalized: false,
+        message: "⏳ Awaiting approval...",
+        raw,
+      });
+    }
 
-  return res.json({
-    ok: true,
-    status: "approved",
-    finalized: false,
-    message: "✅ Payment successful, but payment session not found.",
-    raw,
-  });
-}
+    if (failed) {
+      await db.promise().query(
+        "UPDATE payment_sessions SET payment_status='failed' WHERE transaction_id=?",
+        [transaction_id]
+      );
 
-   if (pending) {
-  await db.promise().query(
-    "UPDATE payment_sessions SET payment_status='pending' WHERE transaction_id=?",
-    [transaction_id]
-  );
+      return res.json({
+        ok: true,
+        status: "failed",
+        finalized: false,
+        message: "❌ Payment failed/declined/cancelled.",
+        raw,
+      });
+    }
 
-  return res.json({
-    ok: true,
-    status: "pending",
-    finalized: false,
-    message: "⏳ Awaiting approval...",
-    raw,
-  });
-}
-
-if (failed) {
-  await db.promise().query(
-    "UPDATE payment_sessions SET payment_status='failed' WHERE transaction_id=?",
-    [transaction_id]
-  );
-
-  return res.json({
-    ok: true,
-    status: "failed",
-    finalized: false,
-    message: "❌ Payment failed/declined/cancelled.",
-    raw,
-  });
-}
-
-    // Unknown state — don't claim failure too early
     return res.json({
       ok: true,
       status: status || "unknown",
@@ -1434,11 +1525,17 @@ if (failed) {
     });
   } catch (e) {
     console.error("❌ TheTeller status error:", e.response?.data || e.message);
-    return res.json({ ok: false, status: "unknown" });
+    return res.json({
+      ok: false,
+      status: "unknown",
+      message: "Could not check payment status"
+    });
   }
 });
 
-
+// =====================================================
+// GET /api/payment-session-status
+// =====================================================
 app.get("/api/payment-session-status", async (req, res) => {
   const client_ref = String(req.query.client_ref || "").trim();
 
@@ -1497,6 +1594,9 @@ app.get("/api/payment-session-status", async (req, res) => {
   }
 });
 
+// =====================================================
+// POST /api/payment-session-recover
+// =====================================================
 app.post("/api/payment-session-recover", async (req, res) => {
   const client_ref = String(req.body.client_ref || "").trim();
 
@@ -1516,7 +1616,6 @@ app.post("/api/payment-session-recover", async (req, res) => {
 
     const s = rows[0];
 
-    // if transaction already exists, just return it
     if (s.transaction_id) {
       return res.json({
         ok: true,
@@ -1527,7 +1626,6 @@ app.post("/api/payment-session-recover", async (req, res) => {
       });
     }
 
-    // if required data is missing, cannot recover
     if (!s.package_id || !s.momo_number || !s.recipient_number) {
       return res.json({
         ok: false,
@@ -1535,7 +1633,6 @@ app.post("/api/payment-session-recover", async (req, res) => {
       });
     }
 
-    // fetch package
     const [pkgRows] = await db.promise().query(
       "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
       [s.package_id]
@@ -1567,6 +1664,8 @@ app.post("/api/payment-session-recover", async (req, res) => {
       redirect_url: "https://sandipay.co/payment-callback",
     };
 
+    console.log("📤 Recover INIT payload:", payload);
+
     const tt = await axios.post(THETELLER.endpoint, payload, {
       headers: {
         "Content-Type": "application/json",
@@ -1575,6 +1674,8 @@ app.post("/api/payment-session-recover", async (req, res) => {
       },
       timeout: 30000,
     });
+
+    console.log("📥 Recover INIT response:", tt.data);
 
     const accepted = isInitAccepted(tt.data);
 
@@ -1619,8 +1720,6 @@ app.post("/api/payment-session-recover", async (req, res) => {
     });
   }
 });
-
-
 // =====================================================
 // POST /api/buy-data-confirm (OPTIONAL BACKUP)
 // Use only if you still want manual confirm from frontend.
