@@ -206,6 +206,40 @@
       return "PAY-" + Date.now() + "-" + Math.random().toString(36).slice(2, 10).toUpperCase();
     }
 
+    function getPackageId(pkg) {
+      return (
+        pkg?.id ||
+        pkg?.package_id ||
+        pkg?.ID ||
+        pkg?.packageId ||
+        ""
+      );
+    }
+
+    function getPackageName(pkg) {
+      return (
+        pkg?.package_name ||
+        pkg?.packageName ||
+        pkg?.name ||
+        "Bundle"
+      );
+    }
+
+    function getPackagePrice(pkg) {
+      return (
+        pkg?.price ||
+        pkg?.amount ||
+        0
+      );
+    }
+
+    function getPackageNetwork(pkg) {
+      return (
+        pkg?.network ||
+        NETWORK
+      );
+    }
+
     function openOverlay(title="Please wait", msg="Processing..."){
       document.getElementById("overlayTitle").innerText = title;
       document.getElementById("overlayStatus").innerText = msg;
@@ -266,11 +300,15 @@
         emptyEl.innerText = "";
 
         data.forEach(pkg => {
+          const pkgName = getPackageName(pkg);
+          const pkgPrice = getPackagePrice(pkg);
+          const pkgNetwork = getPackageNetwork(pkg);
+
           packagesEl.innerHTML += `
             <div class="pkg">
-              <h4>${pkg.package_name}</h4>
-              <div class="price">GHS ${money(pkg.price)}</div>
-              <div class="meta">Network: ${String(pkg.network || "").toUpperCase()}</div>
+              <h4>${pkgName}</h4>
+              <div class="price">GHS ${money(pkgPrice)}</div>
+              <div class="meta">Network: ${String(pkgNetwork || "").toUpperCase()}</div>
               <button class="btn" onclick='openModal(${JSON.stringify(pkg)})'>Buy Bundle</button>
             </div>
           `;
@@ -285,11 +323,15 @@
     function openModal(pkg){
       selectedPackage = pkg;
 
+      const pkgName = getPackageName(pkg);
+      const pkgPrice = getPackagePrice(pkg);
+      const pkgNetwork = getPackageNetwork(pkg);
+
       document.getElementById("modalTitle").innerText =
-        `Buy ${pkg.package_name} (${String(pkg.network).toUpperCase()})`;
+        `Buy ${pkgName} (${String(pkgNetwork).toUpperCase()})`;
 
       document.getElementById("modalSub").innerText =
-        `Amount: GHS ${money(pkg.price)} • Enter details below to continue`;
+        `Amount: GHS ${money(pkgPrice)} • Enter details below to continue`;
 
       document.getElementById("recipientNumber").value = "";
       document.getElementById("momoNumber").value = "";
@@ -406,19 +448,38 @@
         const vendor_id = localStorage.getItem("vendor_id") || 1;
         const client_ref = makeClientRef();
 
+        const package_id = getPackageId(selectedPackage);
+        const package_name = getPackageName(selectedPackage);
+        const amount = getPackagePrice(selectedPackage);
+        const network = getPackageNetwork(selectedPackage);
+
+        if(!package_id){
+          showOverlayError("Package ID is missing for this Telecel package. Check the package row fields.");
+          setTimeout(closeOverlay, 2500);
+          return;
+        }
+
+        if(!momo || !recipient || !client_ref){
+          showOverlayError("One or more required fields are missing.");
+          setTimeout(closeOverlay, 2500);
+          return;
+        }
+
         sessionStorage.setItem("last_client_ref", client_ref);
 
         const qs = new URLSearchParams({
-          client_ref,
-          package_id: String(selectedPackage.id || ""),
-          package_name: String(selectedPackage.package_name || ""),
-          amount: String(selectedPackage.price || ""),
-          network: String(selectedPackage.network || ""),
-          momo_number: momo,
-          recipient_number: recipient,
+          client_ref: String(client_ref),
+          package_id: String(package_id),
+          package_name: String(package_name),
+          amount: String(amount),
+          network: String(network),
+          momo_number: String(momo),
+          recipient_number: String(recipient),
           vendor_id: String(vendor_id),
           source_page: "telecel.html"
         });
+
+        console.log("Opening payment_wait with:", Object.fromEntries(qs.entries()));
 
         closeOverlay();
         closeModal();
