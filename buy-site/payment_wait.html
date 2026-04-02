@@ -244,13 +244,15 @@
     </div>
   </div>
 
- <script>
-const API_BASE = "https://sandipay.co";
+<script>
+  const API_BASE = "https://sandipay.co";
   const params = new URLSearchParams(window.location.search);
   const storageKey = params.get("key");
 
   let paymentData = null;
   let transactionId = null;
+  let paymentReference = null;
+  let orderId = null;
   let pollTimer = null;
   let finished = false;
   let tries = 0;
@@ -297,6 +299,52 @@ const API_BASE = "https://sandipay.co";
     setStatus(msg, "error");
   }
 
+  function extractIds(out) {
+    transactionId =
+      out.transaction_id ||
+      out.transactionId ||
+      out.data?.transaction_id ||
+      out.data?.transactionId ||
+      null;
+
+    paymentReference =
+      out.reference ||
+      out.payment_reference ||
+      out.paymentReference ||
+      out.data?.reference ||
+      out.data?.payment_reference ||
+      out.data?.paymentReference ||
+      null;
+
+    orderId =
+      out.order_id ||
+      out.orderId ||
+      out.data?.order_id ||
+      out.data?.orderId ||
+      null;
+
+    console.log("Extracted IDs:", {
+      transactionId,
+      paymentReference,
+      orderId,
+      raw: out
+    });
+  }
+
+  function buildStatusUrl() {
+    const query = new URLSearchParams();
+
+    if (transactionId) query.set("transaction_id", transactionId);
+    if (paymentReference) query.set("reference", paymentReference);
+    if (orderId) query.set("order_id", orderId);
+
+    return `${API_BASE}/api/theteller-status?${query.toString()}`;
+  }
+
+  function hasAnyCheckId() {
+    return !!(transactionId || paymentReference || orderId);
+  }
+
   async function startPayment() {
     if (!paymentData) {
       failAndStay("Payment data not found.");
@@ -320,17 +368,28 @@ const API_BASE = "https://sandipay.co";
         })
       });
 
-      const out = await res.json();
+      let out = {};
+      try {
+        out = await res.json();
+      } catch (e) {
+        out = {};
+      }
+
+      console.log("Start payment response:", out);
 
       if (!res.ok || !out.ok) {
         failAndStay(out.message || "Payment could not be started.");
         return;
       }
 
-      transactionId = out.transaction_id || out.transactionId || out.data?.transaction_id || null;
+      extractIds(out);
 
-      if (!transactionId) {
-        failAndStay("Transaction ID missing from server response.");
+      if (!hasAnyCheckId()) {
+        setStatus(
+          "Payment prompt may have been sent, but no tracking ID was returned yet. If you approve on your phone, tap 'I've completed the payment' to check again."
+        );
+        mainLoader.style.display = "none";
+        doneBtn.disabled = false;
         return;
       }
 
@@ -344,16 +403,21 @@ const API_BASE = "https://sandipay.co";
   }
 
   async function fetchPaymentStatus() {
-    if (!transactionId) {
+    if (!hasAnyCheckId()) {
       return {
-        ok: false,
-        message: "Transaction ID not found yet."
+        httpOk: false,
+        raw: {},
+        status: "",
+        code: "",
+        finalized: false,
+        message: "No payment tracking ID available yet."
       };
     }
 
-    const res = await fetch(
-      `${API_BASE}/api/theteller-status?transaction_id=${encodeURIComponent(transactionId)}`
-    );
+    const url = buildStatusUrl();
+    console.log("Checking status with URL:", url);
+
+    const res = await fetch(url);
 
     let out = {};
     try {
@@ -362,11 +426,23 @@ const API_BASE = "https://sandipay.co";
       out = {};
     }
 
+    console.log("Status response:", out);
+
     return {
       httpOk: res.ok,
       raw: out,
-      status: String(out.status || out.payment_status || "").toLowerCase(),
-      code: String(out.code || out.status_code || out.transaction_code || "").toLowerCase(),
+      status: String(
+        out.status ||
+        out.payment_status ||
+        out.transaction_status ||
+        ""
+      ).toLowerCase(),
+      code: String(
+        out.code ||
+        out.status_code ||
+        out.transaction_code ||
+        ""
+      ).toLowerCase(),
       finalized: !!out.finalized,
       message: out.message || out.reason || "Waiting for approval"
     };
@@ -393,7 +469,7 @@ const API_BASE = "https://sandipay.co";
   }
 
   async function autoCheckStatus() {
-    if (!transactionId || finished || autoChecking) return;
+    if (finished || autoChecking || !hasAnyCheckId()) return;
 
     autoChecking = true;
 
@@ -438,23 +514,24 @@ const API_BASE = "https://sandipay.co";
   }
 
   async function manualCheckStatus() {
-    if (finished) return;
-
-    if (!transactionId) {
-      setStatus("Payment is still starting. Please wait a few seconds and try again.", "error");
-      return;
-    }
-
-    if (manualChecking) return;
+    if (finished || manualChecking) return;
 
     manualChecking = true;
     doneBtn.disabled = true;
     doneBtn.innerText = "Checking...";
 
     try {
-      const result = await fetchPaymentStatus();
+      if (!hasAnyCheckId()) {
+        setStatus(
+          "Payment tracking details are not ready yet. Please wait a few seconds and tap again.",
+          "error"
+        );
+        doneBtn.disabled = false;
+        doneBtn.innerText = "I've completed the payment";
+        return;
+      }
 
-      console.log("Manual payment check:", result);
+      const result = await fetchPaymentStatus();
 
       if (isApproved(result)) {
         finished = true;
