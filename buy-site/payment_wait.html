@@ -444,47 +444,47 @@
       }
     }
 
-    async function fetchPaymentStatus() {
-      if (!transactionId) {
-        await recoverTransactionIdWithRetries();
-      }
+ async function fetchPaymentStatus() {
+  if (!transactionId) {
+    await recoverTransactionIdWithRetries();
+  }
 
-      if (!transactionId) {
-        return {
-          status: "unknown",
-          code: "",
-          finalized: false,
-          transaction_id: null,
-          message: "Payment session found but transaction is still being prepared. If you already approved on your phone, tap again in a few seconds."
-        };
-      }
+  if (!transactionId) {
+    return {
+      status: "unknown",
+      code: "",
+      finalized: false,
+      transaction_id: null,
+      message: "Payment session found but transaction is still being prepared. If you already approved on your phone, tap again in a few seconds."
+    };
+  }
 
-      const res = await fetch(`${API_BASE}/api/theteller-status?transaction_id=${encodeURIComponent(transactionId)}&client_ref=${encodeURIComponent(paymentData.client_ref)}`, {
-        cache: "no-store"
-      });
+  const res = await fetch(`${API_BASE}/api/theteller-status?transaction_id=${encodeURIComponent(transactionId)}&client_ref=${encodeURIComponent(paymentData.client_ref)}`, {
+    cache: "no-store"
+  });
 
-      let out = {};
-      try {
-        out = await res.json();
-      } catch (e) {
-        out = {};
-      }
+  let out = {};
+  try {
+    out = await res.json();
+  } catch (e) {
+    out = {};
+  }
 
-      console.log("Status response:", out);
+  console.log("Status response:", out);
 
-      const maybeRecoveredId = pickTransactionId(out);
-      if (maybeRecoveredId) {
-        transactionId = maybeRecoveredId;
-      }
+  const maybeRecoveredId = pickTransactionId(out);
+  if (maybeRecoveredId) {
+    transactionId = maybeRecoveredId;
+  }
 
-      return {
-        status: normalizeStatus(out.status),
-        code: normalizeCode(out.code),
-        finalized: !!out.finalized,
-        transaction_id: out.transaction_id || maybeRecoveredId || null,
-        message: out.message || out.reason || "Waiting for approval"
-      };
-    }
+  return {
+    status: normalizeStatus(out.status),
+    code: normalizeCode(out.code),
+    finalized: !!out.finalized,
+    transaction_id: out.transaction_id || maybeRecoveredId || null,
+    message: out.message || out.reason || "Waiting for approval"
+  };
+}
 
     async function finalizeApprovedPayment() {
       finished = true;
@@ -531,71 +531,72 @@
       }
     }
 
-    async function manualCheckStatus() {
-      if (finished || manualChecking) return;
+   async function manualCheckStatus() {
+  if (finished || manualChecking) return;
 
-      manualChecking = true;
-      doneBtn.disabled = true;
-      doneBtn.innerText = "Checking...";
-      mainLoader.style.display = "block";
-      lastManualTapAt = Date.now();
+  manualChecking = true;
+  doneBtn.disabled = true;
+  doneBtn.innerText = "Checking...";
+  mainLoader.style.display = "block";
+  lastManualTapAt = Date.now();
 
-      try {
-        setStatus("Checking your payment carefully. Please wait...");
+  try {
+    setStatus("Checking your payment carefully. Please wait...");
 
-        const res = await fetch(`${API_BASE}/api/manual-verify-payment`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            client_ref: paymentData.client_ref,
-            transaction_id: transactionId || ""
-          })
-        });
+    const res = await fetch(`${API_BASE}/api/manual-verify-payment`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        client_ref: paymentData.client_ref,
+        transaction_id: transactionId || ""
+      })
+    });
 
-        let out = {};
-        try {
-          out = await res.json();
-        } catch (e) {
-          out = {};
-        }
-
-        console.log("Manual reconcile result:", out);
-
-        if (out.transaction_id && !transactionId) {
-          transactionId = out.transaction_id;
-        }
-
-        if (out.ok && (out.finalized === true || normalizeStatus(out.status) === "approved")) {
-          await finalizeApprovedPayment();
-          return;
-        }
-
-        doneBtn.disabled = false;
-        doneBtn.innerText = "I've completed the payment";
-        mainLoader.style.display = "none";
-
-        setStatus(
-          out.message || "Payment is still being confirmed. If money was deducted, do not pay again. Tap again shortly."
-        );
-
-        startPolling();
-
-      } catch (err) {
-        console.error("manualCheckStatus error:", err);
-        doneBtn.disabled = false;
-        doneBtn.innerText = "I've completed the payment";
-        mainLoader.style.display = "none";
-        setStatus(
-          "Could not confirm payment right now. If money was deducted, do not start a new payment. Tap again shortly.",
-          "error"
-        );
-        startPolling();
-      } finally {
-        manualChecking = false;
-      }
+    let out = {};
+    try {
+      out = await res.json();
+    } catch (e) {
+      out = {};
     }
+
+    console.log("Manual reconcile result:", out);
+
+    if (out.transaction_id && !transactionId) {
+      transactionId = out.transaction_id;
+    }
+
+    if (out.ok && (out.finalized === true || normalizeStatus(out.status) === "approved")) {
+      await finalizeApprovedPayment();
+      return;
+    }
+
+    doneBtn.disabled = false;
+    doneBtn.innerText = "I've completed the payment";
+    mainLoader.style.display = "none";
+
+    setStatus(
+      out.message || "Payment is still being confirmed. If money was deducted, do not pay again. Tap again shortly."
+    );
+
+    startPolling();
+
+  } catch (err) {
+    console.error("manualCheckStatus error:", err);
+    doneBtn.disabled = false;
+    doneBtn.innerText = "I've completed the payment";
+    mainLoader.style.display = "none";
+    setStatus(
+      "Could not confirm payment right now. If money was deducted, do not start a new payment. Tap again shortly.",
+      "error"
+    );
+    startPolling();
+  } finally {
+    manualChecking = false;
+  }
+}
+
 
     function startPolling() {
       stopPolling();
