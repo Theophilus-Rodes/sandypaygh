@@ -1141,10 +1141,170 @@ async function getPaymentSessionByTransactionId(transaction_id) {
   return rows.length ? rows[0] : null;
 }
 
-// =====================================================
-// POST /api/buy-data-theteller
-// =====================================================
+async function reconcilePaymentNow({ client_ref = "", transaction_id = "", source = "manual" }) {
+  let session = null;
 
+  if (transaction_id) {
+    session = await getPaymentSessionByTransactionId(transaction_id);
+  }
+
+  if (!session && client_ref) {
+    session = await getPaymentSessionByClientRef(client_ref);
+    if (session?.transaction_id) {
+      transaction_id = String(session.transaction_id).trim();
+    }
+  }
+
+  if (!session) {
+    return {
+      ok: false,
+      finalized: false,
+      status: "unknown",
+      message: "Payment session not found."
+    };
+  }
+
+  if (
+    Number(session.finalized) === 1 ||
+    String(session.payment_status || "").toLowerCase() === "approved"
+  ) {
+    return {
+      ok: true,
+      finalized: true,
+      status: "approved",
+      transaction_id: session.transaction_id || transaction_id || null,
+      message: "Payment already confirmed locally."
+    };
+  }
+
+  if (!transaction_id) {
+    return {
+      ok: true,
+      finalized: false,
+      status: "pending",
+      message: "Transaction is still being prepared."
+    };
+  }
+
+  const url = `${THETELLER.statusBase}/${encodeURIComponent(transaction_id)}/status`;
+
+  const resp = await axios.get(url, {
+    headers: {
+      Authorization: `Basic ${THETELLER.basicToken}`,
+      "Merchant-Id": THETELLER.merchantId,
+      "Cache-Control": "no-cache",
+    },
+    timeout: 30000,
+  });
+
+  const raw = resp.data || {};
+
+  const status = String(
+    raw.status ??
+    raw.Status ??
+    raw.transaction_status ??
+    raw.transactionStatus ??
+    raw.response_status ??
+    raw.state ??
+    ""
+  ).toLowerCase().trim();
+
+  const code = String(
+    raw.code ??
+    raw.Code ??
+    raw.response_code ??
+    raw.responseCode ??
+    raw.status_code ??
+    raw.statusCode ??
+    ""
+  ).trim();
+
+  const message = String(
+    raw.reason ??
+    raw.message ??
+    raw.ResponseMessage ??
+    raw.response_message ??
+    ""
+  ).trim();
+
+  const approved =
+    code === "000" ||
+    code === "00" ||
+    code === "0" ||
+    ["approved", "successful", "success", "completed", "paid", "done"].includes(status) ||
+    status.includes("success") ||
+    status.includes("approved") ||
+    status.includes("complete") ||
+    status.includes("paid");
+
+  await db.promise().query(
+    `INSERT INTO payment_reconcile_logs
+     (client_ref, transaction_id, check_source, provider_status, provider_code, local_payment_status, local_finalized, resolved, note, raw_response)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      session.client_ref,
+      transaction_id,
+      source,
+      status || null,
+      code || null,
+      session.payment_status || null,
+      Number(session.finalized) === 1 ? 1 : 0,
+      approved ? 1 : 0,
+      message || `${source} payment check`,
+      JSON.stringify(raw)
+    ]
+  ).catch(() => {});
+
+  if (approved) {
+    const [exists] = await db.promise().query(
+      "SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1",
+      [transaction_id]
+    );
+
+    if (!exists.length) {
+      await db.promise().query(
+        `INSERT INTO admin_orders
+        (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
+        VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
+        [
+          session.vendor_id,
+          session.recipient_number,
+          session.package_name,
+          Number(session.amount),
+          String(session.network || "").toLowerCase(),
+          session.package_batch_id,
+          transaction_id
+        ]
+      );
+    }
+
+    await db.promise().query(
+      `UPDATE payment_sessions
+       SET payment_status='approved',
+           finalized=1,
+           updated_reference=?,
+           init_status='approved'
+       WHERE client_ref=?`,
+      [transaction_id, session.client_ref]
+    );
+
+    return {
+      ok: true,
+      finalized: true,
+      status: "approved",
+      transaction_id,
+      message: "Payment successful. Order saved."
+    };
+  }
+
+  return {
+    ok: true,
+    finalized: false,
+    status: "pending",
+    transaction_id,
+    message: message || "Payment is still being confirmed."
+  };
+}
 
 // =====================================================
 // POST /api/buy-data-theteller
@@ -1851,6 +2011,92 @@ app.get("/api/payment-session-status", async (req, res) => {
 
 
 // =====================================================
+// POST /api/manual-verify-payment
+// =====================================================
+app.post("/api/manual-verify-payment", async (req, res) => {
+  const client_ref = String(req.body.client_ref || "").trim();
+  const transaction_id = String(req.body.transaction_id || "").trim();
+
+  if (!client_ref && !transaction_id) {
+    return res.json({
+      ok: false,
+      finalized: false,
+      status: "unknown",
+      message: "client_ref or transaction_id is required"
+    });
+  }
+
+  try {
+    for (let i = 0; i < 6; i++) {
+      const result = await reconcilePaymentNow({
+        client_ref,
+        transaction_id,
+        source: "manual"
+      });
+
+      if (result.finalized) {
+        return res.json(result);
+      }
+
+      if (i < 5) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+    }
+
+    return res.json({
+      ok: true,
+      finalized: false,
+      status: "pending",
+      message: "Payment is still being confirmed. If money was deducted, do not pay again. Tap again shortly."
+    });
+  } catch (err) {
+    console.error("manual-verify-payment error:", err.response?.data || err.message || err);
+    return res.status(500).json({
+      ok: false,
+      finalized: false,
+      status: "unknown",
+      message: "Could not verify payment right now."
+    });
+  }
+});
+
+// =====================================================
+// GET /payment-callback
+// =====================================================
+app.get("/payment-callback", async (req, res) => {
+  try {
+    const q = req.query || {};
+    const client_ref = String(q.client_ref || q.order_id || "").trim();
+    const transaction_id = String(q.transaction_id || q.trans_id || "").trim();
+
+    await db.promise().query(
+      `INSERT INTO payment_reconcile_logs
+       (client_ref, transaction_id, check_source, note, raw_response)
+       VALUES (?, ?, 'callback', ?, ?)`,
+      [
+        client_ref || "",
+        transaction_id || null,
+        "TheTeller callback received",
+        JSON.stringify(q)
+      ]
+    ).catch(() => {});
+
+    if (client_ref || transaction_id) {
+      await reconcilePaymentNow({
+        client_ref,
+        transaction_id,
+        source: "callback"
+      }).catch(() => {});
+    }
+
+    return res.redirect(`/payment_wait.html?client_ref=${encodeURIComponent(client_ref)}&callback=1`);
+  } catch (err) {
+    console.error("payment-callback error:", err);
+    return res.status(500).send("Callback error");
+  }
+});
+
+// =====================================================
 // POST /api/reconcile-payment
 // Strong manual re-check for delayed MoMo approvals
 // =====================================================
@@ -1912,36 +2158,50 @@ app.post("/api/reconcile-payment", async (req, res) => {
       // reload latest session each round
       const latestSession = await getPaymentSessionByClientRef(session.client_ref);
 
-      if (
-        latestSession &&
-        (
-          Number(latestSession.finalized) === 1 ||
-          String(latestSession.payment_status || "").toLowerCase() === "approved"
-        )
-      ) {
-        await db.promise().query(
-          `INSERT INTO payment_reconcile_logs
-           (client_ref, transaction_id, check_source, provider_status, provider_code, local_payment_status, local_finalized, resolved, note)
-           VALUES (?, ?, 'manual', ?, ?, ?, ?, 1, ?)`,
-          [
-            latestSession.client_ref,
-            latestSession.transaction_id || null,
-            "approved",
-            "LOCAL_DB",
-            latestSession.payment_status || "",
-            Number(latestSession.finalized) === 1 ? 1 : 0,
-            "Resolved from local DB during manual reconcile"
-          ]
-        ).catch(() => {});
+if (
+  latestSession &&
+  (
+    Number(latestSession.finalized) === 1 ||
+    String(latestSession.payment_status || "").toLowerCase() === "approved"
+  )
+) {
+  try {
+    await db.promise().query(
+      `INSERT INTO payment_reconcile_logs
+       (
+         client_ref,
+         transaction_id,
+         check_source,
+         provider_status,
+         provider_code,
+         local_payment_status,
+         local_finalized,
+         resolved,
+         note
+       )
+       VALUES (?, ?, 'manual', ?, ?, ?, ?, 1, ?)`,
+      [
+        latestSession.client_ref,
+        latestSession.transaction_id || null,
+        "approved",
+        "LOCAL_DB",
+        latestSession.payment_status || "",
+        Number(latestSession.finalized) === 1 ? 1 : 0,
+        "Resolved from local DB during manual reconcile"
+      ]
+    );
+  } catch (e) {
+    console.error("Could not insert payment_reconcile_logs:", e.message);
+  }
 
-        return res.json({
-          ok: true,
-          finalized: true,
-          status: "approved",
-          transaction_id: latestSession.transaction_id || null,
-          message: "Payment successful. Order saved."
-        });
-      }
+  return res.json({
+    ok: true,
+    finalized: true,
+    status: "approved",
+    transaction_id: latestSession.transaction_id || null,
+    message: "Payment successful. Order saved."
+  });
+}
 
       const txIdToCheck = latestSession?.transaction_id || transaction_id;
 
