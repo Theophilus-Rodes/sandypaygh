@@ -6407,8 +6407,6 @@ const sql = `
 });
 
 
-
-
 function makeDownloadPackageCode() {
   return "PKG-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
 }
@@ -6434,15 +6432,12 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
     });
   }
 
-  let conn;
-
   try {
-    conn = await db.getConnection();
-    await conn.beginTransaction();
-
     const placeholders = cleanIds.map(() => "?").join(",");
 
-    const [rows] = await conn.query(
+    await db.promise().query("START TRANSACTION");
+
+    const [rows] = await db.promise().query(
       `
       SELECT
         id,
@@ -6460,7 +6455,7 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
     );
 
     if (!rows.length) {
-      await conn.rollback();
+      await db.promise().query("ROLLBACK");
       return res.status(400).json({
         ok: false,
         message: "No valid rows found to download."
@@ -6469,7 +6464,7 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
 
     const packageCode = makeDownloadPackageCode();
 
-    const [pkgInsert] = await conn.query(
+    const [pkgInsert] = await db.promise().query(
       `
       INSERT INTO downloaded_payment_packages
       (package_code, total_items, status)
@@ -6481,7 +6476,7 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
     const packageRefId = pkgInsert.insertId;
 
     for (const row of rows) {
-      await conn.query(
+      await db.promise().query(
         `
         INSERT INTO downloaded_payment_package_items
         (package_ref_id, payment_session_id, package_name, recipient_number, status)
@@ -6499,7 +6494,7 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
     const usedIds = rows.map(r => r.id);
     const usedPlaceholders = usedIds.map(() => "?").join(",");
 
-    await conn.query(
+    await db.promise().query(
       `
       UPDATE payment_sessions
       SET payment_status='downloaded'
@@ -6508,9 +6503,7 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
       usedIds
     );
 
-    await conn.commit();
-    conn.release();
-    conn = null;
+    await db.promise().query("COMMIT");
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Downloaded Package");
@@ -6545,10 +6538,9 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
     return res.send(buffer);
 
   } catch (err) {
-    if (conn) {
-      try { await conn.rollback(); } catch (_) {}
-      try { conn.release(); } catch (_) {}
-    }
+    try {
+      await db.promise().query("ROLLBACK");
+    } catch (_) {}
 
     console.error("download-package FULL error:", err);
     console.error("download-package SQL/message:", err.sqlMessage || err.message);
@@ -6560,6 +6552,8 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
     });
   }
 });
+
+
 // =====================================================
 // GET /api/admin/payment-sessions/pending-list
 // Fetch all payment_sessions where payment_status != approved
