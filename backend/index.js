@@ -6744,14 +6744,10 @@ app.post("/api/admin/payment-packages/:id/mark-delivered", async (req, res) => {
     });
   }
 
-  let conn;
-
   try {
-    conn = await db.getConnection();
+    await db.promise().query("START TRANSACTION");
 
-    await conn.beginTransaction();
-
-    const [pkgRows] = await conn.query(
+    const [pkgRows] = await db.promise().query(
       `
       SELECT id
       FROM downloaded_payment_packages
@@ -6762,14 +6758,14 @@ app.post("/api/admin/payment-packages/:id/mark-delivered", async (req, res) => {
     );
 
     if (!pkgRows.length) {
-      await conn.rollback();
+      await db.promise().query("ROLLBACK");
       return res.status(404).json({
         ok: false,
         message: "Package not found."
       });
     }
 
-    const [items] = await conn.query(
+    const [items] = await db.promise().query(
       `
       SELECT payment_session_id
       FROM downloaded_payment_package_items
@@ -6778,7 +6774,7 @@ app.post("/api/admin/payment-packages/:id/mark-delivered", async (req, res) => {
       [id]
     );
 
-    await conn.query(
+    await db.promise().query(
       `
       UPDATE downloaded_payment_packages
       SET status='delivered'
@@ -6787,7 +6783,7 @@ app.post("/api/admin/payment-packages/:id/mark-delivered", async (req, res) => {
       [id]
     );
 
-    await conn.query(
+    await db.promise().query(
       `
       UPDATE downloaded_payment_package_items
       SET status='delivered'
@@ -6796,11 +6792,14 @@ app.post("/api/admin/payment-packages/:id/mark-delivered", async (req, res) => {
       [id]
     );
 
-    const sessionIds = [...new Set(items.map(x => Number(x.payment_session_id)).filter(Boolean))];
+    const sessionIds = items
+      .map(x => Number(x.payment_session_id))
+      .filter(v => Number.isInteger(v) && v > 0);
 
     if (sessionIds.length) {
       const placeholders = sessionIds.map(() => "?").join(",");
-      await conn.query(
+
+      await db.promise().query(
         `
         UPDATE payment_sessions
         SET payment_status='delivered'
@@ -6810,25 +6809,26 @@ app.post("/api/admin/payment-packages/:id/mark-delivered", async (req, res) => {
       );
     }
 
-    await conn.commit();
+    await db.promise().query("COMMIT");
 
     return res.json({
       ok: true,
       message: "Package marked as delivered successfully."
     });
-  } catch (err) {
-    if (conn) {
-      try { await conn.rollback(); } catch (_) {}
-    }
 
-    console.error("mark-delivered package error:", err);
+  } catch (err) {
+    try {
+      await db.promise().query("ROLLBACK");
+    } catch (_) {}
+
+    console.error("mark-delivered package FULL error:", err);
+    console.error("mark-delivered package SQL/message:", err.sqlMessage || err.message);
 
     return res.status(500).json({
       ok: false,
-      message: "Could not mark package as delivered."
+      message: "Could not mark package as delivered.",
+      error: err.sqlMessage || err.message
     });
-  } finally {
-    if (conn) conn.release();
   }
 });
 
