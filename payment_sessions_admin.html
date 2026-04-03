@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sandypay | Payment Sessions Monitor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg:#f8fafc;
+      --card:#ffffff;
+      --line:#e2e8f0;
+      --text:#0f172a;
+      --muted:#64748b;
+      --primary:#0a3d62;
+      --accent:#10b981;
+      --danger:#ef4444;
+      --warning:#f59e0b;
+      --soft:#eef6fb;
+    }
+    *{box-sizing:border-box;font-family:Poppins,system-ui,Arial,sans-serif}
+    body{margin:0;background:var(--bg);color:var(--text)}
+    .header{
+      background:linear-gradient(90deg,var(--primary),#082f49);
+      color:#fff;
+      padding:18px 16px;
+      box-shadow:0 10px 30px rgba(2,6,23,.15);
+    }
+    .header h1{margin:0;font-size:20px}
+    .header p{margin:6px 0 0;font-size:13px;opacity:.9}
+    .wrap{max-width:1400px;margin:0 auto;padding:18px 14px 30px}
+    .toolbar{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:14px;
+      display:grid;
+      grid-template-columns:1.5fr repeat(4, auto);
+      gap:10px;
+      align-items:center;
+      box-shadow:0 10px 24px rgba(15,23,42,.05);
+    }
+    .search{
+      width:100%;
+      padding:12px 14px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      outline:none;
+      font-size:14px;
+    }
+    .btn{
+      border:none;
+      padding:12px 14px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:600;
+      font-size:14px;
+    }
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-success{background:var(--accent);color:#fff}
+    .btn-danger{background:var(--danger);color:#fff}
+    .btn-light{background:var(--soft);color:var(--primary)}
+    .summary{
+      margin-top:14px;
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+      gap:12px;
+    }
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:14px;
+      box-shadow:0 10px 24px rgba(15,23,42,.04);
+    }
+    .card .label{font-size:12px;color:var(--muted)}
+    .card .value{font-size:22px;font-weight:700;margin-top:5px}
+    .table-wrap{
+      margin-top:16px;
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:18px;
+      overflow:hidden;
+      box-shadow:0 10px 24px rgba(15,23,42,.05);
+    }
+    .table-head{
+      padding:14px;
+      border-bottom:1px solid var(--line);
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .table-head h3{
+      margin:0;
+      font-size:16px;
+    }
+    .status-note{
+      font-size:13px;
+      color:var(--muted);
+    }
+    .table-scroll{
+      overflow:auto;
+      width:100%;
+    }
+    table{
+      width:100%;
+      border-collapse:collapse;
+      min-width:1200px;
+    }
+    th, td{
+      padding:12px 10px;
+      border-bottom:1px solid #edf2f7;
+      text-align:left;
+      font-size:13px;
+      vertical-align:top;
+    }
+    th{
+      background:#f8fafc;
+      color:#334155;
+      position:sticky;
+      top:0;
+      z-index:1;
+    }
+    tr:hover{background:#fafcff}
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:6px 10px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:700;
+      white-space:nowrap;
+    }
+    .pending{background:#fef3c7;color:#92400e}
+    .failed{background:#fee2e2;color:#991b1b}
+    .other{background:#dbeafe;color:#1d4ed8}
+    .muted{color:var(--muted)}
+    .empty{
+      padding:28px 16px;
+      text-align:center;
+      color:var(--muted);
+    }
+    .top-actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .msg{
+      margin-top:14px;
+      display:none;
+      padding:12px 14px;
+      border-radius:12px;
+      font-size:14px;
+    }
+    .msg.ok{
+      display:block;
+      background:#ecfdf5;
+      color:#166534;
+      border:1px solid #bbf7d0;
+    }
+    .msg.err{
+      display:block;
+      background:#fef2f2;
+      color:#991b1b;
+      border:1px solid #fecaca;
+    }
+    @media (max-width: 900px){
+      .toolbar{
+        grid-template-columns:1fr 1fr;
+      }
+      .toolbar .search-box{
+        grid-column:1 / -1;
+      }
+    }
+    @media (max-width: 560px){
+      .toolbar{
+        grid-template-columns:1fr;
+      }
+      .btn{width:100%}
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Payment Sessions Monitor</h1>
+    <p>View all payment sessions that are not yet approved, search by number, delete selected, or export to Excel.</p>
+  </div>
+
+  <div class="wrap">
+    <div class="toolbar">
+      <div class="search-box">
+        <input type="text" id="searchInput" class="search" placeholder="Search by MoMo number, recipient number, client ref, transaction id..." />
+      </div>
+      <button class="btn btn-primary" id="searchBtn">Search</button>
+      <button class="btn btn-light" id="refreshBtn">Refresh</button>
+      <button class="btn btn-success" id="exportBtn">Export Excel</button>
+      <button class="btn btn-danger" id="deleteBtn">Delete Selected</button>
+    </div>
+
+    <div id="messageBox" class="msg"></div>
+
+    <div class="summary">
+      <div class="card">
+        <div class="label">Total Shown</div>
+        <div class="value" id="totalShown">0</div>
+      </div>
+      <div class="card">
+        <div class="label">Pending</div>
+        <div class="value" id="pendingCount">0</div>
+      </div>
+      <div class="card">
+        <div class="label">Failed</div>
+        <div class="value" id="failedCount">0</div>
+      </div>
+      <div class="card">
+        <div class="label">Other Statuses</div>
+        <div class="value" id="otherCount">0</div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <div class="table-head">
+        <h3>Non-Approved Payment Sessions</h3>
+        <div class="top-actions">
+          <label style="font-size:13px; color:#334155;">
+            <input type="checkbox" id="selectAllTop"> Select All
+          </label>
+          <div class="status-note">Only rows where payment_status is not approved</div>
+        </div>
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="selectAll"></th>
+              <th>ID</th>
+              <th>Client Ref</th>
+              <th>Transaction ID</th>
+              <th>Package</th>
+              <th>Amount</th>
+              <th>MoMo Number</th>
+              <th>Recipient</th>
+              <th>Network</th>
+              <th>Payer Network</th>
+              <th>Status</th>
+              <th>Init Status</th>
+              <th>Finalized</th>
+              <th>Vendor ID</th>
+              <th>Created At</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+
+      <div id="emptyState" class="empty" style="display:none;">No non-approved payment sessions found.</div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "https://sandipay.co";
+    let currentRows = [];
+
+    function showMessage(message, isError = false) {
+      const box = document.getElementById("messageBox");
+      box.className = "msg " + (isError ? "err" : "ok");
+      box.textContent = message;
+    }
+
+    function clearMessage() {
+      const box = document.getElementById("messageBox");
+      box.className = "msg";
+      box.textContent = "";
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function getStatusBadge(status) {
+      const s = String(status || "").toLowerCase();
+      if (s === "pending") return `<span class="badge pending">Pending</span>`;
+      if (["failed", "declined", "cancelled", "terminated", "expired"].includes(s)) {
+        return `<span class="badge failed">${escapeHtml(status)}</span>`;
+      }
+      return `<span class="badge other">${escapeHtml(status || "unknown")}</span>`;
+    }
+
+    function getSelectedIds() {
+      return Array.from(document.querySelectorAll(".row-check:checked"))
+        .map(el => Number(el.value))
+        .filter(v => Number.isInteger(v) && v > 0);
+    }
+
+    function syncSelectAllState() {
+      const checks = document.querySelectorAll(".row-check");
+      const checked = document.querySelectorAll(".row-check:checked");
+      const allChecked = checks.length > 0 && checks.length === checked.length;
+
+      document.getElementById("selectAll").checked = allChecked;
+      document.getElementById("selectAllTop").checked = allChecked;
+    }
+
+    function renderRows(rows) {
+      currentRows = rows;
+      const body = document.getElementById("tableBody");
+      const empty = document.getElementById("emptyState");
+
+      body.innerHTML = "";
+
+      if (!rows.length) {
+        empty.style.display = "block";
+      } else {
+        empty.style.display = "none";
+      }
+
+      let pending = 0;
+      let failed = 0;
+      let other = 0;
+
+      rows.forEach(row => {
+        const s = String(row.payment_status || "").toLowerCase();
+        if (s === "pending") pending++;
+        else if (["failed", "declined", "cancelled", "terminated", "expired"].includes(s)) failed++;
+        else other++;
+
+        body.innerHTML += `
+          <tr>
+            <td><input type="checkbox" class="row-check" value="${row.id}"></td>
+            <td>${row.id}</td>
+            <td>${escapeHtml(row.client_ref)}</td>
+            <td>${escapeHtml(row.transaction_id || "")}</td>
+            <td>
+              <div><strong>${escapeHtml(row.package_name || "")}</strong></div>
+              <div class="muted">${escapeHtml(row.package_batch_id || "")}</div>
+            </td>
+            <td>GHS ${Number(row.amount || 0).toFixed(2)}</td>
+            <td>${escapeHtml(row.momo_number || "")}</td>
+            <td>${escapeHtml(row.recipient_number || "")}</td>
+            <td>${escapeHtml((row.network || "").toUpperCase())}</td>
+            <td>${escapeHtml((row.payer_network || "").toUpperCase())}</td>
+            <td>${getStatusBadge(row.payment_status)}</td>
+            <td>${escapeHtml(row.init_status || "")}</td>
+            <td>${Number(row.finalized) === 1 ? "Yes" : "No"}</td>
+            <td>${escapeHtml(row.vendor_id || "")}</td>
+            <td>${escapeHtml(row.created_at || "")}</td>
+          </tr>
+        `;
+      });
+
+      document.getElementById("totalShown").textContent = rows.length;
+      document.getElementById("pendingCount").textContent = pending;
+      document.getElementById("failedCount").textContent = failed;
+      document.getElementById("otherCount").textContent = other;
+
+      document.querySelectorAll(".row-check").forEach(el => {
+        el.addEventListener("change", syncSelectAllState);
+      });
+
+      syncSelectAllState();
+    }
+
+    async function loadRows() {
+      clearMessage();
+      const search = document.getElementById("searchInput").value.trim();
+
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/payment-sessions/pending-list?search=${encodeURIComponent(search)}`, {
+          cache: "no-store"
+        });
+
+        const out = await res.json();
+
+        if (!res.ok || !out.ok) {
+          showMessage(out.message || "Could not load payment sessions.", true);
+          renderRows([]);
+          return;
+        }
+
+        renderRows(out.data || []);
+      } catch (err) {
+        console.error(err);
+        showMessage("Network error while loading payment sessions.", true);
+        renderRows([]);
+      }
+    }
+
+    async function deleteSelected() {
+      const ids = getSelectedIds();
+
+      if (!ids.length) {
+        showMessage("Please select at least one row to delete.", true);
+        return;
+      }
+
+      const yes = confirm(`Delete ${ids.length} selected payment session(s)?`);
+      if (!yes) return;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/payment-sessions/delete-selected`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids })
+        });
+
+        const out = await res.json();
+
+        if (!res.ok || !out.ok) {
+          showMessage(out.message || "Delete failed.", true);
+          return;
+        }
+
+        showMessage(out.message || "Deleted successfully.");
+        loadRows();
+      } catch (err) {
+        console.error(err);
+        showMessage("Network error while deleting.", true);
+      }
+    }
+
+    async function exportExcel() {
+      const ids = getSelectedIds();
+      const search = document.getElementById("searchInput").value.trim();
+
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/payment-sessions/export`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids, search })
+        });
+
+        if (!res.ok) {
+          let out = {};
+          try { out = await res.json(); } catch(e){}
+          showMessage(out.message || "Export failed.", true);
+          return;
+        }
+
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "payment_sessions_non_approved.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+
+        showMessage("Excel exported successfully.");
+      } catch (err) {
+        console.error(err);
+        showMessage("Network error while exporting.", true);
+      }
+    }
+
+    function setupSelectAll() {
+      const selectAll = document.getElementById("selectAll");
+      const selectAllTop = document.getElementById("selectAllTop");
+
+      function applyAll(checked) {
+        document.querySelectorAll(".row-check").forEach(el => {
+          el.checked = checked;
+        });
+        selectAll.checked = checked;
+        selectAllTop.checked = checked;
+      }
+
+      selectAll.addEventListener("change", function() {
+        applyAll(this.checked);
+      });
+
+      selectAllTop.addEventListener("change", function() {
+        applyAll(this.checked);
+      });
+    }
+
+    document.getElementById("searchBtn").addEventListener("click", loadRows);
+    document.getElementById("refreshBtn").addEventListener("click", loadRows);
+    document.getElementById("deleteBtn").addEventListener("click", deleteSelected);
+    document.getElementById("exportBtn").addEventListener("click", exportExcel);
+    document.getElementById("searchInput").addEventListener("keypress", function(e){
+      if (e.key === "Enter") loadRows();
+    });
+
+    setupSelectAll();
+    loadRows();
+  </script>
+</body>
+</html>
