@@ -423,7 +423,7 @@
         closeOverlay();
         closeModal();
 
-        const payWindow = window.open(`payment_wait.html?${qs.toString()}`, "_blank");
+        window.location.href = `payment_wait.html?${qs.toString()}`;
 
         if(!payWindow){
           alert("Popup was blocked. Please allow popups for this site.");
