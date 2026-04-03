@@ -6409,6 +6409,154 @@ const sql = `
 
 
 
+function makeDownloadPackageCode() {
+  return "PKG-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+}
+
+// =====================================================
+// POST /api/admin/payment-sessions/download-package
+// Create one package from selected rows, mark them downloaded,
+// save them into package tables, and download Excel
+// =====================================================
+app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
+  const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
+
+  if (!ids.length) {
+    return res.status(400).json({
+      ok: false,
+      message: "No rows selected."
+    });
+  }
+
+  const cleanIds = ids
+    .map(id => Number(id))
+    .filter(id => Number.isInteger(id) && id > 0);
+
+  if (!cleanIds.length) {
+    return res.status(400).json({
+      ok: false,
+      message: "Invalid selected ids."
+    });
+  }
+
+  const conn = await db.promise().getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const placeholders = cleanIds.map(() => "?").join(",");
+
+    const [rows] = await conn.query(
+      `
+      SELECT
+        id,
+        package_name,
+        recipient_number,
+        payment_status,
+        finalized
+      FROM payment_sessions
+      WHERE id IN (${placeholders})
+        AND LOWER(COALESCE(payment_status, '')) <> 'approved'
+        AND LOWER(COALESCE(payment_status, '')) <> 'downloaded'
+        AND LOWER(COALESCE(payment_status, '')) <> 'delivered'
+      ORDER BY id DESC
+      `,
+      cleanIds
+    );
+
+    if (!rows.length) {
+      await conn.rollback();
+      return res.status(400).json({
+        ok: false,
+        message: "No valid rows found to download."
+      });
+    }
+
+    const packageCode = makeDownloadPackageCode();
+
+    const [pkgInsert] = await conn.query(
+      `
+      INSERT INTO downloaded_payment_packages
+      (package_code, total_items, status)
+      VALUES (?, ?, 'downloaded')
+      `,
+      [packageCode, rows.length]
+    );
+
+    const packageRefId = pkgInsert.insertId;
+
+    for (const row of rows) {
+      await conn.query(
+        `
+        INSERT INTO downloaded_payment_package_items
+        (package_ref_id, payment_session_id, package_name, recipient_number, status)
+        VALUES (?, ?, ?, ?, 'downloaded')
+        `,
+        [
+          packageRefId,
+          row.id,
+          row.package_name || "",
+          row.recipient_number || ""
+        ]
+      );
+    }
+
+    const usedIds = rows.map(r => r.id);
+    const usedPlaceholders = usedIds.map(() => "?").join(",");
+
+    await conn.query(
+      `
+      UPDATE payment_sessions
+      SET payment_status='downloaded'
+      WHERE id IN (${usedPlaceholders})
+      `,
+      usedIds
+    );
+
+    await conn.commit();
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Downloaded Package");
+
+    worksheet.columns = [
+      { header: "Package", key: "package_name", width: 28 },
+      { header: "Recipient Number", key: "recipient_number", width: 22 }
+    ];
+
+    rows.forEach(row => {
+      worksheet.addRow({
+        package_name: row.package_name || "",
+        recipient_number: row.recipient_number || ""
+      });
+    });
+
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.views = [{ state: "frozen", ySplit: 1 }];
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=${packageCode}.xlsx`
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+
+  } catch (err) {
+    await conn.rollback();
+    console.error("download-package error:", err);
+    return res.status(500).json({
+      ok: false,
+      message: "Could not create download package."
+    });
+  } finally {
+    conn.release();
+  }
+});
+
 
 
 // =====================================================
@@ -6443,6 +6591,8 @@ app.get("/api/admin/payment-sessions/pending-list", async (req, res) => {
         updated_at
       FROM payment_sessions
       WHERE LOWER(COALESCE(payment_status, '')) <> 'approved'
+        AND LOWER(COALESCE(payment_status, '')) <> 'downloaded'
+        AND LOWER(COALESCE(payment_status, '')) <> 'delivered'
     `;
 
     const params = [];
@@ -6480,6 +6630,198 @@ app.get("/api/admin/payment-sessions/pending-list", async (req, res) => {
 });
 
 
+// =====================================================
+// GET /api/admin/payment-packages
+// Show all downloaded packages
+// =====================================================
+app.get("/api/admin/payment-packages", async (req, res) => {
+  try {
+    const [rows] = await db.promise().query(
+      `
+      SELECT
+        id,
+        package_code,
+        total_items,
+        status,
+        created_at
+      FROM downloaded_payment_packages
+      ORDER BY id DESC
+      `
+    );
+
+    return res.json({
+      ok: true,
+      data: rows
+    });
+  } catch (err) {
+    console.error("payment-packages error:", err);
+    return res.status(500).json({
+      ok: false,
+      message: "Could not fetch downloaded packages."
+    });
+  }
+});
+
+
+// =====================================================
+// GET /api/admin/payment-packages/:id/items
+// Preview numbers inside one package
+// =====================================================
+app.get("/api/admin/payment-packages/:id/items", async (req, res) => {
+  const id = Number(req.params.id);
+
+  if (!id) {
+    return res.status(400).json({
+      ok: false,
+      message: "Invalid package id."
+    });
+  }
+
+  try {
+    const [pkgRows] = await db.promise().query(
+      `
+      SELECT id, package_code, total_items, status, created_at
+      FROM downloaded_payment_packages
+      WHERE id=?
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    if (!pkgRows.length) {
+      return res.status(404).json({
+        ok: false,
+        message: "Package not found."
+      });
+    }
+
+    const [itemRows] = await db.promise().query(
+      `
+      SELECT
+        id,
+        payment_session_id,
+        package_name,
+        recipient_number,
+        status,
+        created_at
+      FROM downloaded_payment_package_items
+      WHERE package_ref_id=?
+      ORDER BY id ASC
+      `,
+      [id]
+    );
+
+    return res.json({
+      ok: true,
+      package: pkgRows[0],
+      items: itemRows
+    });
+  } catch (err) {
+    console.error("payment-package items error:", err);
+    return res.status(500).json({
+      ok: false,
+      message: "Could not fetch package items."
+    });
+  }
+});
+
+
+// =====================================================
+// POST /api/admin/payment-packages/:id/mark-delivered
+// Mark one package and all its rows delivered
+// =====================================================
+app.post("/api/admin/payment-packages/:id/mark-delivered", async (req, res) => {
+  const id = Number(req.params.id);
+
+  if (!id) {
+    return res.status(400).json({
+      ok: false,
+      message: "Invalid package id."
+    });
+  }
+
+  const conn = await db.promise().getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const [pkgRows] = await conn.query(
+      `
+      SELECT id
+      FROM downloaded_payment_packages
+      WHERE id=?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [id]
+    );
+
+    if (!pkgRows.length) {
+      await conn.rollback();
+      return res.status(404).json({
+        ok: false,
+        message: "Package not found."
+      });
+    }
+
+    const [items] = await conn.query(
+      `
+      SELECT payment_session_id
+      FROM downloaded_payment_package_items
+      WHERE package_ref_id=?
+      `,
+      [id]
+    );
+
+    await conn.query(
+      `
+      UPDATE downloaded_payment_packages
+      SET status='delivered'
+      WHERE id=?
+      `,
+      [id]
+    );
+
+    await conn.query(
+      `
+      UPDATE downloaded_payment_package_items
+      SET status='delivered'
+      WHERE package_ref_id=?
+      `,
+      [id]
+    );
+
+    const sessionIds = items.map(x => Number(x.payment_session_id)).filter(Boolean);
+
+    if (sessionIds.length) {
+      const placeholders = sessionIds.map(() => "?").join(",");
+      await conn.query(
+        `
+        UPDATE payment_sessions
+        SET payment_status='delivered'
+        WHERE id IN (${placeholders})
+        `,
+        sessionIds
+      );
+    }
+
+    await conn.commit();
+
+    return res.json({
+      ok: true,
+      message: "Package marked as delivered successfully."
+    });
+  } catch (err) {
+    await conn.rollback();
+    console.error("mark-delivered package error:", err);
+    return res.status(500).json({
+      ok: false,
+      message: "Could not mark package as delivered."
+    });
+  } finally {
+    conn.release();
+  }
+});
 // =====================================================
 // DELETE /api/admin/payment-sessions/delete-selected
 // Deletes selected payment_sessions by ids
