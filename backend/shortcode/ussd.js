@@ -1,4 +1,4 @@
-// shortcode/ussd.js  (ROUTER VERSION - THETELLER NOW)
+// shortcode/ussd.js  (ROUTER VERSION - MOOLRE ONLY)
 const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
@@ -56,65 +56,21 @@ if (!DB_PASSWORD) {
   throw new Error("DB_PASSWORD is empty — set DB_PASSWORD (or DB_PASS).");
 }
 
-// Your short code extension (still 717)
+// Your short code extension (from Moolre)
 const EXTENSION_EXPECTED = "888";
 
-// ========================================================
-//          THETELLER CONFIG (REPLACES MOOLRE)
-// ========================================================
-const THETELLER = {
-  endpoint: "https://prod.theteller.net/v1.1/transaction/process",
-
-  // 👇 your new merchant ID from the screenshot (top-left)
-  merchantId: process.env.THETELLER_MERCHANT_ID || "TTM-00009388",
-
-  // 👇 Production API credentials from the right-hand side of the screenshot
-  username: process.env.THETELLER_USERNAME || "louis66a20ac942e74",
-  apiKey: process.env.THETELLER_API_KEY || "ZmVjZWZlZDc2MzA4OWU0YmZhOTk5MDBmMDAxNDhmOWY=",
+// ✅ Moolre config (from your account)
+const MOOLRE = {
+  url: "https://api.moolre.com/open/transact/payment",
+  user: "acheamp", // Moolre username
+  pubkey:
+    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjU0OSwiZXhwIjoxOTI1MDA5OTk5fQ.YNoLN19xWWZRyr2Gdy_2DexpGLZv4V9yATnyYSFef2M",
+  wallet: "10654906056819", // GHS wallet number
 };
-
-// Build the Basic Auth token correctly: base64("username:apikey")
-THETELLER.basicToken = Buffer.from(
-  `${THETELLER.username}:${THETELLER.apiKey}`
-).toString("base64");
-
-
-// Map network to TheTeller r-switch
-function getSwitchCode(net) {
-  switch (String(net || "").toLowerCase()) {
-    case "mtn":
-      return "MTN";
-    case "vodafone":
-    case "telecel":
-      return "VDF";
-    case "airteltigo":
-    case "airtel":
-      return "ATL";
-    case "tigo":
-      return "TGO";
-    default:
-      return null;
-  }
-}
-
-// Format MSISDN for TheTeller (233XXXXXXXXX)
-function formatMsisdnForTheTeller(number) {
-  if (!number) return "";
-  let msisdn = String(number).replace(/\D/g, "");
-
-  if (msisdn.startsWith("233") && msisdn.length === 12) return msisdn;
-  if (msisdn.startsWith("0") && msisdn.length === 10) {
-    return "233" + msisdn.slice(1);
-  }
-  if (msisdn.length === 9 && !msisdn.startsWith("0")) {
-    return "233" + msisdn;
-  }
-  return msisdn;
-}
 
 // ====== MIDDLEWARE (scoped to this router) ======
 router.use(express.json({ type: "application/json" })); // for JSON
-router.use(bodyParser.text({ type: "*/*" })); // gateway may send text/plain
+router.use(bodyParser.text({ type: "*/*" })); // Moolre sometimes sends text/plain
 router.use(cors());
 
 // ====== DATABASE ======
@@ -134,42 +90,23 @@ const sessions = {};
 
 const PAGE_SIZE = 6; // how many packages per page
 
-
-function detectPayerNetwork(msisdn) {
-  const d = String(msisdn || "").replace(/\D/g, "");
-
-  // Convert to local format 0XXXXXXXXX first, then take prefix (first 3 digits)
-  const local10 = d.startsWith("233") ? ("0" + d.slice(3)) : d;
-  const prefix = local10.slice(0, 3); // ✅ always 3 digits like 053, 024, 050
-
-  // MTN prefixes
-  if (["023", "024", "025", "053", "054", "055", "059"].includes(prefix)) return "mtn";
-
-  // Vodafone/Telecel prefixes
-  if (["020", "050"].includes(prefix)) return "vodafone";
-
-  // AirtelTigo prefixes
-  if (["026", "056", "027", "057"].includes(prefix)) return "airteltigo";
-
-  return "";
-}
-
-
-function getPayerSwitchCode(payerNet) {
-  switch (String(payerNet || "").toLowerCase()) {
+// Map network name -> Moolre channel ID
+function getChannelId(network) {
+  switch ((network || "").toLowerCase()) {
     case "mtn":
-      return "MTN";
+      return 13;
+    case "airteltigo":
+    case "airtel":
+    case "at":
+      return 7;
     case "vodafone":
     case "telecel":
-      return "VDF";
-    case "airteltigo":
-      return "ATL";
+    case "voda":
+      return 6;
     default:
       return null;
   }
 }
-
-
 
 // ✅ PACKAGES LIST WITH PAGINATION
 function renderPackages(state) {
@@ -195,6 +132,7 @@ function renderPackages(state) {
 
   return lines.join("\n");
 }
+
 
 function confirmMessage(state) {
   const [packageName, price] = String(state.selectedPkg || "").split(" @ ");
@@ -223,6 +161,12 @@ function msisdnVariants(msisdn) {
   const local = "0" + intl.slice(3);
   const plusIntl = "+" + intl;
   return [intl, local, plusIntl];
+}
+
+// Local "0XXXXXXXXX" for Moolre payer
+function toLocalMsisdn(msisdn) {
+  const intl = normalizeMsisdn(msisdn);
+  return "0" + intl.slice(3);
 }
 
 // Access control
@@ -461,11 +405,11 @@ function handleSession(sessionId, input, msisdn, res) {
         const total = list.length;
         const page = state.packagePage || 0;
         const start = page * PAGE_SIZE;
-        const endIndex = Math.min(start + PAGE_SIZE, total);
+        const end = Math.min(start + PAGE_SIZE, total);
 
         // 0 = "More" if there is another page, otherwise "Back"
         if (trimmed === "0") {
-          if (endIndex < total) {
+          if (end < total) {
             // go to next page
             state.packagePage = page + 1;
             return reply(renderPackages(state));
@@ -534,12 +478,12 @@ function handleSession(sessionId, input, msisdn, res) {
         return reply(confirmMessage(state));
       }
 
-      // ================== CONFIRM (PAYMENT VIA THETELLER) ==================
+      // ================== CONFIRM (PAYMENT) ==================
       case "confirm": {
         const choice = (input || "").trim();
 
         if (choice === "1") {
-          // ====== INITIATE PAYMENT VIA THETELLER (AND LOG ORDER) ======
+          // ====== INITIATE PAYMENT VIA MOOLRE (NO DB INSERT HERE) ======
           const m = String(state.selectedPkg || "").match(
             /@ GHS\s*(\d+(\.\d+)?)/i
           );
@@ -548,251 +492,103 @@ function handleSession(sessionId, input, msisdn, res) {
 
           const network = (state.network || "").toLowerCase();
           const recipient_number = state.recipient;
-          const momo_number = msisdn; // payer is the one dialing
+          const momo_number = msisdn;
           const vendor_id = state.vendorId;
           const data_package = String(state.selectedPkg || "").split(" @")[0];
-          const mode = state.isPlain ? "plain" : "vendor";
 
           const transactionId = `TRX${Date.now()}`.slice(0, 30);
-          const package_id = new Date()
-            .toISOString()
-            .slice(0, 16)
-            .replace("T", " ");
 
-          // Respond to user FIRST (USSD must end quickly)
+          // 👉 Save pending order in DB using this externalref
+          db.query(
+            `INSERT INTO moolre_temp_orders
+               (externalref, mode, vendor_id, data_package, network,
+                recipient_number, momo_number, amount)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              transactionId,
+              state.isPlain ? "plain" : "vendor",
+              vendor_id,
+              data_package,
+              network,
+              recipient_number,
+              momo_number,
+              amount,
+            ],
+            (err) => {
+              if (err) {
+                console.error("❌ moolre_temp_orders insert error:", err);
+              } else {
+                console.log("✅ Temp order saved for externalref:", transactionId);
+              }
+            }
+          );
+
+          // Close USSD first
           end(
             "✅ Please wait while the prompt loads...\nEnter your MoMo PIN to approve."
           );
 
-          // Fire TheTeller + DB logging in the background
-          (async () => {
-            try {
-              // ✅ r-switch MUST be payer (dialer) wallet network, not bundle network
-const payerNet = (state.payerNetwork || detectPayerNetwork(momo_number) || "").toLowerCase();
+          const channelId = getChannelId(network);
+          if (!channelId) {
+            console.error(
+              "❌ Unsupported network for Moolre channel:",
+              network
+            );
+            return;
+          }
 
-// Force r-switch mapping (no function ambiguity)
-const rSwitch =
-  payerNet === "mtn" ? "MTN" :
-  payerNet === "vodafone" || payerNet === "telecel" ? "VDF" :
-  payerNet === "airteltigo" ? "ATL" :
-  null;
+          const payerLocal = toLocalMsisdn(momo_number);
 
-if (!rSwitch) {
-  console.error("❌ Unsupported payer network for TheTeller r-switch:", {
-    payerNet,
-    momo_number,
-   detectedPrefix: (() => {
-  const d = String(momo_number || "").replace(/\D/g, "");
-  const local10 = d.startsWith("233") ? ("0" + d.slice(3)) : d;
-  return local10.slice(0, 3); // ✅ always 3 digits (e.g. 053, 024, 050)
-})(),
-  });
-  return;
-}
+          const payload = {
+            type: 1,
+            channel: channelId,
+            currency: "GHS",
+            payer: payerLocal,
+            amount: Number(amount.toFixed(2)), // decimal, 2dp
+            externalref: transactionId, // comes back in webhook
+            reference: `Purchase of ${data_package}`,
+            accountnumber: MOOLRE.wallet,
+            sessionid: state.moolreSessionId,
 
-              const formattedMoMo = formatMsisdnForTheTeller(momo_number);
-              const amountFormatted = String(Math.round(amount * 100)).padStart(
-                12,
-                "0"
+            // 🔴 This is what the webhook will see as data.thirdpartyref
+            thirdpartyref: JSON.stringify({
+              mode: state.isPlain ? "plain" : "vendor", // plain = *203*717#, vendor = *203*717*ID#
+              vendor_id,
+              data_package,
+              network,
+              recipient_number,
+              momo_number,
+            }),
+          };
+
+          console.log("🟡 Using Moolre auth:", {
+            user: MOOLRE.user,
+            pubkeyStart: MOOLRE.pubkey.slice(0, 20) + "...",
+            wallet: MOOLRE.wallet,
+          });
+          console.log("📤 Sending to MOOLRE:", payload);
+
+          axios
+            .post(MOOLRE.url, payload, {
+              headers: {
+                "Content-Type": "application/json",
+                "X-API-USER": MOOLRE.user,
+                "X-API-PUBKEY": MOOLRE.pubkey,
+              },
+            })
+            .then((response) => {
+              const resp = response.data || {};
+              console.log("✅ MOOLRE payment INIT response:", resp);
+              console.log(
+                "⏳ Payment request sent. Waiting for webhook (txstatus=1) to log the order."
               );
-
-              const payload = {
-                amount: amountFormatted,
-                processing_code: "000200",
-                transaction_id: transactionId,
-                desc: `USSD Data Purchase - ${data_package}`,
-                merchant_id: THETELLER.merchantId,
-                subscriber_number: formattedMoMo,
-                "r-switch": rSwitch,
-                redirect_url: "https://example.com/ussd-data-callback",
-              };
-
-              console.log("📤 Sending USSD data payment to TheTeller:", payload);
-              console.log("💳 PAY DEBUG:", {
-  momo_number,
-  formattedMoMo,
-  payerNet,
-  rSwitch,
-  selectedBundleNetwork: network
-});
-
-
-              const response = await axios.post(
-                THETELLER.endpoint,
-                payload,
-                {
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Basic ${THETELLER.basicToken}`,
-                    "Cache-Control": "no-cache",
-                  },
-                }
-              );
-       
-
-              console.log("📥 TheTeller USSD response:", response.data);
-
-              const status = String(response.data.status || "").toLowerCase();
-              const code = response.data.code;
-
-              if (
-                !(status === "approved" || status === "successful" || code === "000")
-              ) {
-                console.error(
-                  "❌ TheTeller USSD payment declined or pending:",
-                  response.data
-                );
-                return;
-              }
-
-              // ✅ Payment accepted – now log orders (same logic as old webhook)
-
-              if (mode === "plain") {
-                // PLAIN MODE (*203*717#): vendor_id is 1
-                db.query(
-                  `INSERT INTO admin_orders
-                     (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-                   VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-                  [1, recipient_number, data_package, amount, network, package_id],
-                  (err1) => {
-                    if (err1) {
-                      console.error(
-                        "❌ Error inserting plain admin_order (TheTeller):",
-                        err1
-                      );
-                    } else {
-                      console.log("✅ Plain-mode admin_order logged (TheTeller).");
-                    }
-
-                    db.query(
-                      `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-                       VALUES (?, ?, ?, NOW())`,
-                      [1, "AdminData USSD sale", amount],
-                      (err2) => {
-                        if (err2) {
-                          console.error(
-                            "❌ Error inserting plain total_revenue (TheTeller):",
-                            err2
-                          );
-                        } else {
-                          console.log(
-                            "✅ Plain-mode revenue logged (TheTeller)."
-                          );
-                        }
-                      }
-                    );
-                  }
-                );
-                return;
-              }
-
-              // VENDOR MODE (*203*717*ID#)
-              db.query(
-                `SELECT amount FROM admin_data_packages WHERE data_package = ? LIMIT 1`,
-                [data_package],
-                (err3, rows2) => {
-                  if (err3 || !rows2 || !rows2.length) {
-                    console.error(
-                      "❌ admin_data_packages lookup error (TheTeller):",
-                      err3 || "no rows"
-                    );
-                    return;
-                  }
-
-                  const baseAmount = parseFloat(rows2[0].amount); // admin cost
-                  const revenueAmount = baseAmount;
-                  const vendorAmount = parseFloat(
-                    (amount - baseAmount).toFixed(2)
-                  );
-
-                  if (vendorAmount < 0) {
-                    console.warn(
-                      "⚠️ Vendor amount is negative. Check pricing.",
-                      {
-                        data_package,
-                        amountPaid: amount,
-                        baseAmount,
-                      }
-                    );
-                  }
-
-                  // admin_orders
-                  db.query(
-                    `INSERT INTO admin_orders
-                       (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-                     VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-                    [
-                      vendor_id,
-                      recipient_number,
-                      data_package,
-                      amount,
-                      network,
-                      package_id,
-                    ],
-                    (err4) => {
-                      if (err4) {
-                        console.error(
-                          "❌ Error inserting vendor admin_order (TheTeller):",
-                          err4
-                        );
-                      } else {
-                        console.log(
-                          "✅ Vendor admin_order logged (TheTeller)."
-                        );
-                      }
-
-                      // wallet_loads (vendor share)
-                      db.query(
-                        `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
-                         VALUES (?, ?, ?, NOW())`,
-                        [vendor_id, momo_number, vendorAmount],
-                        (err5) => {
-                          if (err5) {
-                            console.error(
-                              "❌ Error inserting wallet_loads (TheTeller):",
-                              err5
-                            );
-                          } else {
-                            console.log(
-                              "✅ Vendor wallet share logged (TheTeller)."
-                            );
-                          }
-
-                          // total_revenue (admin base)
-                          db.query(
-                            `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-                             VALUES (?, ?, ?, NOW())`,
-                            [
-                              vendor_id,
-                              `Admin base for ${network} ${data_package}`,
-                              revenueAmount,
-                            ],
-                            (err6) => {
-                              if (err6) {
-                                console.error(
-                                  "❌ Error inserting vendor total_revenue (TheTeller):",
-                                  err6
-                                );
-                              } else {
-                                console.log(
-                                  "✅ Vendor revenue logged (TheTeller)."
-                                );
-                              }
-                            }
-                          );
-                        }
-                      );
-                    }
-                  );
-                }
-              );
-            } catch (err) {
+            })
+            .catch((err) => {
               console.error(
-                "❌ TheTeller USSD payment error:",
+                "❌ MOOLRE error:",
                 err.response?.data || err.message
               );
-            }
-          })();
+            });
 
           return;
         }
@@ -813,7 +609,7 @@ if (!rSwitch) {
   }
 }
 
-// ====== USSD ROUTE ======
+// ====== USSD ROUTE (Moolre) ======
 router.post("/", (req, res) => {
   console.log("📲 NEW USSD REQUEST:", req.body);
 
@@ -877,20 +673,17 @@ router.post("/", (req, res) => {
         }
 
         sessions[sessionId] = {
-  step: "start",
-  vendorId: 1,
-  brandName: "SandyPay",
-  isPlain: true,
-
-  payerNetwork: detectPayerNetwork(msisdn), // ✅ add this
-
-  network: "",
-  selectedPkg: "",
-  recipient: "",
-  packageList: [],
-  packagePage: 0,
-};
-
+          step: "start",
+          vendorId: 1,
+          brandName: "SandyPay",
+          isPlain: true,
+          network: "",
+          selectedPkg: "",
+          recipient: "",
+          packageList: [],
+          packagePage: 0,
+          moolreSessionId: sessionId,
+        };
 
         console.log("🟦 CREATED PLAIN SESSION:", sessions[sessionId]);
         return handleSession(sessionId, "", String(msisdn || ""), res);
@@ -954,22 +747,19 @@ router.post("/", (req, res) => {
             if (!err && rows && rows.length && rows[0].username) {
               brandName = rows[0].username;
             }
-sessions[sessionId] = {
-  step: "start",
-  vendorId,
-  brandName,
-  isPlain: false,
 
-  payerNetwork: detectPayerNetwork(msisdn), // ✅ add this
-
-  network: "",
-  selectedPkg: "",
-  recipient: "",
-  packageList: [],
-  packagePage: 0,
-};
-
-
+            sessions[sessionId] = {
+              step: "start",
+              vendorId,
+              brandName,
+              isPlain: false,
+              network: "",
+              selectedPkg: "",
+              recipient: "",
+              packageList: [],
+              packagePage: 0,
+              moolreSessionId: sessionId,
+            };
 
             console.log("🟩 CREATED VENDOR SESSION:", sessions[sessionId]);
             return handleSession(sessionId, "", String(msisdn || ""), res);
