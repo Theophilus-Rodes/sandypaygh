@@ -6410,6 +6410,243 @@ const sql = `
 
 
 
+
+// =====================================================
+// GET /api/admin/payment-sessions/pending-list
+// Fetch all payment_sessions where payment_status != approved
+// Supports search by momo_number, recipient_number, client_ref, transaction_id
+// =====================================================
+app.get("/api/admin/payment-sessions/pending-list", async (req, res) => {
+  const search = String(req.query.search || "").trim();
+
+  try {
+    let sql = `
+      SELECT
+        id,
+        client_ref,
+        transaction_id,
+        vendor_id,
+        package_id,
+        package_name,
+        amount,
+        network,
+        payer_network,
+        momo_number,
+        recipient_number,
+        package_batch_id,
+        source_page,
+        init_status,
+        payment_status,
+        finalized,
+        updated_reference,
+        created_at,
+        updated_at
+      FROM payment_sessions
+      WHERE LOWER(COALESCE(payment_status, '')) <> 'approved'
+    `;
+
+    const params = [];
+
+    if (search) {
+      sql += `
+        AND (
+          momo_number LIKE ?
+          OR recipient_number LIKE ?
+          OR client_ref LIKE ?
+          OR transaction_id LIKE ?
+          OR package_name LIKE ?
+        )
+      `;
+      const q = `%${search}%`;
+      params.push(q, q, q, q, q);
+    }
+
+    sql += ` ORDER BY id DESC`;
+
+    const [rows] = await db.promise().query(sql, params);
+
+    return res.json({
+      ok: true,
+      total: rows.length,
+      data: rows
+    });
+  } catch (err) {
+    console.error("pending-list error:", err);
+    return res.status(500).json({
+      ok: false,
+      message: "Could not fetch payment sessions."
+    });
+  }
+});
+
+
+// =====================================================
+// DELETE /api/admin/payment-sessions/delete-selected
+// Deletes selected payment_sessions by ids
+// =====================================================
+app.delete("/api/admin/payment-sessions/delete-selected", async (req, res) => {
+  const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
+
+  if (!ids.length) {
+    return res.status(400).json({
+      ok: false,
+      message: "No rows selected."
+    });
+  }
+
+  try {
+    const cleanIds = ids
+      .map(id => Number(id))
+      .filter(id => Number.isInteger(id) && id > 0);
+
+    if (!cleanIds.length) {
+      return res.status(400).json({
+        ok: false,
+        message: "Invalid selected ids."
+      });
+    }
+
+    const placeholders = cleanIds.map(() => "?").join(",");
+
+    const [result] = await db.promise().query(
+      `DELETE FROM payment_sessions WHERE id IN (${placeholders})`,
+      cleanIds
+    );
+
+    return res.json({
+      ok: true,
+      deleted: result.affectedRows || 0,
+      message: "Selected payment sessions deleted successfully."
+    });
+  } catch (err) {
+    console.error("delete-selected payment sessions error:", err);
+    return res.status(500).json({
+      ok: false,
+      message: "Could not delete selected sessions."
+    });
+  }
+});
+
+
+// =====================================================
+// POST /api/admin/payment-sessions/export
+// Export selected ids, or all filtered non-approved records, to Excel
+// =====================================================
+app.post("/api/admin/payment-sessions/export", async (req, res) => {
+  const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
+  const search = String(req.body.search || "").trim();
+
+  try {
+    let sql = `
+      SELECT
+        id,
+        client_ref,
+        transaction_id,
+        vendor_id,
+        package_id,
+        package_name,
+        amount,
+        network,
+        payer_network,
+        momo_number,
+        recipient_number,
+        package_batch_id,
+        source_page,
+        init_status,
+        payment_status,
+        finalized,
+        updated_reference,
+        created_at,
+        updated_at
+      FROM payment_sessions
+      WHERE LOWER(COALESCE(payment_status, '')) <> 'approved'
+    `;
+
+    const params = [];
+
+    const cleanIds = ids
+      .map(id => Number(id))
+      .filter(id => Number.isInteger(id) && id > 0);
+
+    if (cleanIds.length) {
+      const placeholders = cleanIds.map(() => "?").join(",");
+      sql += ` AND id IN (${placeholders})`;
+      params.push(...cleanIds);
+    } else if (search) {
+      sql += `
+        AND (
+          momo_number LIKE ?
+          OR recipient_number LIKE ?
+          OR client_ref LIKE ?
+          OR transaction_id LIKE ?
+          OR package_name LIKE ?
+        )
+      `;
+      const q = `%${search}%`;
+      params.push(q, q, q, q, q);
+    }
+
+    sql += ` ORDER BY id DESC`;
+
+    const [rows] = await db.promise().query(sql, params);
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Payment Sessions");
+
+    worksheet.columns = [
+      { header: "ID", key: "id", width: 10 },
+      { header: "Client Ref", key: "client_ref", width: 24 },
+      { header: "Transaction ID", key: "transaction_id", width: 24 },
+      { header: "Vendor ID", key: "vendor_id", width: 12 },
+      { header: "Package ID", key: "package_id", width: 12 },
+      { header: "Package Name", key: "package_name", width: 22 },
+      { header: "Amount", key: "amount", width: 12 },
+      { header: "Network", key: "network", width: 14 },
+      { header: "Payer Network", key: "payer_network", width: 16 },
+      { header: "MoMo Number", key: "momo_number", width: 18 },
+      { header: "Recipient Number", key: "recipient_number", width: 18 },
+      { header: "Package Batch ID", key: "package_batch_id", width: 20 },
+      { header: "Source Page", key: "source_page", width: 18 },
+      { header: "Init Status", key: "init_status", width: 16 },
+      { header: "Payment Status", key: "payment_status", width: 16 },
+      { header: "Finalized", key: "finalized", width: 10 },
+      { header: "Updated Ref", key: "updated_reference", width: 24 },
+      { header: "Created At", key: "created_at", width: 22 },
+      { header: "Updated At", key: "updated_at", width: 22 }
+    ];
+
+    rows.forEach(row => worksheet.addRow(row));
+
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.views = [{ state: "frozen", ySplit: 1 }];
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=payment_sessions_non_approved.xlsx`
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error("export payment sessions error:", err);
+    return res.status(500).json({
+      ok: false,
+      message: "Could not export payment sessions."
+    });
+  }
+});
+
+
+
+
+
+
+
+
 app.post('/api/admin-packages-by-code', (req, res) => {
   const { code } = req.body;
 
