@@ -198,7 +198,8 @@
       </div>
       <button class="btn btn-primary" id="searchBtn">Search</button>
       <button class="btn btn-light" id="refreshBtn">Refresh</button>
-      <button class="btn btn-success" id="exportBtn">Export Excel</button>
+    <button class="btn btn-success" id="downloadBtn">Download Selected</button>
+<button class="btn btn-light" onclick="location.href='downloaded_payment_packages.html'">View Downloaded Packages</button>
       <button class="btn btn-danger" id="deleteBtn">Delete Selected</button>
     </div>
 
@@ -429,41 +430,52 @@
       }
     }
 
-    async function exportExcel() {
-      const ids = getSelectedIds();
-      const search = document.getElementById("searchInput").value.trim();
+   async function downloadSelected() {
+  const ids = getSelectedIds();
 
-      try {
-        const res = await fetch(`${API_BASE}/api/admin/payment-sessions/export`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids, search })
-        });
+  if (!ids.length) {
+    showMessage("Please select at least one row to download.", true);
+    return;
+  }
 
-        if (!res.ok) {
-          let out = {};
-          try { out = await res.json(); } catch(e){}
-          showMessage(out.message || "Export failed.", true);
-          return;
-        }
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/payment-sessions/download-package`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids })
+    });
 
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "payment_sessions_non_approved.xlsx";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-
-        showMessage("Excel exported successfully.");
-      } catch (err) {
-        console.error(err);
-        showMessage("Network error while exporting.", true);
-      }
+    if (!res.ok) {
+      let out = {};
+      try { out = await res.json(); } catch(e){}
+      showMessage(out.message || "Download failed.", true);
+      return;
     }
 
+    const blob = await res.blob();
+
+    let filename = "downloaded_package.xlsx";
+    const disposition = res.headers.get("Content-Disposition");
+    if (disposition && disposition.includes("filename=")) {
+      filename = disposition.split("filename=")[1].replace(/"/g, "").trim();
+    }
+
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+
+    showMessage("Package downloaded successfully.");
+    loadRows();
+  } catch (err) {
+    console.error(err);
+    showMessage("Network error while downloading package.", true);
+  }
+}
     function setupSelectAll() {
       const selectAll = document.getElementById("selectAll");
       const selectAllTop = document.getElementById("selectAllTop");
@@ -488,7 +500,7 @@
     document.getElementById("searchBtn").addEventListener("click", loadRows);
     document.getElementById("refreshBtn").addEventListener("click", loadRows);
     document.getElementById("deleteBtn").addEventListener("click", deleteSelected);
-    document.getElementById("exportBtn").addEventListener("click", exportExcel);
+    document.getElementById("downloadBtn").addEventListener("click", downloadSelected);
     document.getElementById("searchInput").addEventListener("keypress", function(e){
       if (e.key === "Enter") loadRows();
     });

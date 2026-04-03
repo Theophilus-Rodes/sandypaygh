@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Downloaded Payment Packages</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#f8fafc;
+      --card:#fff;
+      --line:#e2e8f0;
+      --text:#0f172a;
+      --muted:#64748b;
+      --primary:#0a3d62;
+      --accent:#10b981;
+      --soft:#eef6fb;
+      --danger:#ef4444;
+    }
+    *{box-sizing:border-box;font-family:Poppins,system-ui,sans-serif}
+    body{margin:0;background:var(--bg);color:var(--text)}
+    .header{
+      background:linear-gradient(90deg,var(--primary),#082f49);
+      color:#fff;
+      padding:18px 16px;
+    }
+    .wrap{max-width:1200px;margin:0 auto;padding:18px 14px 30px}
+    .topbar{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:14px;
+    }
+    .btn{
+      border:none;
+      padding:11px 14px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:600;
+    }
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-success{background:var(--accent);color:#fff}
+    .btn-light{background:var(--soft);color:var(--primary)}
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:14px;
+      margin-bottom:12px;
+      box-shadow:0 8px 20px rgba(15,23,42,.05);
+    }
+    .row{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .pkg-title{
+      font-weight:700;
+      font-size:16px;
+    }
+    .muted{
+      color:var(--muted);
+      font-size:13px;
+      margin-top:4px;
+    }
+    .badge{
+      display:inline-block;
+      padding:6px 10px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:700;
+    }
+    .downloaded{background:#fef3c7;color:#92400e}
+    .delivered{background:#dcfce7;color:#166534}
+    .preview{
+      margin-top:12px;
+      padding-top:12px;
+      border-top:1px solid var(--line);
+      display:none;
+    }
+    table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top:10px;
+    }
+    th,td{
+      padding:10px;
+      border-bottom:1px solid #edf2f7;
+      text-align:left;
+      font-size:13px;
+    }
+    th{background:#f8fafc}
+    .msg{
+      margin-bottom:14px;
+      display:none;
+      padding:12px 14px;
+      border-radius:12px;
+      font-size:14px;
+    }
+    .ok{
+      display:block;
+      background:#ecfdf5;
+      color:#166534;
+      border:1px solid #bbf7d0;
+    }
+    .err{
+      display:block;
+      background:#fef2f2;
+      color:#991b1b;
+      border:1px solid #fecaca;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2 style="margin:0;">Downloaded Payment Packages</h2>
+  </div>
+
+  <div class="wrap">
+    <div class="topbar">
+      <button class="btn btn-light" onclick="location.href='payment_sessions_admin.html'">← Back</button>
+      <button class="btn btn-primary" onclick="loadPackages()">Refresh</button>
+    </div>
+
+    <div id="messageBox" class="msg"></div>
+    <div id="packageList"></div>
+  </div>
+
+  <script>
+    const API_BASE = "https://sandipay.co";
+
+    function showMessage(message, isError = false) {
+      const box = document.getElementById("messageBox");
+      box.className = "msg " + (isError ? "err" : "ok");
+      box.textContent = message;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    async function loadPackages() {
+      const list = document.getElementById("packageList");
+      list.innerHTML = "Loading packages...";
+
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/payment-packages`, { cache: "no-store" });
+        const out = await res.json();
+
+        if (!res.ok || !out.ok) {
+          list.innerHTML = "Could not load packages.";
+          return;
+        }
+
+        if (!out.data.length) {
+          list.innerHTML = "<div class='card'>No downloaded packages found.</div>";
+          return;
+        }
+
+        list.innerHTML = "";
+
+        out.data.forEach(pkg => {
+          const badgeClass = pkg.status === "delivered" ? "delivered" : "downloaded";
+
+          list.innerHTML += `
+            <div class="card">
+              <div class="row">
+                <div>
+                  <div class="pkg-title">${escapeHtml(pkg.package_code)}</div>
+                  <div class="muted">
+                    Total Items: ${pkg.total_items} • Created: ${escapeHtml(pkg.created_at)}
+                  </div>
+                </div>
+
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                  <span class="badge ${badgeClass}">${escapeHtml(pkg.status)}</span>
+                  <button class="btn btn-light" onclick="togglePreview(${pkg.id}, this)">View Package</button>
+                  ${
+                    pkg.status !== "delivered"
+                      ? `<button class="btn btn-success" onclick="markDelivered(${pkg.id})">Mark Delivered</button>`
+                      : ``
+                  }
+                </div>
+              </div>
+
+              <div class="preview" id="preview-${pkg.id}"></div>
+            </div>
+          `;
+        });
+      } catch (err) {
+        console.error(err);
+        list.innerHTML = "Network error while loading packages.";
+      }
+    }
+
+    async function togglePreview(id, btn) {
+      const box = document.getElementById(`preview-${id}`);
+
+      if (box.style.display === "block") {
+        box.style.display = "none";
+        btn.textContent = "View Package";
+        return;
+      }
+
+      box.style.display = "block";
+      btn.textContent = "Hide Package";
+      box.innerHTML = "Loading package items...";
+
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/payment-packages/${id}/items`, {
+          cache: "no-store"
+        });
+
+        const out = await res.json();
+
+        if (!res.ok || !out.ok) {
+          box.innerHTML = "Could not load package items.";
+          return;
+        }
+
+        let html = `
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Package</th>
+                <th>Recipient Number</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+
+        out.items.forEach((item, index) => {
+          html += `
+            <tr>
+              <td>${index + 1}</td>
+              <td>${escapeHtml(item.package_name)}</td>
+              <td>${escapeHtml(item.recipient_number)}</td>
+              <td>${escapeHtml(item.status)}</td>
+            </tr>
+          `;
+        });
+
+        html += `</tbody></table>`;
+        box.innerHTML = html;
+
+      } catch (err) {
+        console.error(err);
+        box.innerHTML = "Network error while loading package items.";
+      }
+    }
+
+    async function markDelivered(id) {
+      const yes = confirm("Mark this whole package as delivered?");
+      if (!yes) return;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/payment-packages/${id}/mark-delivered`, {
+          method: "POST"
+        });
+
+        const out = await res.json();
+
+        if (!res.ok || !out.ok) {
+          showMessage(out.message || "Could not mark delivered.", true);
+          return;
+        }
+
+        showMessage(out.message || "Package marked delivered.");
+        loadPackages();
+      } catch (err) {
+        console.error(err);
+        showMessage("Network error while marking delivered.", true);
+      }
+    }
+
+    loadPackages();
+  </script>
+</body>
+</html>
