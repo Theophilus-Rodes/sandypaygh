@@ -299,11 +299,11 @@
       );
     }
 
-    function isFailed(result) {
-      return (
-        ["failed", "cancelled", "declined", "reversed", "expired"].includes(normalizeStatus(result.status))
-      );
-    }
+   function isFailed(result) {
+  // Do not permanently fail on delayed TheTeller responses.
+  // Only treat it as truly failed if backend explicitly says finalized false AND hard_failed true.
+  return result && result.hard_failed === true;
+}
 
     function pickTransactionId(obj) {
       if (!obj || typeof obj !== "object") return null;
@@ -478,12 +478,13 @@
   }
 
   return {
-    status: normalizeStatus(out.status),
-    code: normalizeCode(out.code),
-    finalized: !!out.finalized,
-    transaction_id: out.transaction_id || maybeRecoveredId || null,
-    message: out.message || out.reason || "Waiting for approval"
-  };
+  status: normalizeStatus(out.status),
+  code: normalizeCode(out.code),
+  finalized: !!out.finalized,
+  hard_failed: !!out.hard_failed,
+  transaction_id: out.transaction_id || maybeRecoveredId || null,
+  message: out.message || out.reason || "Waiting for approval"
+};
 }
 
     async function finalizeApprovedPayment() {
@@ -534,6 +535,7 @@
    async function manualCheckStatus() {
   if (finished || manualChecking) return;
 
+stopPolling();
   manualChecking = true;
   doneBtn.disabled = true;
   doneBtn.innerText = "Checking...";
@@ -543,7 +545,7 @@
   try {
     setStatus("Checking your payment carefully. Please wait...");
 
-    const res = await fetch(`${API_BASE}/api/manual-verify-payment`, {
+   const res = await fetch(`${API_BASE}/api/reconcile-payment`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
