@@ -260,30 +260,38 @@
       }
     }
 
-    async function markDelivered(id) {
-      const yes = confirm("Mark this whole package as delivered?");
-      if (!yes) return;
+async function markDelivered(id) {
+  const yes = confirm("Mark this whole package as delivered?");
+  if (!yes) return;
 
-      try {
-        const res = await fetch(`${API_BASE}/api/admin/payment-packages/${id}/mark-delivered`, {
-          method: "POST"
-        });
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/payment-packages/${id}/mark-delivered`, {
+      method: "POST"
+    });
 
-        const out = await res.json();
+    const raw = await res.text();
+    let out;
 
-        if (!res.ok || !out.ok) {
-          showMessage(out.message || "Could not mark delivered.", true);
-          return;
-        }
-
-        showMessage(out.message || "Package marked delivered.");
-        loadPackages();
-      } catch (err) {
-        console.error(err);
-        showMessage("Network error while marking delivered.", true);
-      }
+    try {
+      out = JSON.parse(raw);
+    } catch (e) {
+      console.error("Non-JSON response:", raw);
+      showMessage(`Server returned ${res.status} ${res.statusText}.`, true);
+      return;
     }
 
+    if (!res.ok || !out.ok) {
+      showMessage(out.message || "Could not mark delivered.", true);
+      return;
+    }
+
+    showMessage(out.message || "Package marked delivered.");
+    loadPackages();
+  } catch (err) {
+    console.error("markDelivered error:", err);
+    showMessage("Network error while marking delivered.", true);
+  }
+}
     loadPackages();
   </script>
 </body>
