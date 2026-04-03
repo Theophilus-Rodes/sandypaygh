@@ -1074,13 +1074,15 @@ async function checkTheTellerStatusOnce(transaction_id) {
   return { approved, failed, status, code, raw };
 }
 
+
 function startServerSideWatcher(transaction_id, opts = {}) {
-  // don’t start twice
+  if (!transaction_id) return;
+
   if (watching.has(transaction_id)) return;
   watching.add(transaction_id);
 
-  const intervalMs = opts.intervalMs ?? 5000;     // check every 5s
-  const maxMinutes = opts.maxMinutes ?? 6;        // watch for 6 minutes
+  const intervalMs = opts.intervalMs ?? 5000;
+  const maxMinutes = opts.maxMinutes ?? 10;
   const maxTries = Math.ceil((maxMinutes * 60 * 1000) / intervalMs);
 
   let tries = 0;
@@ -1089,23 +1091,26 @@ function startServerSideWatcher(transaction_id, opts = {}) {
     tries++;
 
     try {
-      const { approved, failed } = await checkTheTellerStatusOnce(transaction_id);
+      const result = await reconcilePaymentNow({
+        transaction_id,
+        source: "watcher"
+      });
 
-      if (approved) {
-        await finalizeOrderIfApproved(transaction_id);
+      if (result.finalized) {
         clearInterval(timer);
         watching.delete(transaction_id);
         return;
       }
 
-      if (failed || tries >= maxTries) {
-        // stop watching (leave it for manual check if you want)
+      // do NOT stop on one failed-like provider response
+      if (tries >= maxTries) {
         clearInterval(timer);
         watching.delete(transaction_id);
         return;
       }
     } catch (e) {
-      // If status endpoint temporarily fails, keep trying until maxTries
+      console.error("startServerSideWatcher error:", e.message || e);
+
       if (tries >= maxTries) {
         clearInterval(timer);
         watching.delete(transaction_id);
@@ -1141,169 +1146,311 @@ async function getPaymentSessionByTransactionId(transaction_id) {
   return rows.length ? rows[0] : null;
 }
 
+
 async function reconcilePaymentNow({ client_ref = "", transaction_id = "", source = "manual" }) {
   let session = null;
 
-  if (transaction_id) {
-    session = await getPaymentSessionByTransactionId(transaction_id);
-  }
+  const normalizeStatus = (v) => String(v || "").trim().toLowerCase();
+  const normalizeCode = (v) => String(v || "").trim();
 
-  if (!session && client_ref) {
-    session = await getPaymentSessionByClientRef(client_ref);
-    if (session?.transaction_id) {
-      transaction_id = String(session.transaction_id).trim();
+  const isApprovedStatus = (status, code) => {
+    const s = normalizeStatus(status);
+    const c = normalizeCode(code);
+
+    return (
+      c === "000" ||
+      c === "00" ||
+      c === "0" ||
+      ["approved", "successful", "success", "completed", "paid", "done"].includes(s) ||
+      s.includes("success") ||
+      s.includes("approved") ||
+      s.includes("complete") ||
+      s.includes("paid")
+    );
+  };
+
+  try {
+    if (transaction_id) {
+      session = await getPaymentSessionByTransactionId(transaction_id);
     }
-  }
 
-  if (!session) {
-    return {
-      ok: false,
-      finalized: false,
-      status: "unknown",
-      message: "Payment session not found."
-    };
-  }
+    if (!session && client_ref) {
+      session = await getPaymentSessionByClientRef(client_ref);
+      if (session?.transaction_id) {
+        transaction_id = String(session.transaction_id).trim();
+      }
+    }
 
-  if (
-    Number(session.finalized) === 1 ||
-    String(session.payment_status || "").toLowerCase() === "approved"
-  ) {
-    return {
-      ok: true,
-      finalized: true,
-      status: "approved",
-      transaction_id: session.transaction_id || transaction_id || null,
-      message: "Payment already confirmed locally."
-    };
-  }
+    if (!session) {
+      return {
+        ok: false,
+        finalized: false,
+        status: "unknown",
+        message: "Payment session not found."
+      };
+    }
 
-  if (!transaction_id) {
+    // Trust local DB first
+    if (
+      Number(session.finalized) === 1 ||
+      normalizeStatus(session.payment_status) === "approved"
+    ) {
+      return {
+        ok: true,
+        finalized: true,
+        status: "approved",
+        transaction_id: session.transaction_id || transaction_id || null,
+        message: "Payment already confirmed locally."
+      };
+    }
+
+    if (!transaction_id) {
+      return {
+        ok: true,
+        finalized: false,
+        status: "pending",
+        message: "Transaction is still being prepared."
+      };
+    }
+
+    const url = `${THETELLER.statusBase}/${encodeURIComponent(transaction_id)}/status`;
+
+    let raw = {};
+    let status = "pending";
+    let code = "";
+    let message = "";
+
+    try {
+      const resp = await axios.get(url, {
+        headers: {
+          Authorization: `Basic ${THETELLER.basicToken}`,
+          "Merchant-Id": THETELLER.merchantId,
+          "Cache-Control": "no-cache",
+        },
+        timeout: 30000,
+      });
+
+      raw = resp.data || {};
+
+      status = normalizeStatus(
+        raw.status ??
+        raw.Status ??
+        raw.transaction_status ??
+        raw.transactionStatus ??
+        raw.response_status ??
+        raw.state ??
+        ""
+      );
+
+      code = normalizeCode(
+        raw.code ??
+        raw.Code ??
+        raw.response_code ??
+        raw.responseCode ??
+        raw.status_code ??
+        raw.statusCode ??
+        ""
+      );
+
+      message = String(
+        raw.reason ??
+        raw.message ??
+        raw.ResponseMessage ??
+        raw.response_message ??
+        ""
+      ).trim();
+    } catch (providerErr) {
+      console.error("reconcilePaymentNow provider error:", providerErr.response?.data || providerErr.message);
+
+      // provider failed? trust local DB again before giving up
+      const freshLocal = await getPaymentSessionByClientRef(session.client_ref);
+      if (
+        freshLocal &&
+        (
+          Number(freshLocal.finalized) === 1 ||
+          normalizeStatus(freshLocal.payment_status) === "approved"
+        )
+      ) {
+        return {
+          ok: true,
+          finalized: true,
+          status: "approved",
+          transaction_id: freshLocal.transaction_id || transaction_id || null,
+          message: "Payment already confirmed locally."
+        };
+      }
+
+      return {
+        ok: true,
+        finalized: false,
+        status: "pending",
+        transaction_id,
+        message: "Provider check delayed. Payment is still being confirmed."
+      };
+    }
+
+    const approved = isApprovedStatus(status, code);
+
+    await db.promise().query(
+      `INSERT INTO payment_reconcile_logs
+       (client_ref, transaction_id, check_source, provider_status, provider_code, local_payment_status, local_finalized, resolved, note, raw_response)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        session.client_ref,
+        transaction_id,
+        source,
+        status || null,
+        code || null,
+        session.payment_status || null,
+        Number(session.finalized) === 1 ? 1 : 0,
+        approved ? 1 : 0,
+        message || `${source} payment check`,
+        JSON.stringify(raw)
+      ]
+    ).catch(() => {});
+
+    if (approved) {
+      const conn = await db.promise().getConnection();
+      try {
+        await conn.beginTransaction();
+
+        // Lock the payment session row
+        const [lockedRows] = await conn.query(
+          `SELECT *
+           FROM payment_sessions
+           WHERE client_ref=?
+           LIMIT 1
+           FOR UPDATE`,
+          [session.client_ref]
+        );
+
+        if (!lockedRows.length) {
+          await conn.rollback();
+          return {
+            ok: false,
+            finalized: false,
+            status: "unknown",
+            transaction_id,
+            message: "Payment session not found during finalization."
+          };
+        }
+
+        const locked = lockedRows[0];
+
+        // If another request already finalized it while we waited for lock, trust it
+        if (
+          Number(locked.finalized) === 1 ||
+          normalizeStatus(locked.payment_status) === "approved"
+        ) {
+          await conn.commit();
+          return {
+            ok: true,
+            finalized: true,
+            status: "approved",
+            transaction_id: locked.transaction_id || transaction_id || null,
+            message: "Payment already confirmed locally."
+          };
+        }
+
+        const [exists] = await conn.query(
+          `SELECT 1
+           FROM admin_orders
+           WHERE updated_reference=?
+           LIMIT 1`,
+          [transaction_id]
+        );
+
+        if (!exists.length) {
+          await conn.query(
+            `INSERT INTO admin_orders
+            (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
+            VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
+            [
+              locked.vendor_id,
+              locked.recipient_number,
+              locked.package_name,
+              Number(locked.amount),
+              String(locked.network || "").toLowerCase(),
+              locked.package_batch_id,
+              transaction_id
+            ]
+          );
+        }
+
+        await conn.query(
+          `UPDATE payment_sessions
+           SET payment_status='approved',
+               finalized=1,
+               updated_reference=?,
+               init_status='approved'
+           WHERE client_ref=?`,
+          [transaction_id, locked.client_ref]
+        );
+
+        await conn.commit();
+
+        return {
+          ok: true,
+          finalized: true,
+          status: "approved",
+          transaction_id,
+          message: "Payment successful. Order saved."
+        };
+      } catch (txErr) {
+        await conn.rollback();
+        throw txErr;
+      } finally {
+        conn.release();
+      }
+    }
+
+    // Keep non-approved states retryable
+    await db.promise().query(
+      `UPDATE payment_sessions
+       SET payment_status='pending'
+       WHERE client_ref=? AND finalized=0`,
+      [session.client_ref]
+    ).catch(() => {});
+
     return {
       ok: true,
       finalized: false,
       status: "pending",
-      message: "Transaction is still being prepared."
-    };
-  }
-
-  const url = `${THETELLER.statusBase}/${encodeURIComponent(transaction_id)}/status`;
-
-  const resp = await axios.get(url, {
-    headers: {
-      Authorization: `Basic ${THETELLER.basicToken}`,
-      "Merchant-Id": THETELLER.merchantId,
-      "Cache-Control": "no-cache",
-    },
-    timeout: 30000,
-  });
-
-  const raw = resp.data || {};
-
-  const status = String(
-    raw.status ??
-    raw.Status ??
-    raw.transaction_status ??
-    raw.transactionStatus ??
-    raw.response_status ??
-    raw.state ??
-    ""
-  ).toLowerCase().trim();
-
-  const code = String(
-    raw.code ??
-    raw.Code ??
-    raw.response_code ??
-    raw.responseCode ??
-    raw.status_code ??
-    raw.statusCode ??
-    ""
-  ).trim();
-
-  const message = String(
-    raw.reason ??
-    raw.message ??
-    raw.ResponseMessage ??
-    raw.response_message ??
-    ""
-  ).trim();
-
-  const approved =
-    code === "000" ||
-    code === "00" ||
-    code === "0" ||
-    ["approved", "successful", "success", "completed", "paid", "done"].includes(status) ||
-    status.includes("success") ||
-    status.includes("approved") ||
-    status.includes("complete") ||
-    status.includes("paid");
-
-  await db.promise().query(
-    `INSERT INTO payment_reconcile_logs
-     (client_ref, transaction_id, check_source, provider_status, provider_code, local_payment_status, local_finalized, resolved, note, raw_response)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      session.client_ref,
       transaction_id,
-      source,
-      status || null,
-      code || null,
-      session.payment_status || null,
-      Number(session.finalized) === 1 ? 1 : 0,
-      approved ? 1 : 0,
-      message || `${source} payment check`,
-      JSON.stringify(raw)
-    ]
-  ).catch(() => {});
+      message: message || "Payment is still being confirmed."
+    };
+  } catch (err) {
+    console.error("reconcilePaymentNow error:", err.response?.data || err.message || err);
 
-  if (approved) {
-    const [exists] = await db.promise().query(
-      "SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1",
-      [transaction_id]
-    );
+    // Last local fallback
+    if (session?.client_ref) {
+      const latest = await getPaymentSessionByClientRef(session.client_ref).catch(() => null);
 
-    if (!exists.length) {
-      await db.promise().query(
-        `INSERT INTO admin_orders
-        (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
-        VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
-        [
-          session.vendor_id,
-          session.recipient_number,
-          session.package_name,
-          Number(session.amount),
-          String(session.network || "").toLowerCase(),
-          session.package_batch_id,
-          transaction_id
-        ]
-      );
+      if (
+        latest &&
+        (
+          Number(latest.finalized) === 1 ||
+          String(latest.payment_status || "").toLowerCase() === "approved"
+        )
+      ) {
+        return {
+          ok: true,
+          finalized: true,
+          status: "approved",
+          transaction_id: latest.transaction_id || transaction_id || null,
+          message: "Payment already confirmed locally."
+        };
+      }
     }
 
-    await db.promise().query(
-      `UPDATE payment_sessions
-       SET payment_status='approved',
-           finalized=1,
-           updated_reference=?,
-           init_status='approved'
-       WHERE client_ref=?`,
-      [transaction_id, session.client_ref]
-    );
-
     return {
-      ok: true,
-      finalized: true,
-      status: "approved",
-      transaction_id,
-      message: "Payment successful. Order saved."
+      ok: false,
+      finalized: false,
+      status: "unknown",
+      transaction_id: transaction_id || null,
+      message: "Could not reconcile payment right now."
     };
   }
-
-  return {
-    ok: true,
-    finalized: false,
-    status: "pending",
-    transaction_id,
-    message: message || "Payment is still being confirmed."
-  };
 }
 
 // =====================================================
@@ -2027,19 +2174,32 @@ app.post("/api/manual-verify-payment", async (req, res) => {
   }
 
   try {
-    for (let i = 0; i < 6; i++) {
+    const attempts = 8;
+    const delayMs = 3500;
+
+    let lastResult = {
+      ok: true,
+      finalized: false,
+      status: "pending",
+      transaction_id: transaction_id || null,
+      message: "Payment is still being confirmed."
+    };
+
+    for (let i = 0; i < attempts; i++) {
       const result = await reconcilePaymentNow({
         client_ref,
         transaction_id,
         source: "manual"
       });
 
+      lastResult = result;
+
       if (result.finalized) {
         return res.json(result);
       }
 
-      if (i < 5) {
-        await new Promise(resolve => setTimeout(resolve, 3000));
+      if (i < attempts - 1) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
       }
     }
 
@@ -2047,10 +2207,40 @@ app.post("/api/manual-verify-payment", async (req, res) => {
       ok: true,
       finalized: false,
       status: "pending",
+      transaction_id: lastResult.transaction_id || transaction_id || null,
       message: "Payment is still being confirmed. If money was deducted, do not pay again. Tap again shortly."
     });
   } catch (err) {
     console.error("manual-verify-payment error:", err.response?.data || err.message || err);
+
+    // one more local fallback
+    try {
+      let latest = null;
+
+      if (transaction_id) {
+        latest = await getPaymentSessionByTransactionId(transaction_id);
+      }
+      if (!latest && client_ref) {
+        latest = await getPaymentSessionByClientRef(client_ref);
+      }
+
+      if (
+        latest &&
+        (
+          Number(latest.finalized) === 1 ||
+          String(latest.payment_status || "").toLowerCase() === "approved"
+        )
+      ) {
+        return res.json({
+          ok: true,
+          finalized: true,
+          status: "approved",
+          transaction_id: latest.transaction_id || transaction_id || null,
+          message: "Payment successful. Order saved."
+        });
+      }
+    } catch (_) {}
+
     return res.status(500).json({
       ok: false,
       finalized: false,
@@ -2059,6 +2249,8 @@ app.post("/api/manual-verify-payment", async (req, res) => {
     });
   }
 });
+
+
 
 // =====================================================
 // GET /payment-callback
