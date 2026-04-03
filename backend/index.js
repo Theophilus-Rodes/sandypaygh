@@ -6409,7 +6409,6 @@ const sql = `
 
 
 
-
 function makeDownloadPackageCode() {
   return "PKG-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
 }
@@ -6438,7 +6437,7 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
   let conn;
 
   try {
-    conn = await db.promise().getConnection();
+    conn = await db.getConnection();
     await conn.beginTransaction();
 
     const placeholders = cleanIds.map(() => "?").join(",");
@@ -6551,15 +6550,16 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
       try { conn.release(); } catch (_) {}
     }
 
-    console.error("download-package error:", err);
+    console.error("download-package FULL error:", err);
+    console.error("download-package SQL/message:", err.sqlMessage || err.message);
+
     return res.status(500).json({
       ok: false,
       message: "Could not create download package.",
-      error: err.message
+      error: err.sqlMessage || err.message
     });
   }
 });
-
 // =====================================================
 // GET /api/admin/payment-sessions/pending-list
 // Fetch all payment_sessions where payment_status != approved
