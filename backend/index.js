@@ -6513,12 +6513,20 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
       { header: "Recipient Number", key: "recipient_number", width: 22 }
     ];
 
-    rows.forEach(row => {
-      worksheet.addRow({
-        package_name: row.package_name || "",
-        recipient_number: row.recipient_number || ""
-      });
-    });
+   function cleanPackageValue(value) {
+  const text = String(value || "").trim();
+
+  // remove GB, MB, spaces, and keep only the number part
+  const match = text.match(/[\d.]+/);
+  return match ? match[0] : text;
+}
+
+rows.forEach(row => {
+  worksheet.addRow({
+    package_name: cleanPackageValue(row.package_name),
+    recipient_number: row.recipient_number || ""
+  });
+});
 
     worksheet.getRow(1).font = { bold: true };
     worksheet.views = [{ state: "frozen", ySplit: 1 }];
