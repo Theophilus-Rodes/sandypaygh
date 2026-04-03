@@ -1310,7 +1310,7 @@ async function reconcilePaymentNow({ client_ref = "", transaction_id = "", sourc
     ).catch(() => {});
 
     if (approved) {
-      const conn = await db.promise().getConnection();
+      const conn = await db.getConnection();
       try {
         await conn.beginTransaction();
 
@@ -6747,20 +6747,19 @@ app.post("/api/admin/payment-packages/:id/mark-delivered", async (req, res) => {
   let conn;
 
   try {
-    conn = await db.promise().getConnection();
+    conn = await db.getConnection();
 
     await conn.beginTransaction();
 
-    // Check package exists
     const [pkgRows] = await conn.query(
-  `
-  SELECT id
-  FROM downloaded_payment_packages
-  WHERE id=?
-  LIMIT 1
-  `,
-  [id]
-);
+      `
+      SELECT id
+      FROM downloaded_payment_packages
+      WHERE id=?
+      LIMIT 1
+      `,
+      [id]
+    );
 
     if (!pkgRows.length) {
       await conn.rollback();
@@ -6770,47 +6769,41 @@ app.post("/api/admin/payment-packages/:id/mark-delivered", async (req, res) => {
       });
     }
 
-    // Get linked payment session ids
     const [items] = await conn.query(
       `
       SELECT payment_session_id
       FROM downloaded_payment_package_items
-      WHERE package_ref_id = ?
+      WHERE package_ref_id=?
       `,
       [id]
     );
 
-    // Update main package
     await conn.query(
       `
       UPDATE downloaded_payment_packages
-      SET status = 'delivered'
-      WHERE id = ?
+      SET status='delivered'
+      WHERE id=?
       `,
       [id]
     );
 
-    // Update package items
     await conn.query(
       `
       UPDATE downloaded_payment_package_items
-      SET status = 'delivered'
-      WHERE package_ref_id = ?
+      SET status='delivered'
+      WHERE package_ref_id=?
       `,
       [id]
     );
 
-    // Update linked payment sessions
-    const sessionIds = [...new Set(
-      items.map(x => Number(x.payment_session_id)).filter(Boolean)
-    )];
+    const sessionIds = [...new Set(items.map(x => Number(x.payment_session_id)).filter(Boolean))];
 
-    if (sessionIds.length > 0) {
+    if (sessionIds.length) {
       const placeholders = sessionIds.map(() => "?").join(",");
       await conn.query(
         `
         UPDATE payment_sessions
-        SET payment_status = 'delivered'
+        SET payment_status='delivered'
         WHERE id IN (${placeholders})
         `,
         sessionIds
@@ -6838,6 +6831,7 @@ app.post("/api/admin/payment-packages/:id/mark-delivered", async (req, res) => {
     if (conn) conn.release();
   }
 });
+
 // =====================================================
 // DELETE /api/admin/payment-sessions/delete-selected
 // Deletes selected payment_sessions by ids
