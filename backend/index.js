@@ -2016,17 +2016,18 @@ app.get("/api/theteller-status", async (req, res) => {
         reason
       });
 
-      const out = {
-        ok: true,
-        status: "pending",
-        finalized: false,
-        message: reason
-          ? `${reason} If you have approved on your phone already, tap again shortly.`
-          : "Payment is not yet confirmed. If you have approved on your phone already, tap again shortly.",
-        transaction_id,
-        code,
-        raw
-      };
+  const out = {
+  ok: true,
+  status: "pending",
+  hard_failed: false,
+  finalized: false,
+  message: reason
+    ? `${reason} If you have already approved on your phone, tap 'I've completed the payment' shortly.`
+    : "Payment is not yet confirmed. If you have already approved on your phone, tap 'I've completed the payment' shortly.",
+  transaction_id,
+  code,
+  raw
+};
 
       console.log("➡️ STATUS RESPONSE TO FRONTEND:", {
         transaction_id,
