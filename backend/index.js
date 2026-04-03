@@ -6408,16 +6408,12 @@ const sql = `
 
 
 
+const ExcelJS = require("exceljs");
 
 function makeDownloadPackageCode() {
   return "PKG-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
 }
 
-// =====================================================
-// POST /api/admin/payment-sessions/download-package
-// Create one package from selected rows, mark them downloaded,
-// save them into package tables, and download Excel
-// =====================================================
 app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
   const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
 
@@ -6439,9 +6435,10 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
     });
   }
 
-  const conn = await db.promise().getConnection();
+  let conn;
 
   try {
+    conn = await db.promise().getConnection();
     await conn.beginTransaction();
 
     const placeholders = cleanIds.map(() => "?").join(",");
@@ -6452,14 +6449,13 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
         id,
         package_name,
         recipient_number,
-        payment_status,
-        finalized
+        payment_status
       FROM payment_sessions
       WHERE id IN (${placeholders})
         AND LOWER(COALESCE(payment_status, '')) <> 'approved'
         AND LOWER(COALESCE(payment_status, '')) <> 'downloaded'
         AND LOWER(COALESCE(payment_status, '')) <> 'delivered'
-      ORDER BY id DESC
+      ORDER BY id ASC
       `,
       cleanIds
     );
@@ -6514,12 +6510,14 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
     );
 
     await conn.commit();
+    conn.release();
+    conn = null;
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Downloaded Package");
 
     worksheet.columns = [
-      { header: "Package", key: "package_name", width: 28 },
+      { header: "Package", key: "package_name", width: 30 },
       { header: "Recipient Number", key: "recipient_number", width: 22 }
     ];
 
@@ -6533,31 +6531,34 @@ app.post("/api/admin/payment-sessions/download-package", async (req, res) => {
     worksheet.getRow(1).font = { bold: true };
     worksheet.views = [{ state: "frozen", ySplit: 1 }];
 
+    const buffer = await workbook.xlsx.writeBuffer();
+
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=${packageCode}.xlsx`
+      `attachment; filename="${packageCode}.xlsx"`
     );
+    res.setHeader("Content-Length", buffer.length);
 
-    await workbook.xlsx.write(res);
-    res.end();
+    return res.send(buffer);
 
   } catch (err) {
-    await conn.rollback();
+    if (conn) {
+      try { await conn.rollback(); } catch (_) {}
+      try { conn.release(); } catch (_) {}
+    }
+
     console.error("download-package error:", err);
     return res.status(500).json({
       ok: false,
-      message: "Could not create download package."
+      message: "Could not create download package.",
+      error: err.message
     });
-  } finally {
-    conn.release();
   }
 });
-
-
 
 // =====================================================
 // GET /api/admin/payment-sessions/pending-list
