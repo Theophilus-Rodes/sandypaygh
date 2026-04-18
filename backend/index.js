@@ -3843,7 +3843,7 @@ app.post("/api/submit-afa-payment", async (req, res) => {
       processing_code: "000200",
       transaction_id: transactionId,
       desc: "AFA Registration",
-      merchant_id: "TTM-00010694",
+      merchant_id: "TTM-00009388",
       subscriber_number: formattedMoMo,
       "r-switch": rSwitch,
       redirect_url: "https://example.com/afa-callback"
@@ -4451,7 +4451,7 @@ console.log("Detected payerNet:", payerNet);
     processing_code: "000200",
     transaction_id: `LOAD${Date.now()}`.slice(0, 30),
     desc: `Wallet Top-up - ${network.toUpperCase()}`,
-    merchant_id: "TTM-00010694",
+    merchant_id: "TTM-00009388",
     subscriber_number: formattedMoMo,
     "r-switch": rSwitch,
     redirect_url: "https://example.com/callback"
@@ -5642,7 +5642,7 @@ app.post("/api/theteller-withdraw", async (req, res) => {
   processing_code: "404000",
   transaction_id: transactionId,
   desc: "Vendor Withdrawal",
-  merchant_id: "TTM-00010694",
+  merchant_id: "TTM-00009388",
   subscriber_number: formattedMoMo,
   "r-switch": rSwitch,
   redirect_url: "https://example.com/withdrawal-callback",
