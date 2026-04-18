@@ -392,7 +392,7 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
       processing_code: "000200",
       transaction_id: transactionId,
       desc: "USSD Session Purchase",
-      merchant_id: "TTM-00010694",
+      merchant_id: "TTM-00009388",
       subscriber_number: formattedMoMo,
       "r-switch": rSwitch,
       redirect_url: "https://example.com/sessions-callback" // placeholder
