@@ -399,9 +399,9 @@ app.post("/api/sessions/purchase-momo", async (req, res) => {
     };
 
     // Same auth style as your AFA code
-    const token = Buffer.from(
-      "sandipay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ="
-    ).toString("base64");
+   const token = Buffer.from(
+  "louis66a20ac942e74:ZmVjZWZlZDc2MzA4OWU0YmZhOTk5MDBmMDAxNDhmOWY="
+).toString("base64");
 
     // Call TheTeller
     const response = await axios.post(
@@ -3849,7 +3849,9 @@ app.post("/api/submit-afa-payment", async (req, res) => {
       redirect_url: "https://example.com/afa-callback"
     };
 
-    const token = Buffer.from(`sandipay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ=`).toString("base64");
+    const token = Buffer.from(
+  "louis66a20ac942e74:ZmVjZWZlZDc2MzA4OWU0YmZhOTk5MDBmMDAxNDhmOWY="
+).toString("base64");
 
     try {
       const response = await axios.post("https://prod.theteller.net/v1.1/transaction/process", payload, {
@@ -4456,7 +4458,9 @@ console.log("Detected payerNet:", payerNet);
   };
 
   try {
-    const token = Buffer.from(`sandipay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ=`).toString("base64");
+    const token = Buffer.from(
+  "louis66a20ac942e74:ZmVjZWZlZDc2MzA4OWU0YmZhOTk5MDBmMDAxNDhmOWY="
+).toString("base64");
 
     const response = await axios.post(
       "https://prod.theteller.net/v1.1/transaction/process",
@@ -5647,8 +5651,9 @@ app.post("/api/theteller-withdraw", async (req, res) => {
   account_number: formattedMoMo,       // usually same as MoMo number
   account_issuer: rSwitch              // same as r-switch (e.g. MTN, ATL)
 };
-
-  const token = Buffer.from("sandipay6821f47c4bfc0:ZjZjMWViZGY0OGVjMDViNjBiMmM1NmMzMmU3MGE1YzQ=").toString("base64");
+const token = Buffer.from(
+  "louis66a20ac942e74:ZmVjZWZlZDc2MzA4OWU0YmZhOTk5MDBmMDAxNDhmOWY="
+).toString("base64");
 
   try {
     const response = await axios.post(
