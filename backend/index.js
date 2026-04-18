@@ -5790,6 +5790,55 @@ app.post('/api/afa-price/vendor', (req, res) => {
 
 
 
+app.post("/api/add-package", (req, res) => {
+  try {
+    const { network, value, amount, status, vendor_id } = req.body;
+
+    if (!network || !value || !amount || !status || !vendor_id) {
+      return res.status(400).json({
+        ok: false,
+        message: "Missing required fields."
+      });
+    }
+
+    const sql = `
+      INSERT INTO data_packages
+      (network, amount, data_package, status, vendor_id, created_at)
+      VALUES (?, ?, ?, ?, ?, NOW())
+    `;
+
+    db.query(
+      sql,
+      [network, amount, value, status, vendor_id],
+      (err, result) => {
+        if (err) {
+          console.error("ADD PACKAGE ERROR:", err);
+          return res.status(500).json({
+            ok: false,
+            message: "Failed to add package.",
+            error: err.message
+          });
+        }
+
+        return res.json({
+          ok: true,
+          message: "Package added successfully.",
+          insertId: result.insertId
+        });
+      }
+    );
+  } catch (error) {
+    console.error("ADD PACKAGE CATCH ERROR:", error);
+    return res.status(500).json({
+      ok: false,
+      message: "Server error.",
+      error: error.message
+    });
+  }
+});
+
+
+
 
 
 
