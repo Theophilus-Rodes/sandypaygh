@@ -57,7 +57,8 @@ if (!DB_PASSWORD) {
 }
 
 // Your short code extension (from Moolre)
-const EXTENSION_EXPECTED = "888";
+const ADMIN_EXTENSION = "888";
+const USER_EXTENSION = "500";
 
 // ✅ Moolre config (from your account)
 const MOOLRE = {
@@ -623,10 +624,13 @@ router.post("/", (req, res) => {
   const { sessionId, msisdn, data, message, extension, new: isNew } = payload;
 
   // Wrong extension
-  if (String(extension || "") !== EXTENSION_EXPECTED) {
-    console.log("❌ Invalid extension:", extension);
-    return res.json({ message: "END Invalid USSD entry point", reply: false });
-  }
+ const ext = String(extension || "").trim();
+
+// Only allow admin(888) or user/vendor(500)
+if (ext !== ADMIN_EXTENSION && ext !== USER_EXTENSION) {
+  console.log("❌ Invalid extension:", extension);
+  return res.json({ message: "END Invalid USSD entry point", reply: false });
+}
 
   const inputFromUser = (data || message || "").trim();
   const isNewSession = isNew === true || !sessions[sessionId];
@@ -640,7 +644,7 @@ router.post("/", (req, res) => {
   });
 
   // CASE 1: NEW PLAIN SESSION (*203*717#)
-  if (isNewSession && !inputFromUser) {
+if (isNewSession && !inputFromUser && ext === ADMIN_EXTENSION) {
     console.log("🟦 NEW PLAIN SESSION for:", msisdn);
 
     const [intl, local, plusIntl] = msisdnVariants(msisdn);
@@ -706,11 +710,18 @@ router.post("/", (req, res) => {
     const inputInner = inputFromUser;
 
     // New vendor session *203*717*ID#
-    if (isNewSessionInner) {
-      console.log(
-        "🟨 NEW VENDOR SESSION (ID MODE). Raw first data:",
-        inputInner
-      );
+ if (isNewSessionInner) {
+  if (ext !== USER_EXTENSION) {
+    return res.json({
+      message: "END Invalid user entry point",
+      reply: false,
+    });
+  }
+
+  console.log(
+    "🟨 NEW VENDOR SESSION (ID MODE). Raw first data:",
+    inputInner
+  );
 
       (async () => {
         const raw = String(inputInner || "").trim();
