@@ -3107,7 +3107,7 @@ app.post("/api/register", async (req, res) => {
           }
 
           const userId = result.insertId;
-          const ussdCode = generateUssdCode("*203*888#", userId);
+          const ussdCode = generateUssdCode("*203*500#", userId);
           const publicLink = `https://sandipay.co/index1.html?id=${userId}`;
 
           // ✅ 2) Save USSD and link
