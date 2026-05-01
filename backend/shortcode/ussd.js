@@ -819,97 +819,96 @@ router.post("/uzo", (req, res) => {
     code,
   } = payload;
 
-  const uzoSessionId = String(sessionID || sessionId || "").trim();
+  const uzoSessionKey = `UZO_${String(sessionID || sessionId || "").trim()}`;
 
-  if (!uzoSessionId) {
+  if (!sessionID && !sessionId) {
     return res.json({
       message: "Invalid session.",
       ussdServiceOp: 17,
     });
   }
 
- const fullUssd = String(ussdString || "").trim();
-const baseCode = String(code || "").trim();
+  const fullUssd = String(ussdString || "").trim();
+  const baseCode = String(code || "").trim();
 
   console.log("🔍 UZO SESSION CHECK:", {
-    uzoSessionId,
+    uzoSessionKey,
     fullUssd,
+    baseCode,
     msisdn,
     ussdServiceOp,
   });
 
-  // Uzo code should be like: *426*500*VENDOR_ID#
-  const cleanUssd = fullUssd.replace(/^#|#$/g, "");
-const parts = cleanUssd.split("*").filter(Boolean);
-
-// Expected: *426*500*VENDOR_ID#
-const mainCode = parts[0];
-const extension = parts[1];
-const vendorRaw = parts[2];
-const lastInput = parts.length > 3 ? parts[parts.length - 1] : "";
-
-const cleanBaseCode = baseCode.replace(/^#|#$/g, "");
-const baseParts = cleanBaseCode.split("*").filter(Boolean);
-
-const baseMainCode = baseParts[0];
-const baseExtension = baseParts[1];
-
-if (
-  !(
-    (mainCode === "426" && extension === USER_EXTENSION) ||
-    (baseMainCode === "426" && baseExtension === USER_EXTENSION)
-  )
-) {
-  return res.json({
-    message: "Invalid USSD entry point.",
-    ussdServiceOp: 17,
-  });
-}
-
-  // Uzo is ONLY for vendors, so vendor ID must exist
-  const vendorId = parseInt(String(vendorRaw || "").replace(/\D/g, ""), 10);
-
-if (!Number.isInteger(vendorId) || vendorId <= 0) {
-  sessions[`UZO_${uzoSessionId}`] = {
-    step: "ask_vendor_id",
-    isUzoVendorAsk: true,
-  };
-
-  return res.json({
-    message: "Welcome to SandyPay\nEnter Vendor ID:",
-    ussdServiceOp: 2,
-  });
-}
-
-  // Adapter: convert your existing Moolre-style response to Uzo response
+  // Convert existing handleSession response format to Uzo response format
   const uzoRes = {
     json: (data) => {
-      const msg = String(data?.message || "");
+      const msg = String(data?.message || "").replace(/^END\s*/i, "");
 
       return res.json({
-        message: msg.replace(/^END\s*/i, ""),
+        message: msg,
         ussdServiceOp: data?.reply === false ? 17 : 2,
       });
     },
   };
 
+  // Get dial parts from Uzo.
+  // Expected full dial: *426*500*23#
+  const parts = fullUssd
+    .replace(/^#|#$/g, "")
+    .split("*")
+    .filter(Boolean);
 
-  if (sessions[`UZO_${uzoSessionId}`]?.step === "ask_vendor_id") {
-  const enteredVendorId = parseInt(String(lastInput || "").replace(/\D/g, ""), 10);
+  const baseParts = baseCode
+    .replace(/^#|#$/g, "")
+    .split("*")
+    .filter(Boolean);
 
-  if (!Number.isInteger(enteredVendorId) || enteredVendorId <= 0) {
+  const mainCode = parts[0] || baseParts[0];
+  const extension = parts[1] || baseParts[1];
+
+  // IMPORTANT:
+  // parts[2] is vendor ID when user dials *426*500*23#
+  // If Uzo sends only the menu input after session starts, existing session handles it below.
+  const vendorRaw = parts[2] || "";
+  const lastInput = parts.length > 3 ? parts[parts.length - 1] : "";
+
+  if (mainCode !== "426" || extension !== USER_EXTENSION) {
     return res.json({
-      message: "Invalid Vendor ID. Please enter a valid Vendor ID:",
-      ussdServiceOp: 2,
+      message: "Invalid USSD entry point.",
+      ussdServiceOp: 17,
     });
   }
 
-  payload.ussdString = `*426*500*${enteredVendorId}#`;
-  sessions[`UZO_${uzoSessionId}`] = undefined;
-}
-  const isNewSession =
-    Number(ussdServiceOp) === 1 || !sessions[`UZO_${uzoSessionId}`];
+  // Continue existing session first
+  if (sessions[uzoSessionKey]) {
+    return checkAccess(msisdn, (allowed) => {
+      if (!allowed) {
+        return res.json({
+          message: "Sorry, you don't have access.",
+          ussdServiceOp: 17,
+        });
+      }
 
+      return handleSession(
+        uzoSessionKey,
+        lastInput || "",
+        String(msisdn || ""),
+        uzoRes
+      );
+    });
+  }
+
+  // New session must have vendor ID
+  const vendorId = parseInt(String(vendorRaw || "").replace(/\D/g, ""), 10);
+
+  if (!Number.isInteger(vendorId) || vendorId <= 0) {
+    return res.json({
+      message: "Invalid vendor code. Please dial with your vendor ID.",
+      ussdServiceOp: 17,
+    });
+  }
+
+  // Same as Moolre vendor mode: check caller access first
   checkAccess(msisdn, (allowed) => {
     if (!allowed) {
       return res.json({
@@ -918,88 +917,82 @@ if (!Number.isInteger(vendorId) || vendorId <= 0) {
       });
     }
 
-    if (isNewSession) {
-      console.log("🟧 NEW UZO VENDOR SESSION:", {
-        vendorId,
-        msisdn,
-        uzoSessionId,
-      });
+    console.log("🟧 NEW UZO VENDOR SESSION:", {
+      vendorId,
+      msisdn,
+      uzoSessionKey,
+    });
 
-      (async () => {
-        const remaining = await getRemainingHits(vendorId);
+    (async () => {
+      // Check if vendor exists in users table
+      const [vendorRows] = await dbp.query(
+        "SELECT id, username FROM users WHERE id = ? LIMIT 1",
+        [vendorId]
+      );
 
-        console.log("📊 UZO Remaining hits for vendor", vendorId, "=", remaining);
-
-        if (remaining <= 0) {
-          return res.json({
-            message: "APPLICATION UNKNOWN.",
-            ussdServiceOp: 17,
-          });
-        }
-
-        const ok = await consumeOneHit(vendorId);
-
-        if (!ok) {
-          return res.json({
-            message: "Sorry, your session has finished.",
-            ussdServiceOp: 17,
-          });
-        }
-
-        await incrementUssdCounter(vendorId);
-
-        db.query(
-          "SELECT username FROM users WHERE id = ? LIMIT 1",
-          [vendorId],
-          (err, rows) => {
-            let brandName = "SandyPay";
-
-            if (!err && rows && rows.length && rows[0].username) {
-              brandName = rows[0].username;
-            }
-
-            sessions[`UZO_${uzoSessionId}`] = {
-              step: "start",
-              vendorId,
-              brandName,
-              isPlain: false,
-              network: "",
-              selectedPkg: "",
-              recipient: "",
-              packageList: [],
-              packagePage: 0,
-              moolreSessionId: `UZO_${uzoSessionId}`,
-            };
-
-            console.log("🟩 CREATED UZO VENDOR SESSION:", sessions[`UZO_${uzoSessionId}`]);
-
-            return handleSession(
-              `UZO_${uzoSessionId}`,
-              "",
-              String(msisdn || ""),
-              uzoRes
-            );
-          }
-        );
-      })().catch((e) => {
-        console.error("❌ UZO vendor session error:", e.message);
-
+      if (!vendorRows || !vendorRows.length) {
         return res.json({
-          message: "Service temporarily unavailable. Please try again later.",
+          message: "APPLICATION UNKNOWN.",
           ussdServiceOp: 17,
         });
+      }
+
+      // Same as Moolre: check remaining hits
+      const remaining = await getRemainingHits(vendorId);
+
+      console.log("📊 UZO Remaining hits for vendor", vendorId, "=", remaining);
+
+      if (remaining <= 0) {
+        return res.json({
+          message: "APPLICATION UNKNOWN.",
+          ussdServiceOp: 17,
+        });
+      }
+
+      // Same as Moolre: consume one hit
+      const ok = await consumeOneHit(vendorId);
+
+      if (!ok) {
+        return res.json({
+          message: "Sorry, your session has finished.",
+          ussdServiceOp: 17,
+        });
+      }
+
+      // Same as Moolre: increment counter
+      await incrementUssdCounter(vendorId);
+
+      const brandName = vendorRows[0].username || "SandyPay";
+
+      sessions[uzoSessionKey] = {
+        step: "start",
+        vendorId,
+        brandName,
+        isPlain: false,
+        network: "",
+        selectedPkg: "",
+        recipient: "",
+        packageList: [],
+        packagePage: 0,
+        moolreSessionId: uzoSessionKey,
+      };
+
+      console.log("🟩 CREATED UZO VENDOR SESSION:", sessions[uzoSessionKey]);
+
+      return handleSession(
+        uzoSessionKey,
+        "",
+        String(msisdn || ""),
+        uzoRes
+      );
+    })().catch((e) => {
+      console.error("❌ UZO vendor session error:", e);
+
+      return res.json({
+        message: "Service temporarily unavailable. Please try again later.",
+        ussdServiceOp: 17,
       });
-
-      return;
-    }
-
-    // Existing Uzo session
-    return handleSession(
-      `UZO_${uzoSessionId}`,
-      lastInput,
-      String(msisdn || ""),
-      uzoRes
-    );
+    });
   });
 });
 /////////////////////////////////////////////////////////////////////////////////////////
