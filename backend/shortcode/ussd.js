@@ -869,12 +869,17 @@ if (
   // Uzo is ONLY for vendors, so vendor ID must exist
   const vendorId = parseInt(String(vendorRaw || "").replace(/\D/g, ""), 10);
 
-  if (!Number.isInteger(vendorId) || vendorId <= 0) {
-    return res.json({
-      message: "Invalid vendor code. Please dial with your vendor ID.",
-      ussdServiceOp: 17,
-    });
-  }
+if (!Number.isInteger(vendorId) || vendorId <= 0) {
+  sessions[`UZO_${uzoSessionId}`] = {
+    step: "ask_vendor_id",
+    isUzoVendorAsk: true,
+  };
+
+  return res.json({
+    message: "Welcome to SandyPay\nEnter Vendor ID:",
+    ussdServiceOp: 2,
+  });
+}
 
   // Adapter: convert your existing Moolre-style response to Uzo response
   const uzoRes = {
@@ -888,6 +893,20 @@ if (
     },
   };
 
+
+  if (sessions[`UZO_${uzoSessionId}`]?.step === "ask_vendor_id") {
+  const enteredVendorId = parseInt(String(lastInput || "").replace(/\D/g, ""), 10);
+
+  if (!Number.isInteger(enteredVendorId) || enteredVendorId <= 0) {
+    return res.json({
+      message: "Invalid Vendor ID. Please enter a valid Vendor ID:",
+      ussdServiceOp: 2,
+    });
+  }
+
+  payload.ussdString = `*426*500*${enteredVendorId}#`;
+  sessions[`UZO_${uzoSessionId}`] = undefined;
+}
   const isNewSession =
     Number(ussdServiceOp) === 1 || !sessions[`UZO_${uzoSessionId}`];
 
