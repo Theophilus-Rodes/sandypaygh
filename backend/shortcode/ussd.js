@@ -828,7 +828,8 @@ router.post("/uzo", (req, res) => {
     });
   }
 
-  const fullUssd = String(ussdString || code || "").trim();
+ const fullUssd = String(ussdString || "").trim();
+const baseCode = String(code || "").trim();
 
   console.log("🔍 UZO SESSION CHECK:", {
     uzoSessionId,
@@ -838,23 +839,32 @@ router.post("/uzo", (req, res) => {
   });
 
   // Uzo code should be like: *426*500*VENDOR_ID#
-  const parts = fullUssd
-    .replace(/^#|#$/g, "")
-    .split("*")
-    .filter(Boolean);
+  const cleanUssd = fullUssd.replace(/^#|#$/g, "");
+const parts = cleanUssd.split("*").filter(Boolean);
 
-  // Example parts: ["426", "500", "12", "1"]
-  const mainCode = parts[0];      // 426
-  const extension = parts[1];     // 500
-  const vendorRaw = parts[2];     // vendor id
-  const lastInput = parts.length > 3 ? parts[parts.length - 1] : "";
+// Expected: *426*500*VENDOR_ID#
+const mainCode = parts[0];
+const extension = parts[1];
+const vendorRaw = parts[2];
+const lastInput = parts.length > 3 ? parts[parts.length - 1] : "";
 
-  if (mainCode !== "426" || extension !== USER_EXTENSION) {
-    return res.json({
-      message: "Invalid USSD entry point.",
-      ussdServiceOp: 17,
-    });
-  }
+const cleanBaseCode = baseCode.replace(/^#|#$/g, "");
+const baseParts = cleanBaseCode.split("*").filter(Boolean);
+
+const baseMainCode = baseParts[0];
+const baseExtension = baseParts[1];
+
+if (
+  !(
+    (mainCode === "426" && extension === USER_EXTENSION) ||
+    (baseMainCode === "426" && baseExtension === USER_EXTENSION)
+  )
+) {
+  return res.json({
+    message: "Invalid USSD entry point.",
+    ussdServiceOp: 17,
+  });
+}
 
   // Uzo is ONLY for vendors, so vendor ID must exist
   const vendorId = parseInt(String(vendorRaw || "").replace(/\D/g, ""), 10);
