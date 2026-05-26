@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Vendor USSD Code</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: "Segoe UI", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #020617, #0f766e, #0284c7);
+      color: #fff;
+      padding: 25px;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: auto;
+      animation: fadeIn .5s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 25px;
+      flex-wrap: wrap;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+
+    .back-btn {
+      background: rgba(255,255,255,.18);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,.25);
+      padding: 11px 18px;
+      border-radius: 14px;
+      text-decoration: none;
+      backdrop-filter: blur(10px);
+    }
+
+    .card {
+      background: rgba(255,255,255,.14);
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 24px;
+      padding: 22px;
+      box-shadow: 0 20px 45px rgba(0,0,0,.25);
+      backdrop-filter: blur(15px);
+      margin-bottom: 25px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    select,
+    input {
+      width: 100%;
+      padding: 14px;
+      border-radius: 14px;
+      border: none;
+      outline: none;
+      margin-bottom: 16px;
+      background: rgba(255,255,255,.95);
+      color: #111827;
+      font-size: 15px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    button {
+      border: none;
+      padding: 14px 20px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #22c55e, #0ea5e9);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      transition: .25s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(0,0,0,.25);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 800px;
+    }
+
+    th, td {
+      padding: 14px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255,255,255,.15);
+    }
+
+    th {
+      color: #dbeafe;
+      font-size: 14px;
+      text-transform: uppercase;
+    }
+
+    .badge {
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .active {
+      background: rgba(34,197,94,.25);
+      color: #bbf7d0;
+    }
+
+    .inactive {
+      background: rgba(239,68,68,.25);
+      color: #fecaca;
+    }
+
+    .small-btn {
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+    }
+
+    .danger {
+      background: linear-gradient(135deg, #ef4444, #f97316);
+    }
+
+    .success {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+    }
+
+    .alert {
+      display: none;
+      position: fixed;
+      top: 25px;
+      right: 25px;
+      background: rgba(15,23,42,.95);
+      color: #fff;
+      padding: 16px 22px;
+      border-radius: 16px;
+      box-shadow: 0 15px 35px rgba(0,0,0,.35);
+      z-index: 9999;
+      max-width: 320px;
+    }
+
+    @media(max-width: 700px) {
+      body {
+        padding: 14px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .header h1 {
+        font-size: 22px;
+      }
+
+      .card {
+        padding: 17px;
+        border-radius: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="alert" id="alertBox"></div>
+
+  <div class="container">
+    <div class="header">
+      <h1>Vendor USSD Code</h1>
+      <a href="admindashboard.html" class="back-btn">← Back</a>
+    </div>
+
+    <div class="card">
+      <h2>Assign Private USSD Code</h2>
+      <p>Select a vendor and enter the private Moolre extension they bought.</p>
+
+      <form id="ussdForm">
+        <div class="grid">
+          <div>
+            <label>Select Vendor</label>
+            <select id="vendor_id" required>
+              <option value="">Loading vendors...</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Private USSD Extension</label>
+            <input 
+              type="text" 
+              id="extension" 
+              placeholder="Example: 717" 
+              required
+            />
+          </div>
+        </div>
+
+        <button type="submit">Save USSD Code</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Saved Vendor Codes</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Vendor ID</th>
+              <th>Vendor Name</th>
+              <th>Phone</th>
+              <th>USSD Code</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="codesBody">
+            <tr>
+              <td colspan="7">Loading...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const API_BASE = "https://sandipay.co";
+
+  const vendorSelect = document.getElementById("vendor_id");
+  const form = document.getElementById("ussdForm");
+  const codesBody = document.getElementById("codesBody");
+  const alertBox = document.getElementById("alertBox");
+
+  function showAlert(message, good = true) {
+    alertBox.textContent = message;
+    alertBox.style.display = "block";
+    alertBox.style.borderLeft = good ? "5px solid #22c55e" : "5px solid #ef4444";
+
+    setTimeout(() => {
+      alertBox.style.display = "none";
+    }, 3000);
+  }
+
+  async function loadVendors() {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/vendors-for-ussd`);
+      const data = await res.json();
+
+      vendorSelect.innerHTML = `<option value="">Select vendor</option>`;
+
+      if (!data.success || !data.vendors.length) {
+        vendorSelect.innerHTML = `<option value="">No vendors found</option>`;
+        return;
+      }
+
+      data.vendors.forEach(v => {
+        const opt = document.createElement("option");
+        opt.value = v.id;
+        opt.textContent = `ID: ${v.id} - ${v.username || "No name"} - ${v.phone || ""}`;
+        vendorSelect.appendChild(opt);
+      });
+
+    } catch (error) {
+      console.error(error);
+      vendorSelect.innerHTML = `<option value="">Failed to load vendors</option>`;
+    }
+  }
+
+  async function loadCodes() {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/vendor-ussd-codes`);
+      const data = await res.json();
+
+      codesBody.innerHTML = "";
+
+      if (!data.success || !data.codes.length) {
+        codesBody.innerHTML = `<tr><td colspan="7">No USSD codes saved yet.</td></tr>`;
+        return;
+      }
+
+      data.codes.forEach(item => {
+        const tr = document.createElement("tr");
+
+        const nextStatus = item.status === "active" ? "inactive" : "active";
+        const btnClass = item.status === "active" ? "danger" : "success";
+        const btnText = item.status === "active" ? "Deactivate" : "Activate";
+
+        tr.innerHTML = `
+          <td>${item.vendor_id}</td>
+          <td>${item.username || item.account_name || "N/A"}</td>
+          <td>${item.phone || "N/A"}</td>
+          <td>*203*${item.extension}#</td>
+          <td><span class="badge ${item.status}">${item.status}</span></td>
+          <td>${item.created_at ? new Date(item.created_at).toLocaleString() : "N/A"}</td>
+          <td>
+            <button class="small-btn ${btnClass}" onclick="changeStatus(${item.id}, '${nextStatus}')">
+              ${btnText}
+            </button>
+          </td>
+        `;
+
+        codesBody.appendChild(tr);
+      });
+
+    } catch (error) {
+      console.error(error);
+      codesBody.innerHTML = `<tr><td colspan="7">Failed to load codes.</td></tr>`;
+    }
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const vendor_id = vendorSelect.value;
+    const extension = document.getElementById("extension").value.trim();
+
+    if (!vendor_id || !extension) {
+      showAlert("Please select vendor and enter USSD code.", false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/vendor-ussd-code`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ vendor_id, extension })
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        showAlert(data.message || "Failed to save code.", false);
+        return;
+      }
+
+      showAlert(data.message || "USSD code saved successfully.");
+      form.reset();
+      loadCodes();
+
+    } catch (error) {
+      console.error(error);
+      showAlert("Connection error. Please try again.", false);
+    }
+  });
+
+  async function changeStatus(id, status) {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/vendor-ussd-code/${id}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ status })
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        showAlert(data.message || "Failed to update status.", false);
+        return;
+      }
+
+      showAlert(data.message || "Status updated.");
+      loadCodes();
+
+    } catch (error) {
+      console.error(error);
+      showAlert("Connection error. Please try again.", false);
+    }
+  }
+
+  loadVendors();
+  loadCodes();
+</script>
+
+</body>
+</html>
