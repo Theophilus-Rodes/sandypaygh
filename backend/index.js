@@ -7047,7 +7047,169 @@ app.post("/api/admin/payment-sessions/export", async (req, res) => {
 });
 
 
+///////////////////////////////////////ADMIN INSERT CODE 
+// ================================
+// ADMIN: VENDOR USSD CODES
+// ================================
 
+// Get all vendors for dropdown
+app.get("/api/admin/vendors-for-ussd", (req, res) => {
+  const sql = `
+    SELECT id, username, phone, momo_number, account_name, status
+    FROM users
+    WHERE role = 'vendor'
+    ORDER BY username ASC
+  `;
+
+  db.query(sql, (err, rows) => {
+    if (err) {
+      console.error("Fetch vendors error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to load vendors."
+      });
+    }
+
+    res.json({
+      success: true,
+      vendors: rows
+    });
+  });
+});
+
+
+// Add private USSD code for vendor
+app.post("/api/admin/vendor-ussd-code", (req, res) => {
+  const { vendor_id, extension } = req.body;
+
+  if (!vendor_id || !extension) {
+    return res.status(400).json({
+      success: false,
+      message: "Vendor and USSD code are required."
+    });
+  }
+
+  const cleanExtension = String(extension).replace(/[^\d]/g, "");
+
+  if (!cleanExtension) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid USSD code."
+    });
+  }
+
+  db.query(
+    "SELECT id FROM users WHERE id = ? AND role = 'vendor' LIMIT 1",
+    [vendor_id],
+    (err, vendorRows) => {
+      if (err) {
+        console.error("Vendor check error:", err);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to verify vendor."
+        });
+      }
+
+      if (!vendorRows.length) {
+        return res.status(404).json({
+          success: false,
+          message: "Vendor not found."
+        });
+      }
+
+      const sql = `
+        INSERT INTO vendor_ussd_codes (vendor_id, extension, status)
+        VALUES (?, ?, 'active')
+        ON DUPLICATE KEY UPDATE 
+          vendor_id = VALUES(vendor_id),
+          status = 'active',
+          updated_at = CURRENT_TIMESTAMP
+      `;
+
+      db.query(sql, [vendor_id, cleanExtension], (err2) => {
+        if (err2) {
+          console.error("Insert vendor USSD code error:", err2);
+          return res.status(500).json({
+            success: false,
+            message: "Failed to save USSD code."
+          });
+        }
+
+        res.json({
+          success: true,
+          message: "Vendor USSD code saved successfully."
+        });
+      });
+    }
+  );
+});
+
+
+// Get saved vendor USSD codes
+app.get("/api/admin/vendor-ussd-codes", (req, res) => {
+  const sql = `
+    SELECT 
+      vuc.id,
+      vuc.vendor_id,
+      vuc.extension,
+      vuc.status,
+      vuc.created_at,
+      u.username,
+      u.phone,
+      u.account_name
+    FROM vendor_ussd_codes vuc
+    JOIN users u ON u.id = vuc.vendor_id
+    ORDER BY vuc.id DESC
+  `;
+
+  db.query(sql, (err, rows) => {
+    if (err) {
+      console.error("Fetch vendor USSD codes error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to load USSD codes."
+      });
+    }
+
+    res.json({
+      success: true,
+      codes: rows
+    });
+  });
+});
+
+
+// Change code status
+app.put("/api/admin/vendor-ussd-code/:id/status", (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (!["active", "inactive"].includes(status)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid status."
+    });
+  }
+
+  db.query(
+    "UPDATE vendor_ussd_codes SET status = ? WHERE id = ?",
+    [status, id],
+    (err) => {
+      if (err) {
+        console.error("Update USSD code status error:", err);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to update status."
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Status updated successfully."
+      });
+    }
+  );
+});
 
 
 
