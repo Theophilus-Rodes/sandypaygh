@@ -204,7 +204,7 @@
 
     <div class="card">
       <h2>Assign Private USSD Code</h2>
-      <p>Select a vendor and enter the private Moolre extension they bought.</p>
+      <p>Select a vendor and enter the private Uzo code they bought.</p>
 
       <form id="ussdForm">
         <div class="grid">
@@ -342,41 +342,42 @@
   }
 
   form.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    const vendor_id = vendorSelect.value;
-   const code = document.getElementById("code").value.trim();
+  const vendor_id = vendorSelect.value;
+  const code = document.getElementById("code").value.trim();
 
-    if (!vendor_id || !extension) {
-      showAlert("Please select vendor and enter USSD code.", false);
+  if (!vendor_id || !code) {
+    showAlert("Please select vendor and enter Uzo code.", false);
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/vendor-ussd-code`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ vendor_id, code })
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      showAlert(data.message || "Failed to save code.", false);
       return;
     }
 
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/vendor-ussd-code`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ vendor_id, code })
-      });
+    showAlert(data.message || "Uzo code saved successfully.");
+    form.reset();
+    loadVendors();
+    loadCodes();
 
-      const data = await res.json();
-
-      if (!data.success) {
-        showAlert(data.message || "Failed to save code.", false);
-        return;
-      }
-
-      showAlert(data.message || "USSD code saved successfully.");
-      form.reset();
-      loadCodes();
-
-    } catch (error) {
-      console.error(error);
-      showAlert("Connection error. Please try again.", false);
-    }
-  });
+  } catch (error) {
+    console.error(error);
+    showAlert("Connection error. Please try again.", false);
+  }
+});
 
   async function changeStatus(id, status) {
     try {
