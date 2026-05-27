@@ -609,6 +609,7 @@ function handleSession(sessionId, input, msisdn, res) {
     return end("Service temporarily unavailable. Try again later.");
   }
 }
+
 // ====== USSD ROUTE (Moolre) ======
 router.post("/", (req, res) => {
   console.log("📲 NEW USSD REQUEST:", req.body);
@@ -622,24 +623,28 @@ router.post("/", (req, res) => {
 
   const { sessionId, msisdn, data, message, extension, new: isNew } = payload;
 
-  const ext = String(extension || "").trim();
+  // Wrong extension
+ const ext = String(extension || "").trim();
+
+// Only allow admin(888) or user/vendor(500)
+if (ext !== ADMIN_EXTENSION && ext !== USER_EXTENSION) {
+  console.log("❌ Invalid extension:", extension);
+  return res.json({ message: "END Invalid USSD entry point", reply: false });
+}
+
   const inputFromUser = (data || message || "").trim();
   const isNewSession = isNew === true || !sessions[sessionId];
 
   console.log("🔍 SESSION CHECK:", {
     sessionId,
-    ext,
     isNewSession,
     data,
     message,
     inputFromUser,
   });
 
-  // ================================
-  // CASE 1: ADMIN / PLAIN SESSION
-  // *203*888#
-  // ================================
-  if (isNewSession && !inputFromUser && ext === ADMIN_EXTENSION) {
+  // CASE 1: NEW PLAIN SESSION (*203*717#)
+if (isNewSession && !inputFromUser && ext === ADMIN_EXTENSION) {
     console.log("🟦 NEW PLAIN SESSION for:", msisdn);
 
     const [intl, local, plusIntl] = msisdnVariants(msisdn);
@@ -692,69 +697,42 @@ router.post("/", (req, res) => {
     return;
   }
 
-  // ================================
-  // CASE 2: EXISTING SESSION
-  // Continue normally for admin, shared vendor, or private vendor code
-  // ================================
-  if (!isNewSession && sessions[sessionId]) {
-    return checkAccess(msisdn, (allowed) => {
-      if (!allowed) {
-        return res.json({
-          message: "Sorry, you don't have access.",
-          reply: false,
-        });
-      }
+  // CASE 2: Vendor sessions & existing sessions
+  checkAccess(msisdn, (allowed) => {
+    if (!allowed) {
+      return res.json({
+        message: "Sorry, you don't have access.",
+        reply: false,
+      });
+    }
 
-      return handleSession(sessionId, inputFromUser, String(msisdn || ""), res);
+    const isNewSessionInner = isNew === true || !sessions[sessionId];
+    const inputInner = inputFromUser;
+
+    // New vendor session *203*717*ID#
+ if (isNewSessionInner) {
+  if (ext !== USER_EXTENSION) {
+    return res.json({
+      message: "END Invalid user entry point",
+      reply: false,
     });
   }
 
-  // ================================
-  // CASE 3: SHARED VENDOR CODE
-  // *203*500*VENDOR_ID#
-  // ================================
-  if (isNewSession && ext === USER_EXTENSION) {
-    return checkAccess(msisdn, (allowed) => {
-      if (!allowed) {
-        return res.json({
-          message: "Sorry, you don't have access.",
-          reply: false,
-        });
-      }
-
-      console.log(
-        "🟨 NEW VENDOR SESSION (SHARED ID MODE). Raw first data:",
-        inputFromUser
-      );
+  console.log(
+    "🟨 NEW VENDOR SESSION (ID MODE). Raw first data:",
+    inputInner
+  );
 
       (async () => {
-        const raw = String(inputFromUser || "").trim();
+        const raw = String(inputInner || "").trim();
         const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
-
-        if (!Number.isInteger(vendorIdFromDial) || vendorIdFromDial <= 0) {
-          return res.json({
-            message: "END Invalid vendor code. Please dial with your vendor ID.",
-            reply: false,
-          });
-        }
-
-        const vendorId = vendorIdFromDial;
-
-        const [vendorRows] = await dbp.query(
-          "SELECT id, username FROM users WHERE id = ? AND role = 'vendor' LIMIT 1",
-          [vendorId]
-        );
-
-        if (!vendorRows || !vendorRows.length) {
-          return res.json({
-            message: "APPLICATION UNKNOWN.",
-            reply: false,
-          });
-        }
+        const vendorId =
+          Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0
+            ? vendorIdFromDial
+            : 1;
 
         const remaining = await getRemainingHits(vendorId);
         console.log("📊 Remaining hits for vendor", vendorId, "=", remaining);
-
         if (remaining <= 0) {
           return res.json({
             message: "APPLICATION UNKNOWN.",
@@ -772,135 +750,48 @@ router.post("/", (req, res) => {
 
         await incrementUssdCounter(vendorId);
 
-        const brandName = vendorRows[0].username || "SandyPay";
+        db.query(
+          "SELECT username FROM users WHERE id = ? LIMIT 1",
+          [vendorId],
+          (err, rows) => {
+            let brandName = "SandyPay";
+            if (!err && rows && rows.length && rows[0].username) {
+              brandName = rows[0].username;
+            }
 
-        sessions[sessionId] = {
-          step: "start",
-          vendorId,
-          brandName,
-          isPlain: false,
-          network: "",
-          selectedPkg: "",
-          recipient: "",
-          packageList: [],
-          packagePage: 0,
-          moolreSessionId: sessionId,
-        };
+            sessions[sessionId] = {
+              step: "start",
+              vendorId,
+              brandName,
+              isPlain: false,
+              network: "",
+              selectedPkg: "",
+              recipient: "",
+              packageList: [],
+              packagePage: 0,
+              moolreSessionId: sessionId,
+            };
 
-        console.log("🟩 CREATED SHARED VENDOR SESSION:", sessions[sessionId]);
-        return handleSession(sessionId, "", String(msisdn || ""), res);
+            console.log("🟩 CREATED VENDOR SESSION:", sessions[sessionId]);
+            return handleSession(sessionId, "", String(msisdn || ""), res);
+          }
+        );
       })().catch((e) => {
-        console.error("❌ Shared vendor session error:", e.message);
+        console.error("❌ Vendor session error:", e.message);
         return res.json({
           message: "END Service temporarily unavailable. Please try again later.",
           reply: false,
         });
       });
-    });
-  }
 
-  // ================================
-  // CASE 4: PRIVATE VENDOR CODE
-  // Example: vendor owns *203*717#
-  // Moolre sends extension = 717
-  // We check vendor_ussd_codes table
-  // ================================
-  if (isNewSession && ext !== ADMIN_EXTENSION && ext !== USER_EXTENSION) {
-    return checkAccess(msisdn, (allowed) => {
-      if (!allowed) {
-        return res.json({
-          message: "Sorry, you don't have access.",
-          reply: false,
-        });
-      }
+      return;
+    }
 
-      console.log("🟪 NEW PRIVATE VENDOR CODE SESSION:", {
-        extension: ext,
-        msisdn,
-      });
-
-      (async () => {
-        const [codeRows] = await dbp.query(
-          `SELECT 
-             vuc.vendor_id,
-             u.username
-           FROM vendor_ussd_codes vuc
-           JOIN users u ON u.id = vuc.vendor_id
-           WHERE vuc.extension = ?
-             AND vuc.status = 'active'
-             AND u.role = 'vendor'
-           LIMIT 1`,
-          [ext]
-        );
-
-        if (!codeRows || !codeRows.length) {
-          console.log("❌ Private extension not found:", ext);
-          return res.json({
-            message: "END Invalid USSD entry point",
-            reply: false,
-          });
-        }
-
-        const vendorId = codeRows[0].vendor_id;
-        const brandName = codeRows[0].username || "SandyPay";
-
-        const remaining = await getRemainingHits(vendorId);
-        console.log(
-          "📊 Remaining hits for private vendor",
-          vendorId,
-          "=",
-          remaining
-        );
-
-        if (remaining <= 0) {
-          return res.json({
-            message: "APPLICATION UNKNOWN.",
-            reply: false,
-          });
-        }
-
-        const ok = await consumeOneHit(vendorId);
-        if (!ok) {
-          return res.json({
-            message: "END Sorry, your session has finished.",
-            reply: false,
-          });
-        }
-
-        await incrementUssdCounter(vendorId);
-
-        sessions[sessionId] = {
-          step: "start",
-          vendorId,
-          brandName,
-          isPlain: false,
-          network: "",
-          selectedPkg: "",
-          recipient: "",
-          packageList: [],
-          packagePage: 0,
-          moolreSessionId: sessionId,
-          privateExtension: ext,
-        };
-
-        console.log("🟩 CREATED PRIVATE VENDOR SESSION:", sessions[sessionId]);
-
-        return handleSession(sessionId, "", String(msisdn || ""), res);
-      })().catch((e) => {
-        console.error("❌ Private vendor session error:", e.message);
-        return res.json({
-          message: "END Service temporarily unavailable. Please try again later.",
-          reply: false,
-        });
-      });
-    });
-  }
-
-  return res.json({
-    message: "END Invalid USSD entry point",
-    reply: false,
+    // Existing session – continue
+    return handleSession(sessionId, inputInner, String(msisdn || ""), res);
   });
 });
+
 
 
 
