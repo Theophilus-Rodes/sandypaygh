@@ -7053,6 +7053,10 @@ app.post("/api/admin/payment-sessions/export", async (req, res) => {
 // ================================
 
 // Get all vendors for dropdown
+// ================================
+// ADMIN: UZO VENDOR USSD CODES
+// ================================
+
 app.get("/api/admin/vendors-for-ussd", (req, res) => {
   const sql = `
     SELECT id, username, phone, momo_number, account_name, status
@@ -7077,24 +7081,22 @@ app.get("/api/admin/vendors-for-ussd", (req, res) => {
   });
 });
 
-
-// Add private USSD code for vendor
 app.post("/api/admin/vendor-ussd-code", (req, res) => {
-  const { vendor_id, extension } = req.body;
+  const { vendor_id, code } = req.body;
 
-  if (!vendor_id || !extension) {
+  if (!vendor_id || !code) {
     return res.status(400).json({
       success: false,
-      message: "Vendor and USSD code are required."
+      message: "Vendor and Uzo code are required."
     });
   }
 
-  const cleanExtension = String(extension).replace(/[^\d]/g, "");
+  const cleanCode = String(code).replace(/[^\d]/g, "");
 
-  if (!cleanExtension) {
+  if (!cleanCode) {
     return res.status(400).json({
       success: false,
-      message: "Invalid USSD code."
+      message: "Invalid Uzo code."
     });
   }
 
@@ -7118,7 +7120,7 @@ app.post("/api/admin/vendor-ussd-code", (req, res) => {
       }
 
       const sql = `
-        INSERT INTO vendor_ussd_codes (vendor_id, extension, status)
+        INSERT INTO uzo_vendor_codes (vendor_id, code, status)
         VALUES (?, ?, 'active')
         ON DUPLICATE KEY UPDATE 
           vendor_id = VALUES(vendor_id),
@@ -7126,48 +7128,46 @@ app.post("/api/admin/vendor-ussd-code", (req, res) => {
           updated_at = CURRENT_TIMESTAMP
       `;
 
-      db.query(sql, [vendor_id, cleanExtension], (err2) => {
+      db.query(sql, [vendor_id, cleanCode], (err2) => {
         if (err2) {
-          console.error("Insert vendor USSD code error:", err2);
+          console.error("Insert Uzo vendor code error:", err2);
           return res.status(500).json({
             success: false,
-            message: "Failed to save USSD code."
+            message: "Failed to save Uzo code."
           });
         }
 
         res.json({
           success: true,
-          message: "Vendor USSD code saved successfully."
+          message: "Uzo vendor code saved successfully."
         });
       });
     }
   );
 });
 
-
-// Get saved vendor USSD codes
 app.get("/api/admin/vendor-ussd-codes", (req, res) => {
   const sql = `
     SELECT 
-      vuc.id,
-      vuc.vendor_id,
-      vuc.extension,
-      vuc.status,
-      vuc.created_at,
+      uvc.id,
+      uvc.vendor_id,
+      uvc.code,
+      uvc.status,
+      uvc.created_at,
       u.username,
       u.phone,
       u.account_name
-    FROM vendor_ussd_codes vuc
-    JOIN users u ON u.id = vuc.vendor_id
-    ORDER BY vuc.id DESC
+    FROM uzo_vendor_codes uvc
+    JOIN users u ON u.id = uvc.vendor_id
+    ORDER BY uvc.id DESC
   `;
 
   db.query(sql, (err, rows) => {
     if (err) {
-      console.error("Fetch vendor USSD codes error:", err);
+      console.error("Fetch Uzo vendor codes error:", err);
       return res.status(500).json({
         success: false,
-        message: "Failed to load USSD codes."
+        message: "Failed to load Uzo codes."
       });
     }
 
@@ -7178,8 +7178,6 @@ app.get("/api/admin/vendor-ussd-codes", (req, res) => {
   });
 });
 
-
-// Change code status
 app.put("/api/admin/vendor-ussd-code/:id/status", (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -7192,11 +7190,11 @@ app.put("/api/admin/vendor-ussd-code/:id/status", (req, res) => {
   }
 
   db.query(
-    "UPDATE vendor_ussd_codes SET status = ? WHERE id = ?",
+    "UPDATE uzo_vendor_codes SET status = ? WHERE id = ?",
     [status, id],
     (err) => {
       if (err) {
-        console.error("Update USSD code status error:", err);
+        console.error("Update Uzo code status error:", err);
         return res.status(500).json({
           success: false,
           message: "Failed to update status."
@@ -7210,8 +7208,6 @@ app.put("/api/admin/vendor-ussd-code/:id/status", (req, res) => {
     }
   );
 });
-
-
 
 
 
