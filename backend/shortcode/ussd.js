@@ -864,37 +864,41 @@ router.post("/uzo", (req, res) => {
     .filter(Boolean);
 
   const mainCode = parts[0] || baseParts[0];
-  const uzoCode = parts[1] || baseParts[1];
+const uzoCode = parts[1] || baseParts[1];
 
-  // For existing session, user's latest menu input is usually after *426*CODE*
-  const lastInput = parts.length > 2 ? parts[parts.length - 1] : "";
+// Existing session first
+if (sessions[uzoSessionKey]) {
 
-  if (mainCode !== "426" || !uzoCode) {
-    return res.json({
-      message: "Invalid USSD entry point.",
-      ussdServiceOp: 17,
-    });
-  }
+  // Uzo usually sends only latest input after first screen
+  const lastInput =
+    parts.length > 0
+      ? parts[parts.length - 1]
+      : String(ussdString || "").trim();
 
-  // Continue existing session first
-  if (sessions[uzoSessionKey]) {
-    return checkAccess(msisdn, (allowed) => {
-      if (!allowed) {
-        return res.json({
-          message: "Sorry, you don't have access.",
-          ussdServiceOp: 17,
-        });
-      }
+  return checkAccess(msisdn, (allowed) => {
+    if (!allowed) {
+      return res.json({
+        message: "Sorry, you don't have access.",
+        ussdServiceOp: 17,
+      });
+    }
 
-      return handleSession(
-        uzoSessionKey,
-        lastInput || "",
-        String(msisdn || ""),
-        uzoRes
-      );
-    });
-  }
+    return handleSession(
+      uzoSessionKey,
+      lastInput || "",
+      String(msisdn || ""),
+      uzoRes
+    );
+  });
+}
 
+// ONLY validate entry point for NEW session
+if (mainCode !== "426" || !uzoCode) {
+  return res.json({
+    message: "Invalid USSD entry point.",
+    ussdServiceOp: 17,
+  });
+}
   // New Uzo session:
   // Uzo does not support vendor ID in the dial code,
   // so we check uzo_vendor_codes table to know which vendor owns the code.
