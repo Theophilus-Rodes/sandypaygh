@@ -4,146 +4,363 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Purchase Sessions</title>
-<link rel="stylesheet" href="style.css" />
+
 <style>
-  body{background:#f5f7fb;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial}
-  .wrap{max-width:720px;margin:32px auto;padding:20px}
-  .card{background:#fff;border-radius:16px;box-shadow:0 8px 24px rgba(10,15,90,.08);padding:20px;margin-bottom:16px}
-  h1{font-size:22px;margin-bottom:12px}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .muted{color:#6f7b95;font-size:14px;margin-bottom:12px}
-  label{display:block;font-size:14px;margin:10px 0 6px}
-  input,select,button{width:100%;padding:12px;border:1px solid #e4e8f1;border-radius:10px;font-size:14px}
-  button{border:0;background:#0a0f5a;color:#fff;cursor:pointer}
-  button:disabled{opacity:.6;cursor:not-allowed}
-  .seg{display:flex;gap:10px;margin:8px 0 14px}
-  .seg > label{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e4e8f1;border-radius:10px;cursor:pointer}
-  .hidden{display:none}
-  .msg{margin-top:12px;font-size:14px}
-  .ok{color:#106b21}
-  .err{color:#b00020}
+  *{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;
+  }
+
+  body{
+    min-height:100vh;
+    background:
+      radial-gradient(circle at top left, rgba(59,130,246,.25), transparent 30%),
+      radial-gradient(circle at bottom right, rgba(10,15,90,.25), transparent 35%),
+      linear-gradient(135deg,#f5f7fb,#eef3ff);
+    padding:18px;
+    color:#172554;
+  }
+
+  .wrap{
+    max-width:900px;
+    margin:28px auto;
+    animation:fadeUp .7s ease;
+  }
+
+  @keyframes fadeUp{
+    from{opacity:0;transform:translateY(25px)}
+    to{opacity:1;transform:translateY(0)}
+  }
+
+  .card{
+    background:rgba(255,255,255,.86);
+    backdrop-filter:blur(18px);
+    border:1px solid rgba(255,255,255,.8);
+    border-radius:28px;
+    box-shadow:0 24px 60px rgba(10,15,90,.13);
+    padding:28px;
+    overflow:hidden;
+    position:relative;
+  }
+
+  .card::before{
+    content:"";
+    position:absolute;
+    inset:0 0 auto 0;
+    height:7px;
+    background:linear-gradient(90deg,#0a0f5a,#2563eb,#38bdf8);
+  }
+
+  .head{
+    text-align:center;
+    margin-bottom:25px;
+  }
+
+  h1{
+    font-size:clamp(25px,4vw,36px);
+    color:#0a0f5a;
+    font-weight:900;
+  }
+
+  .muted{
+    color:#64748b;
+    font-size:15px;
+    margin-top:8px;
+  }
+
+  .seg{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:14px;
+    margin:22px 0;
+  }
+
+  .seg label{
+    background:#f8fafc;
+    border:1px solid #e2e8f0;
+    border-radius:18px;
+    padding:16px;
+    cursor:pointer;
+    font-weight:800;
+    color:#0a0f5a;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    transition:.3s;
+  }
+
+  .seg label:hover{
+    transform:translateY(-3px);
+    box-shadow:0 12px 25px rgba(10,15,90,.1);
+  }
+
+  .seg input{
+    accent-color:#0a0f5a;
+  }
+
+  .plans{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:16px;
+    margin:20px 0 24px;
+  }
+
+  .plan{
+    position:relative;
+    background:#fff;
+    border:2px solid #e2e8f0;
+    border-radius:24px;
+    padding:22px 16px;
+    cursor:pointer;
+    transition:.3s;
+    text-align:center;
+    overflow:hidden;
+  }
+
+  .plan:hover{
+    transform:translateY(-6px);
+    box-shadow:0 18px 35px rgba(10,15,90,.13);
+  }
+
+  .plan.active{
+    border-color:#0a0f5a;
+    background:linear-gradient(135deg,#0a0f5a,#172554);
+    color:#fff;
+    box-shadow:0 20px 45px rgba(10,15,90,.26);
+  }
+
+  .plan .hits{
+    font-size:26px;
+    font-weight:950;
+    margin-bottom:8px;
+  }
+
+  .plan .price{
+    font-size:18px;
+    font-weight:900;
+  }
+
+  .plan .small{
+    font-size:13px;
+    color:#64748b;
+    margin-top:6px;
+  }
+
+  .plan.active .small{
+    color:#dbeafe;
+  }
+
+  .selected-box{
+    background:#eef2ff;
+    border:1px solid #c7d2fe;
+    border-radius:18px;
+    padding:15px;
+    margin-bottom:18px;
+    font-weight:800;
+    color:#0a0f5a;
+    text-align:center;
+  }
+
+  .hidden{
+    display:none;
+  }
+
+  .form-area{
+    animation:softShow .35s ease;
+  }
+
+  @keyframes softShow{
+    from{opacity:0;transform:translateY(12px)}
+    to{opacity:1;transform:translateY(0)}
+  }
+
+  label{
+    display:block;
+    font-size:14px;
+    margin:12px 0 7px;
+    font-weight:800;
+    color:#172554;
+  }
+
+  input,select{
+    width:100%;
+    padding:15px;
+    border:1px solid #dbe3f0;
+    border-radius:16px;
+    font-size:15px;
+    outline:none;
+    transition:.25s;
+    background:#fff;
+  }
+
+  input:focus,select:focus{
+    border-color:#0a0f5a;
+    box-shadow:0 0 0 4px rgba(10,15,90,.08);
+  }
+
+  button{
+    width:100%;
+    border:0;
+    border-radius:18px;
+    padding:16px;
+    font-size:16px;
+    font-weight:900;
+    cursor:pointer;
+    color:#fff;
+    background:linear-gradient(135deg,#0a0f5a,#2563eb);
+    transition:.3s;
+    margin-top:18px;
+  }
+
+  button:hover{
+    transform:translateY(-3px);
+    box-shadow:0 18px 35px rgba(10,15,90,.22);
+  }
+
+  button:disabled{
+    opacity:.6;
+    cursor:not-allowed;
+    transform:none;
+  }
+
+  .msg{
+    margin-top:15px;
+    font-size:14px;
+    text-align:center;
+    font-weight:700;
+  }
+
+  .ok{color:#15803d}
+  .err{color:#b91c1c}
+
+  @media(max-width:760px){
+    .card{padding:22px 16px;border-radius:22px}
+    .plans{grid-template-columns:1fr}
+    .seg{grid-template-columns:1fr}
+  }
 </style>
 </head>
+
 <body>
-  <div class="wrap">
-    <div class="card">
+
+<div class="wrap">
+  <div class="card">
+
+    <div class="head">
       <h1>Purchase Sessions</h1>
-      <p class="muted">Choose a funding source and enter the amount you want to purchase.</p>
+      <p class="muted">Choose a session package and continue payment.</p>
+    </div>
 
-      <div class="seg">
-        <label><input type="radio" name="source" value="wallet" checked /> Main Account</label>
-        <label><input type="radio" name="source" value="momo" /> MoMo</label>
+    <div class="seg">
+      <label><input type="radio" name="source" value="wallet" checked /> Main Account</label>
+      <label><input type="radio" name="source" value="momo" /> MoMo</label>
+    </div>
+
+    <div class="plans">
+      <div class="plan active" data-amount="120" data-hits="5000">
+        <div class="hits">5,000</div>
+        <div class="price">GHS 120</div>
+        <div class="small">Sessions / Hits</div>
       </div>
 
-      <!-- Main Account form -->
-      <div id="walletForm" class="">
-        <label>Amount (GHS)</label>
-        <input type="number" id="walletAmount" min="1" step="1" placeholder="e.g. 50" />
-        <label>Hits (auto)</label>
-        <input type="text" id="walletHits" readonly placeholder="0 hits" />
-        <button id="walletBtn">Purchase from Main Account</button>
-        <div id="walletMsg" class="msg"></div>
+      <div class="plan" data-amount="230" data-hits="10000">
+        <div class="hits">10,000</div>
+        <div class="price">GHS 230</div>
+        <div class="small">Sessions / Hits</div>
       </div>
 
-      <!-- MoMo form -->
-      <div id="momoForm" class="hidden">
-        <label>Amount (GHS)</label>
-        <input type="number" id="momoAmount" min="1" step="1" placeholder="e.g. 50" />
-
-        <label>MoMo Number</label>
-        <input type="tel" id="momoNumber" placeholder="e.g. 024XXXXXXX" />
-
-        <label>Hits (auto)</label>
-        <input type="text" id="momoHits" readonly placeholder="0 hits" />
-
-        <label>Network</label>
-        <select id="momoNetwork">
-          <option value="">-- Select Network --</option>
-          <option value="mtn">MTN</option>
-          <option value="airteltigo">AirtelTigo</option>
-          <option value="telecel">Telecel</option>
-        </select>
-
-        <button id="momoBtn">Purchase via MoMo</button>
-
-        <div id="momoMsg" class="msg"></div>
+      <div class="plan" data-amount="370" data-hits="20000">
+        <div class="hits">20,000</div>
+        <div class="price">GHS 370</div>
+        <div class="small">Sessions / Hits</div>
       </div>
     </div>
+
+    <div class="selected-box" id="selectedText">
+      Selected: 5,000 sessions - GHS 120
+    </div>
+
+    <div id="walletForm" class="form-area">
+      <button id="walletBtn">Purchase from Main Account</button>
+      <div id="walletMsg" class="msg"></div>
+    </div>
+
+    <div id="momoForm" class="form-area hidden">
+      <label>MoMo Number</label>
+      <input type="tel" id="momoNumber" placeholder="e.g. 024XXXXXXX" />
+
+      <label>Network</label>
+      <select id="momoNetwork">
+        <option value="">-- Select Network --</option>
+        <option value="mtn">MTN</option>
+        <option value="airteltigo">AirtelTigo</option>
+        <option value="telecel">Telecel</option>
+      </select>
+
+      <button id="momoBtn">Purchase via MoMo</button>
+      <div id="momoMsg" class="msg"></div>
+    </div>
+
   </div>
+</div>
 
 <script>
-  // --- URL params ---
   const params = new URLSearchParams(location.search);
   const vendorId = params.get("id");
 
-  // --- Elements ---
   const walletForm = document.getElementById("walletForm");
-  const momoForm   = document.getElementById("momoForm");
+  const momoForm = document.getElementById("momoForm");
 
-  const walletAmtEl  = document.getElementById("walletAmount");
-  const walletHitsEl = document.getElementById("walletHits");
-  const walletBtn    = document.getElementById("walletBtn");
-  const walletMsg    = document.getElementById("walletMsg");
+  const walletBtn = document.getElementById("walletBtn");
+  const walletMsg = document.getElementById("walletMsg");
 
-  const momoAmtEl    = document.getElementById("momoAmount");
-  const momoHitsEl   = document.getElementById("momoHits");
   const momoNumberEl = document.getElementById("momoNumber");
-  const momoNetEl    = document.getElementById("momoNetwork");
-  const momoBtn      = document.getElementById("momoBtn");
-  const momoMsg      = document.getElementById("momoMsg");
+  const momoNetEl = document.getElementById("momoNetwork");
+  const momoBtn = document.getElementById("momoBtn");
+  const momoMsg = document.getElementById("momoMsg");
 
-  // --- Toggle source (Main Account vs MoMo) ---
+  const selectedText = document.getElementById("selectedText");
+
+  const API_BASE = "https://sandipay.co/api";
+
+  let selectedAmount = 120;
+  let selectedHits = 5000;
+
+  document.querySelectorAll(".plan").forEach(plan => {
+    plan.addEventListener("click", () => {
+      document.querySelectorAll(".plan").forEach(p => p.classList.remove("active"));
+      plan.classList.add("active");
+
+      selectedAmount = Number(plan.dataset.amount);
+      selectedHits = Number(plan.dataset.hits);
+
+      selectedText.textContent =
+        `Selected: ${selectedHits.toLocaleString()} sessions - GHS ${selectedAmount}`;
+
+      walletMsg.innerHTML = "";
+      momoMsg.innerHTML = "";
+    });
+  });
+
   document.querySelectorAll('input[name="source"]').forEach(r => {
     r.addEventListener("change", () => {
       const val = document.querySelector('input[name="source"]:checked').value;
       walletForm.classList.toggle("hidden", val !== "wallet");
       momoForm.classList.toggle("hidden", val !== "momo");
+
+      walletMsg.innerHTML = "";
+      momoMsg.innerHTML = "";
     });
   });
 
-  // --- API base ---
-  const API_BASE = "https://sandipay.co/api";
-
-  // --- Hits calculator ---
-  const HIT_COST = 0.02; // GHS per hit (1 GHS = 50 hits)
-
-  function calcHitsFromAmount(amt) {
-    const a = Number(amt);
-    if (!a || a <= 0) return 0;
-    return Math.floor(a / HIT_COST);
-  }
-
-  function formatHits(n) {
-    return `${n} / hits`;
-  }
-
-  function updateWalletHits() {
-    if (!walletHitsEl) return;
-    const hits = calcHitsFromAmount(walletAmtEl.value);
-    walletHitsEl.value = formatHits(hits);
-  }
-
-  function updateMomoHits() {
-    if (!momoHitsEl) return;
-    const hits = calcHitsFromAmount(momoAmtEl.value);
-    momoHitsEl.value = formatHits(hits);
-  }
-
-  // Bind live updates
-  if (walletAmtEl) walletAmtEl.addEventListener("input", updateWalletHits);
-  if (momoAmtEl)   momoAmtEl.addEventListener("input", updateMomoHits);
-
-  // Initialize on load
-  updateWalletHits();
-  updateMomoHits();
-
-  // ---------- helper to safely read JSON ONCE ----------
   async function safeJson(res) {
     try {
       const data = await res.json();
       return { data, ok: true };
     } catch (e) {
-      // do NOT call res.text() here – the stream is already used
       return {
         data: { error: "Invalid response from server" },
         ok: false,
@@ -152,18 +369,21 @@
     }
   }
 
-  // --- Wallet purchase (Main Account) ---
-  walletBtn?.addEventListener("click", async () => {
-    const amount = Number(walletAmtEl.value);
+  walletBtn.addEventListener("click", async () => {
     walletMsg.textContent = "";
 
-    if (!vendorId)   return walletMsg.innerHTML = '<span class="err">Missing vendor id.</span>';
-    if (!amount || amount < 1) return walletMsg.innerHTML = '<span class="err">Enter a valid amount.</span>';
+    if (!vendorId) {
+      walletMsg.innerHTML = '<span class="err">Missing vendor id.</span>';
+      return;
+    }
 
-    const computed_hits = calcHitsFromAmount(amount);
+    const amount = selectedAmount;
+    const computed_hits = selectedHits;
 
     try {
       walletBtn.disabled = true;
+      walletBtn.textContent = "Processing...";
+
       const res = await fetch(`${API_BASE}/sessions/purchase`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -178,36 +398,48 @@
 
       if (res.ok) {
         walletMsg.innerHTML =
-          `<span class="ok">Saved! Ref: ${data.reference || data.id}. Credited: ${data.hits ?? computed_hits} hits.</span>`;
+          `<span class="ok">Saved successfully! Credited: ${data.hits ?? computed_hits} hits.</span>`;
       } else {
         walletMsg.innerHTML =
           `<span class="err">${data.error || "Could not save."}</span>`;
       }
+
     } catch (e) {
       walletMsg.innerHTML = `<span class="err">${e.message}</span>`;
     } finally {
       walletBtn.disabled = false;
+      walletBtn.textContent = "Purchase from Main Account";
     }
   });
 
-  // --- MoMo purchase (single-step payment request) ---
-  momoBtn?.addEventListener("click", async () => {
-    const amount      = Number(momoAmtEl.value);
+  momoBtn.addEventListener("click", async () => {
     const momo_number = momoNumberEl.value.trim();
-    const network     = momoNetEl.value;
+    const network = momoNetEl.value;
 
     momoMsg.textContent = "";
 
-    if (!vendorId)             return momoMsg.innerHTML = '<span class="err">Missing vendor id.</span>';
-    if (!amount || amount < 1) return momoMsg.innerHTML = '<span class="err">Enter a valid amount.</span>';
-    if (!momo_number)          return momoMsg.innerHTML = '<span class="err">Enter a MoMo number.</span>';
-    if (!network)              return momoMsg.innerHTML = '<span class="err">Select a network.</span>';
+    if (!vendorId) {
+      momoMsg.innerHTML = '<span class="err">Missing vendor id.</span>';
+      return;
+    }
 
-    const computed_hits = calcHitsFromAmount(amount);
+    if (!momo_number) {
+      momoMsg.innerHTML = '<span class="err">Enter a MoMo number.</span>';
+      return;
+    }
+
+    if (!network) {
+      momoMsg.innerHTML = '<span class="err">Select a network.</span>';
+      return;
+    }
+
+    const amount = selectedAmount;
+    const computed_hits = selectedHits;
 
     try {
       momoBtn.disabled = true;
-      momoMsg.innerHTML = 'Requesting payment… please wait. You will receive a prompt on your phone.';
+      momoBtn.textContent = "Requesting Payment...";
+      momoMsg.innerHTML = "Requesting payment… please approve the prompt on your phone.";
 
       const res = await fetch(`${API_BASE}/sessions/purchase-momo`, {
         method: "POST",
@@ -225,17 +457,17 @@
 
       if (res.ok && data.ok !== false) {
         momoMsg.innerHTML =
-          `<span class="ok">
-            Payment Made successfully. Hits Loaded.
-          </span>`;
+          `<span class="ok">Payment made successfully. Hits loaded.</span>`;
       } else {
         momoMsg.innerHTML =
           `<span class="err">${data.error || "Payment failed to start."}</span>`;
       }
+
     } catch (e) {
       momoMsg.innerHTML = `<span class="err">${e.message}</span>`;
     } finally {
       momoBtn.disabled = false;
+      momoBtn.textContent = "Purchase via MoMo";
     }
   });
 </script>
