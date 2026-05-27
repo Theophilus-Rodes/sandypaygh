@@ -219,7 +219,7 @@
             <label>Private USSD Extension</label>
             <input 
               type="text" 
-              id="extension" 
+              id="code" 
               placeholder="Example: 717" 
               required
             />
@@ -322,7 +322,7 @@
           <td>${item.vendor_id}</td>
           <td>${item.username || item.account_name || "N/A"}</td>
           <td>${item.phone || "N/A"}</td>
-          <td>*203*${item.extension}#</td>
+          <td>*426*${item.code}#</td>
           <td><span class="badge ${item.status}">${item.status}</span></td>
           <td>${item.created_at ? new Date(item.created_at).toLocaleString() : "N/A"}</td>
           <td>
@@ -345,7 +345,7 @@
     e.preventDefault();
 
     const vendor_id = vendorSelect.value;
-    const extension = document.getElementById("extension").value.trim();
+   const code = document.getElementById("code").value.trim();
 
     if (!vendor_id || !extension) {
       showAlert("Please select vendor and enter USSD code.", false);
@@ -358,7 +358,7 @@
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ vendor_id, extension })
+        body: JSON.stringify({ vendor_id, code })
       });
 
       const data = await res.json();
