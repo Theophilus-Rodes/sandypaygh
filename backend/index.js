@@ -7454,6 +7454,81 @@ app.post("/api/vendor-orders/mark-delivered", (req, res) => {
 
 
 
+app.get("/api/admin/vendor-order-settings", (req, res) => {
+  const sql = `
+    SELECT 
+      u.id,
+      u.username,
+      u.phone,
+      u.momo_number,
+      u.account_name,
+      COALESCE(vos.order_destination, 'admin_orders') AS order_destination
+    FROM users u
+    LEFT JOIN vendor_order_settings vos ON vos.vendor_id = u.id
+    WHERE u.role = 'vendor'
+    ORDER BY u.username ASC
+  `;
+
+  db.query(sql, (err, rows) => {
+    if (err) {
+      console.error("Fetch vendor order settings error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to load vendors."
+      });
+    }
+
+    res.json({
+      success: true,
+      vendors: rows
+    });
+  });
+});
+
+app.post("/api/admin/vendor-order-settings", (req, res) => {
+  const { vendor_id, order_destination } = req.body;
+
+  if (!vendor_id || !order_destination) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing vendor or order destination."
+    });
+  }
+
+  if (!["admin_orders", "vendor_orders"].includes(order_destination)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid order destination."
+    });
+  }
+
+  const sql = `
+    INSERT INTO vendor_order_settings (vendor_id, order_destination)
+    VALUES (?, ?)
+    ON DUPLICATE KEY UPDATE order_destination = VALUES(order_destination)
+  `;
+
+  db.query(sql, [vendor_id, order_destination], (err) => {
+    if (err) {
+      console.error("Save vendor order setting error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to save setting."
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Vendor order setting saved successfully."
+    });
+  });
+});
+
+
+
+
+
+
 
 // ✅ BASIC HEALTH ENDPOINTS FOR DEPLOYMENT
 app.get("/", (req, res) => {
