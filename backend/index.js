@@ -485,84 +485,61 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
   const wrapper = req.body || {};
   const data = wrapper.data || {};
 
-  const txstatus    = Number(data.txstatus || 0);   // 1 = success
-  const payer       = data.payer;
-  const amountStr   = data.amount;
-  const externalref = data.externalref;             // our key from INIT
-  const ts          = data.ts;
-  const secret      = data.secret;
-
-  const amt = parseFloat(amountStr);
+  const txstatus = Number(data.txstatus || 0);
+  const payer = data.payer;
+  const externalref = data.externalref;
+  const ts = data.ts;
+  const secret = data.secret;
 
   const expectedSecret = process.env.MOOLRE_WEBHOOK_SECRET || "";
   if (expectedSecret && secret !== expectedSecret) {
-    console.log("❌ Invalid webhook secret");
     return res.status(403).send("Forbidden");
   }
 
   if (txstatus !== 1) {
-    console.log("⏳ Payment not approved (txstatus =", txstatus, ") – ignoring.");
     return res.status(200).send("OK");
   }
 
   if (!externalref) {
-    console.error("❌ No externalref in webhook data.");
     return res.status(400).send("Missing externalref");
   }
 
   db.query(
-    `SELECT *
-       FROM moolre_temp_orders
-      WHERE externalref = ?
-      LIMIT 1`,
+    `SELECT * FROM moolre_temp_orders WHERE externalref = ? LIMIT 1`,
     [externalref],
     (err, rows) => {
       if (err) {
         console.error("❌ moolre_temp_orders lookup error:", err);
         return res.status(500).send("Lookup error");
       }
+
       if (!rows || !rows.length) {
-        console.warn("⚠️ No temp order found for externalref:", externalref);
         return res.status(200).send("No matching temp order");
       }
 
       const meta = rows[0];
 
-      const mode             = meta.mode;                 // 'plain', 'vendor', 'sessions'
-      const vendor_id        = Number(meta.vendor_id);
-      const data_package     = meta.data_package;
-      const network          = (meta.network || "").toLowerCase();
+      const mode = meta.mode;
+      const vendor_id = Number(meta.vendor_id);
+      const data_package = meta.data_package;
+      const network = String(meta.network || "").toLowerCase();
       const recipient_number = meta.recipient_number || payer;
-      const momo_number      = meta.momo_number || payer;
-      const amountPaid       = Number(meta.amount);
-      const hitsFromDb       = Number(meta.hits || 0);
+      const momo_number = meta.momo_number || payer;
+      const amountPaid = Number(meta.amount);
 
       const package_id =
         ts || new Date().toISOString().slice(0, 16).replace("T", " ");
 
-      console.log("🧾 Resolved temp order from DB:", {
-        mode,
-        vendor_id,
-        data_package,
-        network,
-        recipient_number,
-        momo_number,
-        amountPaid,
-        hitsFromDb,
-      });
-
-      // ---------- PLAIN MODE (*203*717#) ----------
+      // ---------- PLAIN MODE ----------
       if (mode === "plain") {
         db.query(
           `INSERT INTO admin_orders
-             (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+           (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
            VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
           [1, recipient_number, data_package, amountPaid, network, package_id],
           (err1) => {
             if (err1) {
               console.error("❌ Error inserting plain admin_order:", err1);
-            } else {
-              console.log("✅ Plain-mode admin_order logged.");
             }
 
             db.query(
@@ -572,8 +549,6 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
               (err2) => {
                 if (err2) {
                   console.error("❌ Error inserting plain total_revenue:", err2);
-                } else {
-                  console.log("✅ Plain-mode revenue logged.");
                 }
 
                 db.query(
@@ -590,91 +565,88 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
         return;
       }
 
-          // ---------- VENDOR MODE (*203*717*ID#) ----------
+      // ---------- VENDOR MODE ----------
       db.query(
         `SELECT amount FROM admin_data_packages WHERE data_package = ? LIMIT 1`,
         [data_package],
         (err3, rows2) => {
           if (err3 || !rows2 || !rows2.length) {
-            console.error(
-              "❌ admin_data_packages lookup error:",
-              err3 || "no rows"
-            );
+            console.error("❌ admin_data_packages lookup error:", err3 || "no rows");
             return res.status(500).send("Package lookup error");
           }
 
-          const baseAmount    = parseFloat(rows2[0].amount); // admin cost
+          const baseAmount = parseFloat(rows2[0].amount);
           const revenueAmount = baseAmount;
-          const vendorAmount  = parseFloat(
-            (amountPaid - baseAmount).toFixed(2)
-          );
+          const vendorAmount = parseFloat((amountPaid - baseAmount).toFixed(2));
 
-          if (vendorAmount < 0) {
-            console.warn("⚠️ Vendor amount is negative. Check pricing.", {
-              data_package,
-              amountPaid,
-              baseAmount,
-            });
-          }
-
-          // admin_orders
           db.query(
-            `INSERT INTO admin_orders
-               (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-             VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-            [
-              vendor_id,
-              recipient_number,
-              data_package,
-              amountPaid,
-              network,
-              package_id,
-            ],
-            (err4) => {
-              if (err4) {
-                console.error("❌ Error inserting vendor admin_order:", err4);
-              } else {
-                console.log("✅ Vendor admin_order logged.");
+            `SELECT order_destination
+             FROM vendor_order_settings
+             WHERE vendor_id = ?
+             LIMIT 1`,
+            [vendor_id],
+            (destErr, destRows) => {
+              if (destErr) {
+                console.error("❌ vendor_order_settings lookup error:", destErr);
               }
 
-              // wallet_loads
+              const destination =
+                destRows && destRows.length
+                  ? destRows[0].order_destination
+                  : "admin_orders";
+
+              const targetTable =
+                destination === "vendor_orders" ? "vendor_orders" : "admin_orders";
+
               db.query(
-                `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
-                 VALUES (?, ?, ?, NOW())`,
-                [vendor_id, momo_number, vendorAmount],
-                (err5) => {
-                  if (err5) {
-                    console.error("❌ Error inserting wallet_loads:", err5);
+                `INSERT INTO ${targetTable}
+                 (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+                 VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+                [
+                  vendor_id,
+                  recipient_number,
+                  data_package,
+                  amountPaid,
+                  network,
+                  package_id
+                ],
+                (err4) => {
+                  if (err4) {
+                    console.error(`❌ Error inserting into ${targetTable}:`, err4);
                   } else {
-                    console.log("✅ Vendor wallet share logged.");
+                    console.log(`✅ Vendor order logged into ${targetTable}.`);
                   }
 
-                  // total_revenue
                   db.query(
-                    `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+                    `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
                      VALUES (?, ?, ?, NOW())`,
-                    [
-                      vendor_id,
-                      `Admin base for ${network} ${data_package}`,
-                      revenueAmount,
-                    ],
-                    (err6) => {
-                      if (err6) {
-                        console.error(
-                          "❌ Error inserting vendor total_revenue:",
-                          err6
-                        );
-                      } else {
-                        console.log("✅ Vendor revenue logged.");
+                    [vendor_id, momo_number, vendorAmount],
+                    (err5) => {
+                      if (err5) {
+                        console.error("❌ Error inserting wallet_loads:", err5);
                       }
 
-                      // Clean up temp row
                       db.query(
-                        "DELETE FROM moolre_temp_orders WHERE externalref = ?",
-                        [externalref]
-                      );
+                        `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+                         VALUES (?, ?, ?, NOW())`,
+                        [
+                          vendor_id,
+                          `Admin base for ${network} ${data_package}`,
+                          revenueAmount
+                        ],
+                        (err6) => {
+                          if (err6) {
+                            console.error("❌ Error inserting vendor total_revenue:", err6);
+                          }
 
-                      return res.status(200).send("OK");
+                          db.query(
+                            "DELETE FROM moolre_temp_orders WHERE externalref = ?",
+                            [externalref]
+                          );
+
+                          return res.status(200).send("OK");
+                        }
+                      );
                     }
                   );
                 }
@@ -686,7 +658,6 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
     }
   );
 });
-
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
