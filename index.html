@@ -4,7 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Login | Sandypay Portal</title>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
   <style>
     * {
       margin: 0;
@@ -14,192 +16,443 @@
     }
 
     body {
-      background: linear-gradient(135deg, #0a0f5a, #3a7bd5);
-      height: 100vh;
+      min-height: 100vh;
       display: flex;
-      justify-content: center;
       align-items: center;
-    }
-
-    .login-container {
-      width: 380px;
-      background: rgba(255, 255, 255, 0.1);
-      backdrop-filter: blur(10px);
-      border-radius: 20px;
-      padding: 40px 30px;
-      box-shadow: 0 0 30px rgba(0, 0, 0, 0.2);
-      text-align: center;
+      justify-content: center;
+      padding: 25px;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at top left, rgba(255,255,255,0.25), transparent 30%),
+        linear-gradient(135deg, #061447, #0b5ed7, #00b4d8);
       color: #fff;
-      animation: fadeIn 0.8s ease-in-out;
     }
 
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
+    .bg-circle {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(2px);
+      opacity: 0.35;
+      animation: float 6s ease-in-out infinite alternate;
+    }
+
+    .circle-one {
+      width: 280px;
+      height: 280px;
+      background: #ffffff;
+      top: -80px;
+      left: -80px;
+    }
+
+    .circle-two {
+      width: 220px;
+      height: 220px;
+      background: #00f5d4;
+      bottom: -70px;
+      right: -60px;
+      animation-delay: 1.5s;
+    }
+
+    @keyframes float {
+      from { transform: translateY(0); }
+      to { transform: translateY(25px); }
+    }
+
+    .page-wrapper {
+      width: 100%;
+      max-width: 1050px;
+      min-height: 560px;
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      background: rgba(255, 255, 255, 0.13);
+      backdrop-filter: blur(22px);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 35px;
+      overflow: hidden;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.25);
+      animation: pageIn 0.8s ease;
+      position: relative;
+      z-index: 2;
+    }
+
+    @keyframes pageIn {
+      from { opacity: 0; transform: translateY(35px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .hero-side {
+      padding: 55px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      background:
+        linear-gradient(rgba(0,0,0,0.15), rgba(0,0,0,0.15)),
+        radial-gradient(circle at center, rgba(255,255,255,0.22), transparent 45%);
+    }
+
+    .badge {
+      width: fit-content;
+      padding: 9px 16px;
+      border-radius: 50px;
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.25);
+      font-size: 13px;
+      margin-bottom: 25px;
+    }
+
+    .hero-side h1 {
+      font-size: clamp(36px, 6vw, 62px);
+      line-height: 1.05;
+      margin-bottom: 20px;
+      letter-spacing: -1.5px;
+    }
+
+    .hero-side p {
+      max-width: 480px;
+      font-size: 15px;
+      line-height: 1.8;
+      color: rgba(255,255,255,0.85);
+    }
+
+    .hero-features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 35px;
+    }
+
+    .feature-card {
+      padding: 18px 14px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,0.18);
+      text-align: center;
+      animation: slideUp 0.8s ease both;
+    }
+
+    .feature-card:nth-child(2) { animation-delay: 0.15s; }
+    .feature-card:nth-child(3) { animation-delay: 0.3s; }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(25px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    h2 {
-      font-size: 22px;
-      margin-bottom: 25px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      text-transform: uppercase;
+    .feature-card span {
+      display: block;
+      font-size: 23px;
+      margin-bottom: 6px;
+    }
+
+    .feature-card small {
+      font-size: 12px;
+      color: rgba(255,255,255,0.85);
+    }
+
+    .login-side {
+      padding: 45px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.12);
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 390px;
+      animation: fadeIn 0.9s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateX(25px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .login-card h2 {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+
+    .login-card .sub-text {
+      color: rgba(255,255,255,0.75);
+      font-size: 14px;
+      margin-bottom: 30px;
     }
 
     .input-group {
-      text-align: left;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
     }
 
     label {
       display: block;
-      font-size: 14px;
-      margin-bottom: 5px;
-      color: #e4e4e4;
+      font-size: 13px;
+      margin-bottom: 8px;
+      color: rgba(255,255,255,0.88);
     }
 
     input, select {
       width: 100%;
-      padding: 12px;
-      border: none;
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.2);
+      padding: 14px 15px;
+      border: 1px solid rgba(255,255,255,0.22);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.16);
       color: #fff;
-      font-size: 14px;
       outline: none;
-      transition: all 0.3s ease;
-    }
-
-    input::placeholder {
-      color: #ddd;
-    }
-
-    input:focus, select:focus {
-      background: rgba(255, 255, 255, 0.3);
-      border: 1px solid #fff;
-    }
-
-    button {
-      width: 100%;
-      padding: 12px;
-      background: #fff;
-      color: #0a0f5a;
-      font-weight: bold;
-      font-size: 16px;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
+      font-size: 14px;
       transition: 0.3s ease;
     }
 
-    button:hover {
-      background: #3a7bd5;
-      color: #fff;
+    input::placeholder {
+      color: rgba(255,255,255,0.6);
+    }
+
+    select option {
+      color: #111;
+    }
+
+    input:focus, select:focus {
+      border-color: #fff;
+      background: rgba(255,255,255,0.25);
+      box-shadow: 0 0 0 4px rgba(255,255,255,0.12);
+    }
+
+    .login-btn {
+      width: 100%;
+      margin-top: 8px;
+      padding: 14px;
+      border: none;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #ffffff, #dff6ff);
+      color: #061447;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      transition: 0.3s ease;
+      box-shadow: 0 12px 25px rgba(0,0,0,0.18);
+    }
+
+    .login-btn:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 18px 35px rgba(0,0,0,0.25);
+    }
+
+    .login-btn:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+      transform: none;
     }
 
     .forgot {
-      margin-top: 15px;
+      margin-top: 18px;
+      text-align: center;
       font-size: 13px;
+      color: rgba(255,255,255,0.78);
     }
 
     .forgot a {
       color: #fff;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .forgot a:hover {
       text-decoration: underline;
     }
 
-    /* Background watermark */
-    .background-label {
-      position: absolute;
-      bottom: 20px;
+    .watermark {
+      position: fixed;
+      bottom: 15px;
       left: 50%;
       transform: translateX(-50%);
-      font-size: 90px;
-      color: rgba(255, 255, 255, 0.05);
-      font-weight: 700;
-      user-select: none;
+      font-size: clamp(50px, 12vw, 130px);
+      font-weight: 800;
+      letter-spacing: 8px;
+      color: rgba(255,255,255,0.06);
+      pointer-events: none;
+      z-index: 1;
     }
 
-    /* Alert Modal */
     .alert-modal {
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0, 0, 0, 0.4);
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(8px);
       display: none;
-      justify-content: center;
       align-items: center;
+      justify-content: center;
       z-index: 9999;
+      padding: 20px;
     }
 
     .alert-box {
-      background-color: #fff;
-      padding: 25px 30px;
-      border-radius: 12px;
-      text-align: center;
-      max-width: 320px;
+      width: 100%;
+      max-width: 350px;
+      background: #fff;
       color: #111;
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
-      animation: pop 0.3s ease;
+      padding: 30px 25px;
+      border-radius: 24px;
+      text-align: center;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.25);
+      animation: pop 0.35s ease;
     }
 
     @keyframes pop {
-      from { transform: scale(0.8); opacity: 0; }
+      from { transform: scale(0.85); opacity: 0; }
       to { transform: scale(1); opacity: 1; }
     }
 
-    .alert-box button {
-      margin-top: 15px;
-      background-color: #0a0f5a;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: 15px;
-      cursor: pointer;
-      transition: 0.2s;
+    .alert-icon {
+      width: 55px;
+      height: 55px;
+      margin: 0 auto 15px;
+      border-radius: 50%;
+      background: #e7f9ef;
+      color: #16a34a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      font-weight: 700;
     }
 
-    .alert-box button:hover {
-      background: #3a7bd5;
+    .alert-box p {
+      font-size: 15px;
+      line-height: 1.6;
+      margin-bottom: 18px;
+    }
+
+    .alert-box button {
+      width: 100%;
+      border: none;
+      padding: 12px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #061447, #0b5ed7);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    @media (max-width: 850px) {
+      body {
+        overflow-y: auto;
+      }
+
+      .page-wrapper {
+        grid-template-columns: 1fr;
+        max-width: 480px;
+      }
+
+      .hero-side {
+        padding: 35px 25px;
+        text-align: center;
+        align-items: center;
+      }
+
+      .hero-features {
+        grid-template-columns: 1fr;
+        width: 100%;
+      }
+
+      .login-side {
+        padding: 32px 24px 38px;
+      }
+    }
+
+    @media (max-width: 420px) {
+      body {
+        padding: 15px;
+      }
+
+      .page-wrapper {
+        border-radius: 25px;
+      }
+
+      .hero-side h1 {
+        font-size: 34px;
+      }
+
+      .login-card h2 {
+        font-size: 24px;
+      }
+
+      input, select, .login-btn {
+        border-radius: 14px;
+      }
     }
   </style>
 </head>
 
 <body>
-  <div class="login-container">
-    <h2>Login to Account</h2>
-    <form id="loginForm">
-      <div class="input-group">
-        <label>Username</label>
-        <input type="text" id="username" placeholder="Enter your username" required>
+
+  <div class="bg-circle circle-one"></div>
+  <div class="bg-circle circle-two"></div>
+  <div class="watermark">SANDYPAY</div>
+
+  <main class="page-wrapper">
+
+    <section class="hero-side">
+      <div class="badge">Secure Vendor & Admin Portal</div>
+      <h1>Welcome to Sandypay</h1>
+      <p>
+        Manage your vendors, orders, wallet activities and dashboard operations
+        from one clean and modern portal.
+      </p>
+
+      <div class="hero-features">
+        <div class="feature-card">
+          <span>⚡</span>
+          <small>Fast Access</small>
+        </div>
+
+        <div class="feature-card">
+          <span>🔐</span>
+          <small>Secure Login</small>
+        </div>
+
+        <div class="feature-card">
+          <span>📊</span>
+          <small>Smart Dashboard</small>
+        </div>
       </div>
+    </section>
 
-      <div class="input-group">
-        <label>PIN</label>
-        <input type="password" id="pin" placeholder="Enter your PIN" required>
+    <section class="login-side">
+      <div class="login-card">
+        <h2>Login Account</h2>
+        <p class="sub-text">Enter your details to continue.</p>
+
+        <form id="loginForm">
+          <div class="input-group">
+            <label>Username</label>
+            <input type="text" id="username" placeholder="Enter your username" required>
+          </div>
+
+          <div class="input-group">
+            <label>PIN</label>
+            <input type="password" id="pin" placeholder="Enter your PIN" required>
+          </div>
+
+          <div class="input-group">
+            <label>Login as</label>
+            <select id="role" required>
+              <option value="" disabled selected>Select Role</option>
+              <option value="admin">ADMIN</option>
+              <option value="vendor">VENDOR</option>
+            </select>
+          </div>
+
+          <button type="submit" class="login-btn" id="loginBtn">LOGIN</button>
+
+          <p class="forgot">Forgot PIN? <a href="reset.html">Reset</a></p>
+        </form>
       </div>
+    </section>
 
-      <div class="input-group">
-        <label>Login as</label>
-        <select id="role" required>
-          <option value="" disabled selected>Select Role</option>
-          <option value="admin">ADMIN</option>
-          <option value="vendor">VENDOR</option>
-        </select>
-      </div>
+  </main>
 
-      <button type="submit">LOGIN</button>
-      <p class="forgot">Forgot PIN? <a href="reset.html">Reset</a></p>
-    </form>
-  </div>
-
-  <div class="background-label">SANDYPAY</div>
-
-  <!-- Alert Modal -->
   <div class="alert-modal" id="alertModal">
     <div class="alert-box">
+      <div class="alert-icon" id="alertIcon">✓</div>
       <p id="alertMessage">Login successful!</p>
       <button onclick="closeAlert()">OK</button>
     </div>
@@ -209,14 +462,22 @@
     function showAlert(message, isSuccess = true, callback = null) {
       const alertModal = document.getElementById("alertModal");
       const alertMsg = document.getElementById("alertMessage");
+      const alertIcon = document.getElementById("alertIcon");
+
       alertMsg.innerText = message;
       alertMsg.style.color = isSuccess ? "#111" : "#cc0000";
+
+      alertIcon.innerText = isSuccess ? "✓" : "!";
+      alertIcon.style.background = isSuccess ? "#e7f9ef" : "#ffe5e5";
+      alertIcon.style.color = isSuccess ? "#16a34a" : "#cc0000";
+
       alertModal.style.display = "flex";
       window._alertCallback = callback;
     }
 
     function closeAlert() {
       document.getElementById("alertModal").style.display = "none";
+
       if (typeof window._alertCallback === "function") {
         window._alertCallback();
         window._alertCallback = null;
@@ -225,9 +486,14 @@
 
     document.getElementById("loginForm").addEventListener("submit", async (e) => {
       e.preventDefault();
+
       const username = document.getElementById("username").value.trim();
       const pin = document.getElementById("pin").value.trim();
       const role = document.getElementById("role").value;
+      const loginBtn = document.getElementById("loginBtn");
+
+      loginBtn.disabled = true;
+      loginBtn.innerText = "PLEASE WAIT...";
 
       try {
         const response = await fetch("https://sandipay.co/api/login", {
@@ -239,10 +505,13 @@
         if (!response.ok) {
           const errorText = await response.text();
           showAlert(errorText, false);
+          loginBtn.disabled = false;
+          loginBtn.innerText = "LOGIN";
           return;
         }
 
         const data = await response.json();
+
         localStorage.setItem("username", data.username);
         localStorage.setItem("userId", data.id);
         localStorage.setItem("role", data.role);
@@ -255,10 +524,15 @@
             window.location.href = `VENDORDASHBOARD.html?id=${data.id}`;
           }
         });
+
       } catch (err) {
         showAlert("Login failed. Please try again.", false);
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.innerText = "LOGIN";
       }
     });
   </script>
+
 </body>
 </html>
