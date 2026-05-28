@@ -7542,7 +7542,7 @@ app.post("/api/send-withdrawal-whatsapp", async (req, res) => {
       });
     }
 
-    const adminPhone = "233559126985";
+    const adminPhone = "233504602107";
 
     const message = `
 New Sandypay Withdrawal Request
