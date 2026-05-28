@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Withdraw Balance | Sandypay</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #071a52, #0b5ed7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .withdraw-card {
+      width: 100%;
+      max-width: 450px;
+      background: rgba(255,255,255,0.12);
+      backdrop-filter: blur(15px);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 24px;
+      padding: 30px;
+      color: white;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+      animation: slideUp .5s ease;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 8px;
+      font-size: 36px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #dbeafe;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+
+    .notice-box {
+      background: rgba(255, 193, 7, 0.15);
+      border: 1px solid rgba(255, 193, 7, 0.4);
+      color: #fff3cd;
+      padding: 14px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      margin-bottom: 22px;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+      }
+      50% {
+        transform: scale(1.01);
+      }
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    label {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 15px;
+      margin-bottom: 18px;
+      border: none;
+      border-radius: 14px;
+      outline: none;
+      font-size: 15px;
+      transition: .3s;
+    }
+
+    input:focus,
+    select:focus {
+      transform: scale(1.01);
+      box-shadow: 0 0 0 3px rgba(255,255,255,0.2);
+    }
+
+    button {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 14px;
+      background: #fbbf24;
+      color: #111827;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: .3s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      background: #f59e0b;
+    }
+
+    .back-btn {
+      margin-top: 12px;
+      background: rgba(255,255,255,0.2);
+      color: white;
+    }
+
+    .back-btn:hover {
+      background: rgba(255,255,255,0.28);
+    }
+
+    @media(max-width: 500px) {
+      .withdraw-card {
+        padding: 24px;
+      }
+
+      h2 {
+        font-size: 30px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="withdraw-card">
+
+    <h2>Withdraw Balance</h2>
+
+    <p class="subtitle">
+      Enter your withdrawal details below.
+    </p>
+
+    <div class="notice-box">
+      ⚠️ <strong>Important Notice:</strong><br><br>
+      When you click <strong>“Send Withdrawal Request”</strong>, your withdrawal details will automatically be sent to the Sandypay Admin via WhatsApp for processing and confirmation.
+    </div>
+
+    <form id="withdrawForm">
+
+      <label>Telephone Number to Receive Money</label>
+      <input
+        type="tel"
+        id="tel"
+        placeholder="Eg. 0551234567"
+        required
+      >
+
+      <label>Network</label>
+      <select id="network" required>
+        <option value="">Select Network</option>
+        <option value="MTN">MTN</option>
+        <option value="Telecel">Telecel</option>
+        <option value="AirtelTigo">AirtelTigo</option>
+      </select>
+
+      <label>Amount to Withdraw</label>
+      <input
+        type="number"
+        id="amount"
+        placeholder="Minimum withdrawal is GHS 50"
+        min="50"
+        required
+      >
+
+      <button type="submit">
+        Send Withdrawal Request
+      </button>
+
+      <button
+        type="button"
+        class="back-btn"
+        onclick="history.back()"
+      >
+        Go Back
+      </button>
+
+    </form>
+  </div>
+
+  <script>
+    document.getElementById("withdrawForm").addEventListener("submit", function(e) {
+      e.preventDefault();
+
+      const tel = document.getElementById("tel").value.trim();
+      const network = document.getElementById("network").value;
+      const amount = parseFloat(document.getElementById("amount").value.trim());
+
+      // Minimum withdrawal check
+      if (amount < 50) {
+        alert("Minimum withdrawal amount is GHS 50.");
+        return;
+      }
+
+      const username =
+        localStorage.getItem("username") ||
+        localStorage.getItem("name") ||
+        "Unknown User";
+
+      const userId =
+        localStorage.getItem("userId") ||
+        localStorage.getItem("vendor_id") ||
+        "Unknown ID";
+
+      const message =
+`Hello Sandypay Admin,
+
+I want to withdraw from my wallet.
+
+Name: ${username}
+User ID: ${userId}
+Telephone Number: ${tel}
+Network: ${network}
+Amount: GHS ${amount}
+
+Please process my withdrawal.`;
+
+      const adminWhatsapp = "233559126985";
+
+      window.open(
+        `https://wa.me/${adminWhatsapp}?text=${encodeURIComponent(message)}`,
+        "_blank"
+      );
+    });
+  </script>
+
+</body>
+</html>
