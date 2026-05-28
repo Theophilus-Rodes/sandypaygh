@@ -255,7 +255,7 @@ function handleSession(sessionId, input, msisdn, res) {
         state.step = "menu";
         const brand = state.brandName || "SandyPay";
         return reply(
-          `${brand}.\nNB: The Data Is NOT INSTANT.\n It takes between 5min to 24hrs to deliver\n0. Cancel\n\n1. Buy Data\n2. Contact Us`
+          `${brand}.\nNB: The Data Is NOT INSTANT.\n It takes between 5min to 30Mins to deliver\n0. Cancel\n\n1. Buy Data\n2. Contact Us`
         );
       }
 
