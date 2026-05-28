@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vendor Order Settings</title>
+
+<style>
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+  font-family:Segoe UI,system-ui,sans-serif;
+}
+
+body{
+  min-height:100vh;
+  background:linear-gradient(135deg,#eef3ff,#ffffff);
+  color:#07124d;
+  padding:18px;
+}
+
+.container{
+  max-width:1200px;
+  margin:auto;
+  animation:fadeUp .6s ease;
+}
+
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(25px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+.hero{
+  background:linear-gradient(135deg,#07124d,#1236a3);
+  color:white;
+  padding:28px;
+  border-radius:26px;
+  margin-bottom:24px;
+  box-shadow:0 20px 45px rgba(7,18,77,.2);
+}
+
+.hero h1{
+  font-size:clamp(25px,4vw,40px);
+  margin-bottom:8px;
+}
+
+.hero p{
+  opacity:.85;
+}
+
+.top-actions{
+  display:flex;
+  gap:12px;
+  margin-bottom:20px;
+}
+
+.search{
+  flex:1;
+  padding:15px;
+  border:1px solid #dbe3f0;
+  border-radius:16px;
+  font-size:15px;
+  outline:none;
+}
+
+.search:focus{
+  border-color:#1236a3;
+  box-shadow:0 0 0 4px rgba(18,54,163,.08);
+}
+
+.refresh{
+  border:0;
+  background:#07124d;
+  color:white;
+  border-radius:16px;
+  padding:0 22px;
+  font-weight:800;
+  cursor:pointer;
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:18px;
+}
+
+.vendor-card{
+  background:white;
+  border-radius:24px;
+  padding:20px;
+  box-shadow:0 15px 35px rgba(7,18,77,.08);
+  transition:.3s;
+  border:1px solid #edf2ff;
+}
+
+.vendor-card:hover{
+  transform:translateY(-6px);
+  box-shadow:0 22px 45px rgba(7,18,77,.14);
+}
+
+.avatar{
+  width:58px;
+  height:58px;
+  border-radius:18px;
+  background:linear-gradient(135deg,#07124d,#2563eb);
+  color:white;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:22px;
+  font-weight:900;
+  margin-bottom:14px;
+}
+
+.vendor-card h3{
+  font-size:19px;
+  margin-bottom:6px;
+}
+
+.info{
+  color:#64748b;
+  font-size:14px;
+  margin-bottom:5px;
+}
+
+label{
+  display:block;
+  margin:15px 0 7px;
+  font-weight:800;
+  font-size:14px;
+}
+
+select{
+  width:100%;
+  padding:13px;
+  border:1px solid #dbe3f0;
+  border-radius:14px;
+  outline:none;
+  font-size:14px;
+}
+
+select:focus{
+  border-color:#1236a3;
+}
+
+.save-btn{
+  width:100%;
+  margin-top:15px;
+  border:0;
+  background:linear-gradient(135deg,#07124d,#1236a3);
+  color:white;
+  padding:13px;
+  border-radius:15px;
+  font-weight:900;
+  cursor:pointer;
+  transition:.25s;
+}
+
+.save-btn:hover{
+  transform:translateY(-2px);
+  box-shadow:0 14px 25px rgba(7,18,77,.22);
+}
+
+.badge{
+  display:inline-block;
+  margin-top:10px;
+  padding:7px 11px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:900;
+}
+
+.admin-badge{
+  background:#eef2ff;
+  color:#1e3a8a;
+}
+
+.vendor-badge{
+  background:#dcfce7;
+  color:#166534;
+}
+
+.msg{
+  margin:15px 0;
+  text-align:center;
+  font-weight:800;
+}
+
+.loader{
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(7,18,77,.5);
+  align-items:center;
+  justify-content:center;
+  z-index:9999;
+}
+
+.loader-box{
+  background:white;
+  padding:28px;
+  border-radius:24px;
+  text-align:center;
+  width:90%;
+  max-width:330px;
+}
+
+.spinner{
+  width:45px;
+  height:45px;
+  border:4px solid #e5e7eb;
+  border-top-color:#07124d;
+  border-radius:50%;
+  margin:0 auto 14px;
+  animation:spin .8s linear infinite;
+}
+
+@keyframes spin{
+  to{transform:rotate(360deg)}
+}
+
+.empty{
+  background:white;
+  padding:30px;
+  border-radius:20px;
+  text-align:center;
+  color:#64748b;
+  grid-column:1/-1;
+}
+
+@media(max-width:950px){
+  .grid{
+    grid-template-columns:repeat(2,1fr);
+  }
+}
+
+@media(max-width:650px){
+  body{
+    padding:12px;
+  }
+
+  .hero{
+    padding:22px;
+    border-radius:22px;
+  }
+
+  .top-actions{
+    flex-direction:column;
+  }
+
+  .refresh{
+    padding:14px;
+  }
+
+  .grid{
+    grid-template-columns:1fr;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div class="loader" id="loader">
+  <div class="loader-box">
+    <div class="spinner"></div>
+    <h3>Please wait...</h3>
+    <p>Loading vendors</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <section class="hero">
+    <h1>Vendor Order Settings</h1>
+    <p>Select where each vendor’s USSD orders should be saved after successful payment.</p>
+  </section>
+
+  <div class="top-actions">
+    <input type="text" class="search" id="searchInput" placeholder="Search vendor by name or phone...">
+    <button class="refresh" onclick="loadVendors()">Refresh</button>
+  </div>
+
+  <div id="msg" class="msg"></div>
+
+  <div class="grid" id="vendorGrid"></div>
+
+</div>
+
+<script>
+const API_BASE = "https://sandipay.co/api";
+
+const vendorGrid = document.getElementById("vendorGrid");
+const searchInput = document.getElementById("searchInput");
+const loader = document.getElementById("loader");
+const msg = document.getElementById("msg");
+
+let allVendors = [];
+
+function showLoader(){
+  loader.style.display = "flex";
+}
+
+function hideLoader(){
+  loader.style.display = "none";
+}
+
+function showMsg(text, type="success"){
+  msg.textContent = text;
+  msg.style.color = type === "error" ? "#b91c1c" : "#15803d";
+
+  setTimeout(() => {
+    msg.textContent = "";
+  }, 3500);
+}
+
+async function loadVendors(){
+  showLoader();
+
+  try{
+    const res = await fetch(`${API_BASE}/admin/vendor-order-settings`);
+    const data = await res.json();
+
+    hideLoader();
+
+    if(!data.success){
+      vendorGrid.innerHTML = `<div class="empty">${data.message || "Failed to load vendors."}</div>`;
+      return;
+    }
+
+    allVendors = data.vendors || [];
+    renderVendors(allVendors);
+
+  }catch(err){
+    hideLoader();
+    vendorGrid.innerHTML = `<div class="empty">Failed to connect to server.</div>`;
+  }
+}
+
+function renderVendors(vendors){
+  if(!vendors.length){
+    vendorGrid.innerHTML = `<div class="empty">No vendors found.</div>`;
+    return;
+  }
+
+  vendorGrid.innerHTML = vendors.map(vendor => {
+    const destination = vendor.order_destination || "admin_orders";
+    const badgeClass = destination === "vendor_orders" ? "vendor-badge" : "admin-badge";
+    const badgeText = destination === "vendor_orders" 
+      ? "Orders go to Vendor Table" 
+      : "Orders go to Admin Table";
+
+    const initials = String(vendor.username || "V")
+      .trim()
+      .charAt(0)
+      .toUpperCase();
+
+    return `
+      <div class="vendor-card">
+        <div class="avatar">${initials}</div>
+
+        <h3>${vendor.username || "Unnamed Vendor"}</h3>
+        <div class="info">Phone: ${vendor.phone || "N/A"}</div>
+        <div class="info">MoMo: ${vendor.momo_number || "N/A"}</div>
+        <div class="info">Account: ${vendor.account_name || "N/A"}</div>
+
+        <span class="badge ${badgeClass}" id="badge-${vendor.id}">
+          ${badgeText}
+        </span>
+
+        <label>Order Destination</label>
+        <select id="destination-${vendor.id}">
+          <option value="admin_orders" ${destination === "admin_orders" ? "selected" : ""}>
+            Send to Admin Orders
+          </option>
+          <option value="vendor_orders" ${destination === "vendor_orders" ? "selected" : ""}>
+            Send to Vendor Orders
+          </option>
+        </select>
+
+        <button class="save-btn" onclick="saveSetting(${vendor.id})">
+          Save Setting
+        </button>
+      </div>
+    `;
+  }).join("");
+}
+
+async function saveSetting(vendorId){
+  const select = document.getElementById(`destination-${vendorId}`);
+  const order_destination = select.value;
+
+  try{
+    const res = await fetch(`${API_BASE}/admin/vendor-order-settings`, {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+        vendor_id: vendorId,
+        order_destination
+      })
+    });
+
+    const data = await res.json();
+
+    if(data.success){
+      showMsg("Setting saved successfully.");
+
+      const badge = document.getElementById(`badge-${vendorId}`);
+
+      if(order_destination === "vendor_orders"){
+        badge.className = "badge vendor-badge";
+        badge.textContent = "Orders go to Vendor Table";
+      }else{
+        badge.className = "badge admin-badge";
+        badge.textContent = "Orders go to Admin Table";
+      }
+
+    }else{
+      showMsg(data.message || "Failed to save setting.", "error");
+    }
+
+  }catch(err){
+    showMsg("Failed to connect to server.", "error");
+  }
+}
+
+searchInput.addEventListener("input", () => {
+  const term = searchInput.value.toLowerCase();
+
+  const filtered = allVendors.filter(v => {
+    return String(v.username || "").toLowerCase().includes(term) ||
+           String(v.phone || "").toLowerCase().includes(term);
+  });
+
+  renderVendors(filtered);
+});
+
+loadVendors();
+</script>
+
+</body>
+</html>
