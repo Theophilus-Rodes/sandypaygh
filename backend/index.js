@@ -7236,6 +7236,219 @@ app.post('/api/admin-packages-by-code', (req, res) => {
 
 
 
+//////
+function createVendorBatchId(network) {
+  const now = new Date();
+  const pad = n => String(n).padStart(2, "0");
+
+  return (
+    now.getFullYear() + "-" +
+    pad(now.getMonth() + 1) + "-" +
+    pad(now.getDate()) + " " +
+    pad(now.getHours()) + ":" +
+    pad(now.getMinutes())
+  );
+}
+
+app.get("/api/vendor-orders/pending-counts", (req, res) => {
+  const { vendor_id } = req.query;
+
+  if (!vendor_id) {
+    return res.status(400).json({ success: false, message: "Missing vendor_id" });
+  }
+
+  const sql = `
+    SELECT network, COUNT(*) AS total
+    FROM vendor_orders
+    WHERE vendor_id = ? AND status = 'pending'
+    GROUP BY network
+  `;
+
+  db.query(sql, [vendor_id], (err, rows) => {
+    if (err) {
+      console.error("Vendor pending count error:", err);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
+
+    const counts = { mtn: 0, airteltigo: 0, telecel: 0 };
+
+    rows.forEach(row => {
+      counts[String(row.network).toLowerCase()] = row.total;
+    });
+
+    res.json(counts);
+  });
+});
+
+app.get("/api/vendor-orders/download/:network", (req, res) => {
+  const { network } = req.params;
+  const { vendor_id } = req.query;
+
+  if (!vendor_id) {
+    return res.status(400).json({ success: false, message: "Missing vendor_id" });
+  }
+
+  const packageId = createVendorBatchId(network);
+
+  const sql = `
+    SELECT *
+    FROM vendor_orders
+    WHERE vendor_id = ?
+      AND LOWER(network) = LOWER(?)
+      AND status = 'pending'
+    ORDER BY sent_at ASC
+  `;
+
+  db.query(sql, [vendor_id, network], async (err, orders) => {
+    if (err) {
+      console.error("Fetch vendor orders error:", err);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
+
+    if (!orders.length) {
+      return res.status(404).json({
+        success: false,
+        message: `No pending ${network} vendor orders found.`
+      });
+    }
+
+    const ids = orders.map(o => o.id);
+
+    const updateSql = `
+      UPDATE vendor_orders
+      SET status = 'processing', package_id = ?
+      WHERE id IN (?)
+    `;
+
+    db.query(updateSql, [packageId, ids], async updateErr => {
+      if (updateErr) {
+        console.error("Update vendor orders error:", updateErr);
+        return res.status(500).json({ success: false, message: "Update failed" });
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet(`${network} Orders`);
+
+      sheet.columns = [
+        { header: "Recipient Number", key: "recipient_number", width: 22 },
+        { header: "Data Package", key: "data_package", width: 18 },
+        { header: "Amount", key: "amount", width: 14 },
+        { header: "Network", key: "network", width: 15 },
+        { header: "Status", key: "status", width: 15 },
+        { header: "Package ID", key: "package_id", width: 25 },
+        { header: "Date", key: "sent_at", width: 25 }
+      ];
+
+      orders.forEach(order => {
+        sheet.addRow({
+          recipient_number: order.recipient_number,
+          data_package: order.data_package,
+          amount: order.amount,
+          network: order.network,
+          status: "processing",
+          package_id: packageId,
+          sent_at: order.sent_at
+        });
+      });
+
+      sheet.getRow(1).font = { bold: true };
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=${network}_vendor_orders.xlsx`
+      );
+
+      await workbook.xlsx.write(res);
+      res.end();
+    });
+  });
+});
+
+app.get("/api/vendor-orders/batches", (req, res) => {
+  const { vendor_id } = req.query;
+
+  if (!vendor_id) {
+    return res.status(400).json({ success: false, message: "Missing vendor_id" });
+  }
+
+  const sql = `
+    SELECT *
+    FROM vendor_orders
+    WHERE vendor_id = ?
+      AND package_id IS NOT NULL
+      AND package_id != ''
+      AND status IN ('processing', 'delivered')
+    ORDER BY package_id DESC, sent_at DESC
+  `;
+
+  db.query(sql, [vendor_id], (err, rows) => {
+    if (err) {
+      console.error("Vendor batches error:", err);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
+
+    const grouped = {};
+
+    rows.forEach(order => {
+      if (!grouped[order.package_id]) {
+        grouped[order.package_id] = {
+          package_id: order.package_id,
+          network: order.network,
+          total_orders: 0,
+          total_amount: 0,
+          orders: []
+        };
+      }
+
+      grouped[order.package_id].total_orders++;
+      grouped[order.package_id].total_amount += Number(order.amount || 0);
+      grouped[order.package_id].orders.push(order);
+    });
+
+    res.json({
+      success: true,
+      batches: Object.values(grouped)
+    });
+  });
+});
+
+app.post("/api/vendor-orders/mark-delivered", (req, res) => {
+  const { vendor_id, package_id } = req.body;
+
+  if (!vendor_id || !package_id) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing vendor_id or package_id"
+    });
+  }
+
+  const sql = `
+    UPDATE vendor_orders
+    SET status = 'delivered'
+    WHERE vendor_id = ?
+      AND package_id = ?
+      AND status = 'processing'
+  `;
+
+  db.query(sql, [vendor_id, package_id], (err, result) => {
+    if (err) {
+      console.error("Mark vendor delivered error:", err);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
+
+    res.json({
+      success: true,
+      message: "Vendor batch marked as delivered.",
+      affectedRows: result.affectedRows
+    });
+  });
+});
+
 
 
 
