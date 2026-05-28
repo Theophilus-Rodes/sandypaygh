@@ -7524,6 +7524,79 @@ app.post("/api/admin/vendor-order-settings", (req, res) => {
 
 
 
+app.post("/api/send-withdrawal-whatsapp", async (req, res) => {
+  try {
+    const { tel, network, amount, username, userId } = req.body;
+
+    if (!tel || !network || !amount || !username || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing withdrawal details."
+      });
+    }
+
+    if (Number(amount) < 50) {
+      return res.status(400).json({
+        success: false,
+        message: "Minimum withdrawal amount is GHS 50."
+      });
+    }
+
+    const adminPhone = "233559126985";
+
+    const message = `
+New Sandypay Withdrawal Request
+
+Name: ${username}
+User ID: ${userId}
+Receiving Number: ${tel}
+Network: ${network}
+Amount: GHS ${amount}
+
+Please process this withdrawal.
+    `;
+
+    const WHATSAPP_TOKEN = "EAAZCUV76MN7sBQz5eAbm8Xeg5af7ZCudTojGPZCFQeei3S1smeZCjCDQ3JB45tLYxosZBXY7YZB3qYhqT7X3yW46W6ELpfZBAhBjIjbkA3GGJKdYJns2Ct86VTTazi9LvY71pwULqpqcyzAG0yzHCaXnHNzN7R7U6vK95tA3UyUX8h9Rnny0vLN0C8K3rFShQZDZD";
+    const PHONE_NUMBER_ID = "985192881352497";
+
+    const whatsappUrl = `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`;
+
+    const response = await axios.post(
+      whatsappUrl,
+      {
+        messaging_product: "whatsapp",
+        to: adminPhone,
+        type: "text",
+        text: {
+          body: message
+        }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    return res.json({
+      success: true,
+      message: "Withdrawal request sent successfully.",
+      whatsapp_response: response.data
+    });
+
+  } catch (error) {
+    console.error("WhatsApp withdrawal send error:", error.response?.data || error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send WhatsApp withdrawal request."
+    });
+  }
+});
+
+
+
 
 
 // ✅ BASIC HEALTH ENDPOINTS FOR DEPLOYMENT
