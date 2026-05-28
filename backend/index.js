@@ -7256,7 +7256,10 @@ app.get("/api/vendor-orders/download/:network", (req, res) => {
   const { vendor_id } = req.query;
 
   if (!vendor_id) {
-    return res.status(400).json({ success: false, message: "Missing vendor_id" });
+    return res.status(400).json({
+      success: false,
+      message: "Missing vendor_id"
+    });
   }
 
   const packageId = createVendorBatchId(network);
@@ -7271,9 +7274,13 @@ app.get("/api/vendor-orders/download/:network", (req, res) => {
   `;
 
   db.query(sql, [vendor_id, network], async (err, orders) => {
+
     if (err) {
       console.error("Fetch vendor orders error:", err);
-      return res.status(500).json({ success: false, message: "Server error" });
+      return res.status(500).json({
+        success: false,
+        message: "Server error"
+      });
     }
 
     if (!orders.length) {
@@ -7287,42 +7294,61 @@ app.get("/api/vendor-orders/download/:network", (req, res) => {
 
     const updateSql = `
       UPDATE vendor_orders
-      SET status = 'processing', package_id = ?
+      SET status = 'processing',
+          package_id = ?
       WHERE id IN (?)
     `;
 
-    db.query(updateSql, [packageId, ids], async updateErr => {
+    db.query(updateSql, [packageId, ids], async (updateErr) => {
+
       if (updateErr) {
         console.error("Update vendor orders error:", updateErr);
-        return res.status(500).json({ success: false, message: "Update failed" });
+
+        return res.status(500).json({
+          success: false,
+          message: "Update failed"
+        });
       }
 
       const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet(`${network} Orders`);
 
+      // ONLY TWO COLUMNS
       sheet.columns = [
-        { header: "Recipient Number", key: "recipient_number", width: 22 },
-        { header: "Data Package", key: "data_package", width: 18 },
-        { header: "Amount", key: "amount", width: 14 },
-        { header: "Network", key: "network", width: 15 },
-        { header: "Status", key: "status", width: 15 },
-        { header: "Package ID", key: "package_id", width: 25 },
-        { header: "Date", key: "sent_at", width: 25 }
+        {
+          header: "Recipient Number",
+          key: "recipient_number",
+          width: 25
+        },
+        {
+          header: "Data Package",
+          key: "data_package",
+          width: 18
+        }
       ];
 
       orders.forEach(order => {
+
+        // REMOVE GB
+        const cleanedPackage = String(order.data_package || "")
+          .replace(/GB/gi, "")
+          .trim();
+
         sheet.addRow({
           recipient_number: order.recipient_number,
-          data_package: order.data_package,
-          amount: order.amount,
-          network: order.network,
-          status: "processing",
-          package_id: packageId,
-          sent_at: order.sent_at
+          data_package: cleanedPackage
         });
       });
 
-      sheet.getRow(1).font = { bold: true };
+      // HEADER STYLE
+      sheet.getRow(1).font = {
+        bold: true
+      };
+
+      sheet.getRow(1).alignment = {
+        vertical: "middle",
+        horizontal: "center"
+      };
 
       res.setHeader(
         "Content-Type",
@@ -7339,7 +7365,6 @@ app.get("/api/vendor-orders/download/:network", (req, res) => {
     });
   });
 });
-
 app.get("/api/vendor-orders/batches", (req, res) => {
   const { vendor_id } = req.query;
 
