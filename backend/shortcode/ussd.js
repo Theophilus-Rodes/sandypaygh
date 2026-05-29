@@ -61,13 +61,25 @@ const ADMIN_EXTENSION = "888";
 const USER_EXTENSION = "500";
 
 // ✅ Moolre config (from your account)
-const MOOLRE = {
+// ✅ Admin Moolre account
+const ADMIN_MOOLRE = {
   url: "https://api.moolre.com/open/transact/payment",
-  user: "acheamp", // Moolre username
-  pubkey:
-    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjU0OSwiZXhwIjoxOTI1MDA5OTk5fQ.YNoLN19xWWZRyr2Gdy_2DexpGLZv4V9yATnyYSFef2M",
-  wallet: "10654906056819", // GHS wallet number
+  user: process.env.ADMIN_MOOLRE_USER || "acheamp",
+  pubkey: process.env.ADMIN_MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjU0OSwiZXhwIjoxOTI1MDA5OTk5fQ.YNoLN19xWWZRyr2Gdy_2DexpGLZv4V9yATnyYSFef2M",
+  wallet: process.env.ADMIN_MOOLRE_WALLET || "10654906056819",
 };
+
+// ✅ Vendor Moolre account
+const VENDOR_MOOLRE = {
+  url: "https://api.moolre.com/open/transact/payment",
+  user: process.env.VENDOR_MOOLRE_USER || "brahim2026",
+  pubkey: process.env.VENDOR_MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwODQzNSwiZXhwIjoxOTU2NTQ1OTk5fQ.GiVThAH0h-JZknDXI9ZDxzGakO4gijUHKCY6f9kgIA0",
+  wallet: process.env.VENDOR_MOOLRE_WALLET || "10843506069415",
+};
+
+function getMoolreAccount(state) {
+  return state.isPlain ? ADMIN_MOOLRE : VENDOR_MOOLRE;
+}
 
 // ====== MIDDLEWARE (scoped to this router) ======
 router.use(express.json({ type: "application/json" })); // for JSON
@@ -539,6 +551,7 @@ function handleSession(sessionId, input, msisdn, res) {
           }
 
           const payerLocal = toLocalMsisdn(momo_number);
+          const moolreAccount = getMoolreAccount(state);
 
           const payload = {
             type: 1,
@@ -548,7 +561,7 @@ function handleSession(sessionId, input, msisdn, res) {
             amount: Number(amount.toFixed(2)), // decimal, 2dp
             externalref: transactionId, // comes back in webhook
             reference: `Purchase of ${data_package}`,
-            accountnumber: MOOLRE.wallet,
+           accountnumber: moolreAccount.wallet,
             sessionid: state.moolreSessionId,
 
             // 🔴 This is what the webhook will see as data.thirdpartyref
@@ -561,22 +574,21 @@ function handleSession(sessionId, input, msisdn, res) {
               momo_number,
             }),
           };
-
-          console.log("🟡 Using Moolre auth:", {
-            user: MOOLRE.user,
-            pubkeyStart: MOOLRE.pubkey.slice(0, 20) + "...",
-            wallet: MOOLRE.wallet,
-          });
+console.log("🟡 Using Moolre auth:", {
+  mode: state.isPlain ? "admin" : "vendor",
+  user: moolreAccount.user,
+  pubkeyStart: moolreAccount.pubkey.slice(0, 20) + "...",
+  wallet: moolreAccount.wallet,
+});
           console.log("📤 Sending to MOOLRE:", payload);
 
-          axios
-            .post(MOOLRE.url, payload, {
-              headers: {
-                "Content-Type": "application/json",
-                "X-API-USER": MOOLRE.user,
-                "X-API-PUBKEY": MOOLRE.pubkey,
-              },
-            })
+          axios.post(moolreAccount.url, payload, {
+  headers: {
+    "Content-Type": "application/json",
+    "X-API-USER": moolreAccount.user,
+    "X-API-PUBKEY": moolreAccount.pubkey,
+  },
+})
             .then((response) => {
               const resp = response.data || {};
               console.log("✅ MOOLRE payment INIT response:", resp);
