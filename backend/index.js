@@ -576,8 +576,8 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
           }
 
           const baseAmount = parseFloat(rows2[0].amount);
-          const revenueAmount = baseAmount;
-          const vendorAmount = parseFloat((amountPaid - baseAmount).toFixed(2));
+let revenueAmount = baseAmount;
+let vendorAmount = parseFloat((amountPaid - baseAmount).toFixed(2));
 
           db.query(
             `SELECT order_destination
@@ -597,6 +597,12 @@ app.post("/api/moolre/webhook", express.json(), (req, res) => {
 
               const targetTable =
                 destination === "vendor_orders" ? "vendor_orders" : "admin_orders";
+                // ✅ If vendor handles their own orders,
+// admin takes only 1%, vendor gets 99%
+if (targetTable === "vendor_orders") {
+  revenueAmount = parseFloat((amountPaid * 0.01).toFixed(2));
+  vendorAmount = parseFloat((amountPaid - revenueAmount).toFixed(2));
+}
 
               db.query(
                 `INSERT INTO ${targetTable}
