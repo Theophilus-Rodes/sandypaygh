@@ -7556,7 +7556,7 @@ app.post("/api/send-withdrawal-whatsapp", async (req, res) => {
       });
     }
 
-    // ✅ 1. CHECK WALLET BALANCE FIRST
+    // ✅ Check vendor wallet balance
     const balanceSql = `
       SELECT COALESCE(SUM(amount), 0) AS balance
       FROM wallet_loads
@@ -7581,7 +7581,7 @@ app.post("/api/send-withdrawal-whatsapp", async (req, res) => {
         });
       }
 
-      const adminPhone = "233532687733";
+      const adminPhone = "233559126985";
 
       const message = `New Sandypay Withdrawal Request
 Name: ${username}
@@ -7615,31 +7615,31 @@ Please process this withdrawal.`;
         if (response.data.status === false) {
           return res.status(400).json({
             success: false,
-            message: response.data.message
+            message: response.data.message || "SMS failed."
           });
         }
 
-        // ✅ 2. DEDUCT MONEY AFTER SMS IS SENT
+        // ✅ Deduct withdrawal amount from wallet_loads
         const deductSql = `
-          INSERT INTO wallet_loads 
-          (vendor_id, amount, type, description, created_at)
-          VALUES (?, ?, ?, ?, NOW())
+          INSERT INTO wallet_loads
+          (vendor_id, momo, amount, date_loaded)
+          VALUES (?, ?, ?, NOW())
         `;
 
         db.query(
           deductSql,
           [
             userId,
-            -withdrawAmount,
-            "withdrawal",
-            `Withdrawal request to ${tel} - ${network}`
+            tel,
+            -withdrawAmount
           ],
           (deductErr) => {
             if (deductErr) {
               console.error("Wallet deduction error:", deductErr);
+
               return res.status(500).json({
                 success: false,
-                message: "SMS sent, but wallet deduction failed."
+                message: "SMS sent but wallet deduction failed."
               });
             }
 
@@ -7675,6 +7675,7 @@ Please process this withdrawal.`;
     });
   }
 });
+
 
 /////Pending orders 
 app.get("/api/vendor-orders/pending-countss", (req, res) => {
