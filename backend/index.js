@@ -7547,77 +7547,134 @@ app.post("/api/send-withdrawal-whatsapp", async (req, res) => {
       });
     }
 
-    if (Number(amount) < 50) {
+    const withdrawAmount = Number(amount);
+
+    if (withdrawAmount < 50) {
       return res.status(400).json({
         success: false,
         message: "Minimum withdrawal amount is GHS 50."
       });
     }
 
-    const adminPhone = "233532687733";
+    // ✅ 1. CHECK WALLET BALANCE FIRST
+    const balanceSql = `
+      SELECT COALESCE(SUM(amount), 0) AS balance
+      FROM wallet_loads
+      WHERE vendor_id = ?
+    `;
 
-    const message = `New Sandypay Withdrawal Request
+    db.query(balanceSql, [userId], async (balanceErr, balanceRows) => {
+      if (balanceErr) {
+        console.error("Wallet balance check error:", balanceErr);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to check wallet balance."
+        });
+      }
+
+      const currentBalance = Number(balanceRows[0].balance || 0);
+
+      if (currentBalance < withdrawAmount) {
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient wallet balance. Your balance is GHS ${currentBalance.toFixed(2)}`
+        });
+      }
+
+      const adminPhone = "233532687733";
+
+      const message = `New Sandypay Withdrawal Request
 Name: ${username}
 User ID: ${userId}
 Receiving Number: ${tel}
 Network: ${network}
-Amount: GHS ${amount}
+Amount: GHS ${withdrawAmount}
 
 Please process this withdrawal.`;
 
-    // ==============================
-    // GIANTSMS SETTINGS
-    // ==============================
-    const GIANTSMS_TOKEN = "MjY5ODVfZWR5Z3h0OmlXWmpPbWdOaEpIZQ==";
-    const GIANTSMS_SENDER_ID = "SANDYPAY";
-    const GIANTSMS_URL = "https://api.giantsms.com/api/v1/send";
+      const GIANTSMS_TOKEN = "MjY5ODVfZWR5Z3h0OmlXWmpPbWdOaEpIZQ==";
+      const GIANTSMS_SENDER_ID = "SANDYPAY";
+      const GIANTSMS_URL = "https://api.giantsms.com/api/v1/send";
 
-    const formData = new URLSearchParams();
-    formData.append("from", GIANTSMS_SENDER_ID);
-    formData.append("to", adminPhone);
-    formData.append("msg", message);
+      const formData = new URLSearchParams();
+      formData.append("from", GIANTSMS_SENDER_ID);
+      formData.append("to", adminPhone);
+      formData.append("msg", message);
 
-    const response = await axios.post(GIANTSMS_URL, formData, {
-      headers: {
-        Authorization: `Basic ${GIANTSMS_TOKEN}`,
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      timeout: 20000
-    });
+      try {
+        const response = await axios.post(GIANTSMS_URL, formData, {
+          headers: {
+            Authorization: `Basic ${GIANTSMS_TOKEN}`,
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          timeout: 20000
+        });
 
-    console.log("GiantSMS response:", response.data);
+        console.log("GiantSMS response:", response.data);
 
-if (response.data.status === false) {
-  return res.status(400).json({
-    success: false,
-    message: response.data.message
-  });
-}
+        if (response.data.status === false) {
+          return res.status(400).json({
+            success: false,
+            message: response.data.message
+          });
+        }
 
-    return res.json({
-      success: true,
-      message: "Withdrawal request sent successfully by SMS.",
-      sms_response: response.data
+        // ✅ 2. DEDUCT MONEY AFTER SMS IS SENT
+        const deductSql = `
+          INSERT INTO wallet_loads 
+          (vendor_id, amount, type, description, created_at)
+          VALUES (?, ?, ?, ?, NOW())
+        `;
+
+        db.query(
+          deductSql,
+          [
+            userId,
+            -withdrawAmount,
+            "withdrawal",
+            `Withdrawal request to ${tel} - ${network}`
+          ],
+          (deductErr) => {
+            if (deductErr) {
+              console.error("Wallet deduction error:", deductErr);
+              return res.status(500).json({
+                success: false,
+                message: "SMS sent, but wallet deduction failed."
+              });
+            }
+
+            return res.json({
+              success: true,
+              message: "Withdrawal request sent successfully and wallet deducted.",
+              old_balance: currentBalance,
+              withdrawn: withdrawAmount,
+              new_balance: currentBalance - withdrawAmount,
+              sms_response: response.data
+            });
+          }
+        );
+
+      } catch (smsError) {
+        console.error("GiantSMS Error:", smsError.response?.data || smsError.message);
+
+        return res.status(500).json({
+          success: false,
+          message: "Failed to send SMS withdrawal request.",
+          error: smsError.response?.data || smsError.message
+        });
+      }
     });
 
   } catch (error) {
-    console.log("========== WITHDRAWAL GIANTSMS ERROR ==========");
-
-    if (error.response) {
-      console.error("GiantSMS Error Status:", error.response.status);
-      console.error("GiantSMS Error Data:", error.response.data);
-    } else {
-      console.error("GiantSMS Error:", error.message);
-    }
+    console.error("Withdrawal route error:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to send SMS withdrawal request.",
-      error: error.response?.data || error.message
+      message: "Server error.",
+      error: error.message
     });
   }
 });
-
 
 /////Pending orders 
 app.get("/api/vendor-orders/pending-countss", (req, res) => {
