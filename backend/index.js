@@ -7556,7 +7556,7 @@ app.post("/api/send-withdrawal-whatsapp", async (req, res) => {
       });
     }
 
-    // ✅ Check vendor wallet balance
+    // ✅ 1. CHECK WALLET BALANCE FIRST
     const balanceSql = `
       SELECT COALESCE(SUM(amount), 0) AS balance
       FROM wallet_loads
@@ -7615,31 +7615,31 @@ Please process this withdrawal.`;
         if (response.data.status === false) {
           return res.status(400).json({
             success: false,
-            message: response.data.message || "SMS failed."
+            message: response.data.message
           });
         }
 
-        // ✅ Deduct withdrawal amount from wallet_loads
+        // ✅ 2. DEDUCT MONEY AFTER SMS IS SENT
         const deductSql = `
-          INSERT INTO wallet_loads
-          (vendor_id, momo, amount, date_loaded)
-          VALUES (?, ?, ?, NOW())
+          INSERT INTO wallet_loads 
+          (vendor_id, amount, type, description, created_at)
+          VALUES (?, ?, ?, ?, NOW())
         `;
 
         db.query(
           deductSql,
           [
             userId,
-            tel,
-            -withdrawAmount
+            -withdrawAmount,
+            "withdrawal",
+            `Withdrawal request to ${tel} - ${network}`
           ],
           (deductErr) => {
             if (deductErr) {
               console.error("Wallet deduction error:", deductErr);
-
               return res.status(500).json({
                 success: false,
-                message: "SMS sent but wallet deduction failed."
+                message: "SMS sent, but wallet deduction failed."
               });
             }
 
@@ -7675,7 +7675,6 @@ Please process this withdrawal.`;
     });
   }
 });
-
 
 /////Pending orders 
 app.get("/api/vendor-orders/pending-countss", (req, res) => {
