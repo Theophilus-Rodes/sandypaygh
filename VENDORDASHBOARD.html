@@ -363,9 +363,20 @@
 
     <div class="card"><h3>Total Customers</h3><div class="card-icon">0</div></div>
     <div class="card"><h3>Total Transactions</h3><div class="card-icon">0</div></div>
-    <div class="card"><h3>Pending Orders - MTN</h3><div class="card-icon">0</div></div>
-    <div class="card"><h3>Pending Orders - AT</h3><div class="card-icon">0</div></div>
-    <div class="card"><h3>Pending Orders - TELECEL</h3><div class="card-icon">0</div></div>
+ <div class="card">
+  <h3>Pending Orders - MTN</h3>
+  <div class="card-icon" id="pendingMtnCount">0</div>
+</div>
+
+<div class="card">
+  <h3>Pending Orders - AT</h3>
+  <div class="card-icon" id="pendingAtCount">0</div>
+</div>
+
+<div class="card">
+  <h3>Pending Orders - TELECEL</h3>
+  <div class="card-icon" id="pendingTelecelCount">0</div>
+</div>
     <div class="card"><h3>Pending Orders - AFA</h3><div class="card-icon">0</div></div>
     <div class="card"><h3>Completed Orders - AFA</h3><div class="card-icon">0</div></div>
   </div>
@@ -748,18 +759,35 @@ window.onload = function () {
   })
   .then(res => res.json())
   .then(data => {
-    document.querySelectorAll(".card")[0].querySelector(".card-icon").innerText = data.total_customers;
-    document.querySelectorAll(".card")[1].querySelector(".card-icon").innerText = data.total_transactions;
-    document.querySelectorAll(".card")[2].querySelector(".card-icon").innerText = data.pending_mtn;
-    document.querySelectorAll(".card")[3].querySelector(".card-icon").innerText = data.pending_at;
-    document.querySelectorAll(".card")[4].querySelector(".card-icon").innerText = data.pending_telecel;
-    document.querySelectorAll(".card")[5].querySelector(".card-icon").innerText = data.pending_afa;
-    document.querySelectorAll(".card")[6].querySelector(".card-icon").innerText = data.completed_afa;
-  })
+  document.querySelectorAll(".card")[0].querySelector(".card-icon").innerText = data.total_customers;
+  document.querySelectorAll(".card")[1].querySelector(".card-icon").innerText = data.total_transactions;
+
+  document.querySelectorAll(".card")[5].querySelector(".card-icon").innerText = data.pending_afa;
+  document.querySelectorAll(".card")[6].querySelector(".card-icon").innerText = data.completed_afa;
+})
   .catch(err => {
     console.error("Failed to load dashboard data:", err);
   });
 };
+
+
+fetch(`https://sandipay.co/api/vendor-orders/pending-countss?vendor_id=${vendorId}`)
+  .then(res => res.json())
+  .then(data => {
+
+    document.getElementById("pendingMtnCount").innerText =
+      data.counts?.mtn || 0;
+
+    document.getElementById("pendingAtCount").innerText =
+      data.counts?.airteltigo || 0;
+
+    document.getElementById("pendingTelecelCount").innerText =
+      data.counts?.telecel || 0;
+
+  })
+  .catch(err => {
+    console.error("Pending counts error:", err);
+  });
 
 
 </script>
