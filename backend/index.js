@@ -7587,6 +7587,13 @@ Please process this withdrawal.`;
 
     console.log("GiantSMS response:", response.data);
 
+if (response.data.status === false) {
+  return res.status(400).json({
+    success: false,
+    message: response.data.message
+  });
+}
+
     return res.json({
       success: true,
       message: "Withdrawal request sent successfully by SMS.",
