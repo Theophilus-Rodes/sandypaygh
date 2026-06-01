@@ -7340,10 +7340,18 @@ app.get("/api/vendor-orders/download/:network", (req, res) => {
           .replace(/GB/gi, "")
           .trim();
 
-        sheet.addRow({
-          recipient_number: order.recipient_number,
-          data_package: cleanedPackage
-        });
+       const recipient = String(order.recipient_number || "");
+
+let localNumber = recipient;
+
+if (recipient.startsWith("233")) {
+  localNumber = "0" + recipient.substring(3);
+}
+
+sheet.addRow({
+  recipient_number: localNumber,
+  data_package: cleanedPackage
+});
       });
 
       // HEADER STYLE
