@@ -7654,6 +7654,65 @@ Please process this withdrawal.
 });
 
 
+/////Pending orders 
+app.get("/api/vendor-orders/pending-countss", (req, res) => {
+  const { vendor_id } = req.query;
+
+  if (!vendor_id) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing vendor_id"
+    });
+  }
+
+  const sql = `
+    SELECT 
+      LOWER(network) AS network,
+      COUNT(*) AS total
+    FROM vendor_orders
+    WHERE vendor_id = ?
+      AND status = 'pending'
+    GROUP BY LOWER(network)
+  `;
+
+  db.query(sql, [vendor_id], (err, rows) => {
+    if (err) {
+      console.error("Pending vendor order counts error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Server error"
+      });
+    }
+
+    const counts = {
+      mtn: 0,
+      airteltigo: 0,
+      telecel: 0
+    };
+
+    rows.forEach(row => {
+      const network = row.network;
+
+      if (network === "mtn") counts.mtn = row.total;
+      if (
+        network === "at" ||
+        network === "airteltigo" ||
+        network === "airtel tigo"
+      ) counts.airteltigo = row.total;
+      if (
+        network === "telecel" ||
+        network === "vodafone"
+      ) counts.telecel = row.total;
+    });
+
+    res.json({
+      success: true,
+      counts
+    });
+  });
+});
+
+
 
 
 
