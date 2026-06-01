@@ -7571,24 +7571,17 @@ Please process this withdrawal.`;
     // ==============================
     const GIANTSMS_API_KEY = "MjY5ODVfZWR5Z3h0OmlXWmpPbWdOaEpIZQ==";
     const GIANTSMS_SENDER_ID = "26985_edygxt"; 
-    const GIANTSMS_URL = "https://api.giantsms.com/api/v1/send-sms";
+    const GIANTSMS_URL = "https://api.giantsms.com/smsapi";
 
-    const response = await axios.post(
-      GIANTSMS_URL,
-      {
-        api_key: GIANTSMS_API_KEY,
-        sender: GIANTSMS_SENDER_ID,
-        to: adminPhone,
-        message: message
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json"
-        },
-        timeout: 20000
-      }
-    );
+const response = await axios.get(GIANTSMS_URL, {
+  params: {
+    key: GIANTSMS_API_KEY,
+    to: adminPhone,
+    msg: message,
+    sender_id: GIANTSMS_SENDER_ID
+  },
+  timeout: 20000
+});
 
     console.log("GiantSMS response:", response.data);
 
