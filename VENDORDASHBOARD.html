@@ -768,7 +768,7 @@ window.onload = function () {
   .catch(err => {
     console.error("Failed to load dashboard data:", err);
   });
-};
+
 
 
 fetch(`https://sandipay.co/api/vendor-orders/pending-countss?vendor_id=${vendorId}`)
@@ -789,7 +789,7 @@ fetch(`https://sandipay.co/api/vendor-orders/pending-countss?vendor_id=${vendorI
     console.error("Pending counts error:", err);
   });
 
-
+};
 </script>
 
 
