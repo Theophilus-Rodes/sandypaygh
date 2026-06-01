@@ -7534,7 +7534,6 @@ app.post("/api/admin/vendor-order-settings", (req, res) => {
   });
 });
 
-
 app.post("/api/send-withdrawal-whatsapp", async (req, res) => {
   console.log("========== WITHDRAWAL GIANTSMS REQUEST START ==========");
 
@@ -7555,33 +7554,36 @@ app.post("/api/send-withdrawal-whatsapp", async (req, res) => {
       });
     }
 
-    const adminPhone = "233532687733";
+    const adminPhone = "233504602107";
 
-    const message =
-`New Sandypay Withdrawal Request
+    const message = `New Sandypay Withdrawal Request
 Name: ${username}
 User ID: ${userId}
 Receiving Number: ${tel}
 Network: ${network}
 Amount: GHS ${amount}
+
 Please process this withdrawal.`;
 
     // ==============================
     // GIANTSMS SETTINGS
     // ==============================
-    const GIANTSMS_API_KEY = "MjY5ODVfZWR5Z3h0OmlXWmpPbWdOaEpIZQ==";
-    const GIANTSMS_SENDER_ID = "26985_edygxt"; 
-    const GIANTSMS_URL = "https://api.giantsms.com/smsapi";
+    const GIANTSMS_TOKEN = "MjY5ODVfZWR5Z3h0OmlXWmpPbWdOaEpIZQ==";
+    const GIANTSMS_SENDER_ID = "26985_edygxt";
+    const GIANTSMS_URL = "https://api.giantsms.com/api/v1/send";
 
-const response = await axios.get(GIANTSMS_URL, {
-  params: {
-    key: GIANTSMS_API_KEY,
-    to: adminPhone,
-    msg: message,
-    sender_id: GIANTSMS_SENDER_ID
-  },
-  timeout: 20000
-});
+    const formData = new URLSearchParams();
+    formData.append("from", GIANTSMS_SENDER_ID);
+    formData.append("to", adminPhone);
+    formData.append("msg", message);
+
+    const response = await axios.post(GIANTSMS_URL, formData, {
+      headers: {
+        Authorization: `Basic ${GIANTSMS_TOKEN}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      timeout: 20000
+    });
 
     console.log("GiantSMS response:", response.data);
 
@@ -7608,6 +7610,7 @@ const response = await axios.get(GIANTSMS_URL, {
     });
   }
 });
+
 
 /////Pending orders 
 app.get("/api/vendor-orders/pending-countss", (req, res) => {
