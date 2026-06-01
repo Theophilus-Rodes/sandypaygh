@@ -7535,25 +7535,13 @@ app.post("/api/admin/vendor-order-settings", (req, res) => {
 });
 
 
-
-
 app.post("/api/send-withdrawal-whatsapp", async (req, res) => {
-  console.log("========== WITHDRAWAL WHATSAPP REQUEST START ==========");
+  console.log("========== WITHDRAWAL GIANTSMS REQUEST START ==========");
 
   try {
     const { tel, network, amount, username, userId } = req.body;
 
-    console.log("Incoming body:", {
-      tel,
-      network,
-      amount,
-      username,
-      userId
-    });
-
     if (!tel || !network || !amount || !username || !userId) {
-      console.log("Validation failed: Missing withdrawal details");
-
       return res.status(400).json({
         success: false,
         message: "Missing withdrawal details."
@@ -7561,8 +7549,6 @@ app.post("/api/send-withdrawal-whatsapp", async (req, res) => {
     }
 
     if (Number(amount) < 50) {
-      console.log("Validation failed: Amount less than 50");
-
       return res.status(400).json({
         success: false,
         message: "Minimum withdrawal amount is GHS 50."
@@ -7571,96 +7557,64 @@ app.post("/api/send-withdrawal-whatsapp", async (req, res) => {
 
     const adminPhone = "233504602107";
 
-    const message = `
-New Sandypay Withdrawal Request
-
+    const message =
+`New Sandypay Withdrawal Request
 Name: ${username}
 User ID: ${userId}
 Receiving Number: ${tel}
 Network: ${network}
 Amount: GHS ${amount}
+Please process this withdrawal.`;
 
-Please process this withdrawal.
-`;
-
-    const WHATSAPP_TOKEN = "EAAZCUV76MN7sBQz5eAbm8Xeg5af7ZCudTojGPZCFQeei3S1smeZCjCDQ3JB45tLYxosZBXY7YZB3qYhqT7X3yW46W6ELpfZBAhBjIjbkA3GGJKdYJns2Ct86VTTazi9LvY71pwULqpqcyzAG0yzHCaXnHNzN7R7U6vK95tA3UyUX8h9Rnny0vLN0C8K3rFShQZDZD";
-    const PHONE_NUMBER_ID = "985192881352497";
-
-    const whatsappUrl = `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`;
-
-    console.log("Sending WhatsApp message to:", adminPhone);
-    console.log("Using phone number ID:", PHONE_NUMBER_ID);
-    console.log("WhatsApp URL:", whatsappUrl);
-    console.log("Message body:", message);
+    // ==============================
+    // GIANTSMS SETTINGS
+    // ==============================
+    const GIANTSMS_API_KEY = "MjY5ODVfZWR5Z3h0OmlXWmpPbWdOaEpIZQ==";
+    const GIANTSMS_SENDER_ID = "26985_edygxt"; 
+    const GIANTSMS_URL = "https://api.giantsms.com/api/v1/send-sms";
 
     const response = await axios.post(
-      whatsappUrl,
+      GIANTSMS_URL,
       {
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
+        api_key: GIANTSMS_API_KEY,
+        sender: GIANTSMS_SENDER_ID,
         to: adminPhone,
-        type: "text",
-        text: {
-          preview_url: false,
-          body: message
-        }
+        message: message
       },
       {
         headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          Accept: "application/json"
         },
         timeout: 20000
       }
     );
 
-    console.log("Meta WhatsApp full response:", JSON.stringify(response.data, null, 2));
-
-    const whatsappMessageId = response.data?.messages?.[0]?.id;
-
-    if (!whatsappMessageId) {
-      console.log("Meta accepted request but no message ID returned.");
-
-      return res.status(500).json({
-        success: false,
-        message: "WhatsApp did not return a message ID.",
-        meta_response: response.data
-      });
-    }
-
-    console.log("WhatsApp message accepted by Meta.");
-    console.log("WhatsApp Message ID:", whatsappMessageId);
-    console.log("========== WITHDRAWAL WHATSAPP REQUEST END ==========");
+    console.log("GiantSMS response:", response.data);
 
     return res.json({
       success: true,
-      message: "Withdrawal request sent successfully.",
-      whatsapp_message_id: whatsappMessageId,
-      meta_response: response.data
+      message: "Withdrawal request sent successfully by SMS.",
+      sms_response: response.data
     });
 
   } catch (error) {
-    console.log("========== WITHDRAWAL WHATSAPP ERROR ==========");
+    console.log("========== WITHDRAWAL GIANTSMS ERROR ==========");
 
     if (error.response) {
-      console.error("Meta Error Status:", error.response.status);
-      console.error("Meta Error Data:", JSON.stringify(error.response.data, null, 2));
-    } else if (error.request) {
-      console.error("No response received from Meta:", error.message);
+      console.error("GiantSMS Error Status:", error.response.status);
+      console.error("GiantSMS Error Data:", error.response.data);
     } else {
-      console.error("Request setup error:", error.message);
+      console.error("GiantSMS Error:", error.message);
     }
-
-    console.log("========== WITHDRAWAL WHATSAPP ERROR END ==========");
 
     return res.status(500).json({
       success: false,
-      message: "Failed to send WhatsApp withdrawal request.",
+      message: "Failed to send SMS withdrawal request.",
       error: error.response?.data || error.message
     });
   }
 });
-
 
 /////Pending orders 
 app.get("/api/vendor-orders/pending-countss", (req, res) => {
