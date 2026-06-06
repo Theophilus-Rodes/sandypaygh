@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Lock Vendor USSD</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f9;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h2 {
+      text-align: center;
+      color: #0b3d91;
+    }
+
+    .card {
+      background: white;
+      padding: 15px;
+      margin: 12px 0;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .info {
+      flex: 1;
+    }
+
+    .info strong {
+      display: block;
+      font-size: 16px;
+      color: #222;
+    }
+
+    .info small {
+      display: block;
+      color: #666;
+      margin-top: 4px;
+    }
+
+    button {
+      border: none;
+      padding: 10px 15px;
+      border-radius: 8px;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .lock {
+      background: #d60000;
+    }
+
+    .unlock {
+      background: #008000;
+    }
+
+    .status {
+      font-weight: bold;
+      margin-top: 5px;
+    }
+
+    .locked {
+      color: red;
+    }
+
+    .active {
+      color: green;
+    }
+
+    @media(max-width: 600px) {
+      .card {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>Lock Vendor USSD Codes</h2>
+
+  <div id="usersBox">Loading vendors...</div>
+
+  <script>
+    const API_BASE = window.location.origin;
+
+    async function loadUsers() {
+      const box = document.getElementById("usersBox");
+      box.innerHTML = "Loading vendors...";
+
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/ussd-lock-users`);
+        const data = await res.json();
+
+        if (!data.success) {
+          box.innerHTML = "Failed to load vendors.";
+          return;
+        }
+
+        if (data.users.length === 0) {
+          box.innerHTML = "No vendors found.";
+          return;
+        }
+
+        box.innerHTML = "";
+
+        data.users.forEach(user => {
+          const isLocked = Number(user.ussd_locked) === 1;
+
+          const div = document.createElement("div");
+          div.className = "card";
+
+          div.innerHTML = `
+            <div class="info">
+              <strong>${user.username}</strong>
+              <small>Phone: ${user.phone || "N/A"}</small>
+              <small>USSD Code: ${user.ussd_code || "N/A"}</small>
+              <div class="status ${isLocked ? "locked" : "active"}">
+                ${isLocked ? "LOCKED" : "ACTIVE"}
+              </div>
+            </div>
+
+            <button class="${isLocked ? "unlock" : "lock"}"
+              onclick="toggleLock(${user.id}, ${isLocked ? 0 : 1})">
+              ${isLocked ? "Unlock Code" : "Lock Code"}
+            </button>
+          `;
+
+          box.appendChild(div);
+        });
+
+      } catch (error) {
+        console.error(error);
+        box.innerHTML = "Server error.";
+      }
+    }
+
+    async function toggleLock(userId, lockValue) {
+      const confirmMsg = lockValue === 1
+        ? "Are you sure you want to lock this vendor USSD code?"
+        : "Are you sure you want to unlock this vendor USSD code?";
+
+      if (!confirm(confirmMsg)) return;
+
+      const res = await fetch(`${API_BASE}/api/admin/ussd-lock-user`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          ussd_locked: lockValue
+        })
+      });
+
+      const data = await res.json();
+      alert(data.message);
+      loadUsers();
+    }
+
+    loadUsers();
+  </script>
+
+</body>
+</html>
