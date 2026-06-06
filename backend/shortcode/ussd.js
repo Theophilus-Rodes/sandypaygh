@@ -751,6 +751,29 @@ if (isNewSession && !inputFromUser && ext === ADMIN_EXTENSION) {
             ? vendorIdFromDial
             : 1;
 
+
+          const [vendorRows] = await dbp.query(
+  `SELECT id, username, ussd_locked 
+   FROM users 
+   WHERE id = ? AND role = 'vendor' 
+   LIMIT 1`,
+  [vendorId]
+);
+
+if (!vendorRows || !vendorRows.length) {
+  return res.json({
+    message: "APPLICATION UNKNOWN.",
+    reply: false,
+  });
+}
+
+if (Number(vendorRows[0].ussd_locked) === 1) {
+  return res.json({
+    message: "This vendor account has been locked. Please contact admin for support.",
+    reply: false,
+  });
+}
+
         const remaining = await getRemainingHits(vendorId);
         console.log("📊 Remaining hits for vendor", vendorId, "=", remaining);
         if (remaining <= 0) {
@@ -938,15 +961,16 @@ if (mainCode !== "426" || !uzoCode) {
 
     (async () => {
       const [codeRows] = await dbp.query(
-        `SELECT 
-           uvc.vendor_id,
-           u.username
-         FROM uzo_vendor_codes uvc
-         JOIN users u ON u.id = uvc.vendor_id
-         WHERE uvc.code = ?
-           AND uvc.status = 'active'
-           AND u.role = 'vendor'
-         LIMIT 1`,
+      `SELECT 
+   uvc.vendor_id,
+   u.username,
+   u.ussd_locked
+ FROM uzo_vendor_codes uvc
+ JOIN users u ON u.id = uvc.vendor_id
+ WHERE uvc.code = ?
+   AND uvc.status = 'active'
+   AND u.role = 'vendor'
+ LIMIT 1`,
         [uzoCode]
       );
 
@@ -957,6 +981,15 @@ if (mainCode !== "426" || !uzoCode) {
           ussdServiceOp: 17,
         });
       }
+
+      if (Number(codeRows[0].ussd_locked) === 1) {
+  console.log("❌ Uzo vendor account locked:", codeRows[0].vendor_id);
+
+  return res.json({
+    message: "This vendor account has been locked. Please contact admin for support.",
+    ussdServiceOp: 17,
+  });
+}
 
       const vendorId = codeRows[0].vendor_id;
       const brandName = codeRows[0].username || "SandyPay";
