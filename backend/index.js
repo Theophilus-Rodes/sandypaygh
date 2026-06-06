@@ -7799,6 +7799,90 @@ app.post("/api/admin/ussd-lock-user", (req, res) => {
 
 
 
+/////Vendors excel download 
+app.get("/api/vendor/customers/download", async (req, res) => {
+  try {
+    const { vendor_id } = req.query;
+
+    if (!vendor_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing vendor_id"
+      });
+    }
+
+    const sql = `
+      SELECT 
+        customer_number,
+        source,
+        created_at
+      FROM vendor_customers
+      WHERE vendor_id = ?
+      ORDER BY created_at DESC
+    `;
+
+    db.query(sql, [vendor_id], async (err, rows) => {
+      if (err) {
+        console.error("Download vendor customers error:", err);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to load customer numbers"
+        });
+      }
+
+      if (!rows.length) {
+        return res.status(404).json({
+          success: false,
+          message: "No customer numbers found"
+        });
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Customer Numbers");
+
+      worksheet.columns = [
+        { header: "No.", key: "no", width: 10 },
+        { header: "Customer Number", key: "customer_number", width: 25 },
+        { header: "Source", key: "source", width: 15 },
+        { header: "Date", key: "created_at", width: 25 }
+      ];
+
+      rows.forEach((row, index) => {
+        worksheet.addRow({
+          no: index + 1,
+          customer_number: row.customer_number,
+          source: row.source,
+          created_at: row.created_at
+        });
+      });
+
+      worksheet.getRow(1).font = { bold: true };
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=vendor-customers-${vendor_id}.xlsx`
+      );
+
+      await workbook.xlsx.write(res);
+      res.end();
+    });
+  } catch (error) {
+    console.error("Vendor customer download error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+
+
+
 
 // ✅ BASIC HEALTH ENDPOINTS FOR DEPLOYMENT
 app.get("/", (req, res) => {
