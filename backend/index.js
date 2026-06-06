@@ -7841,10 +7841,9 @@ app.get("/api/vendor/customers/download", async (req, res) => {
       const worksheet = workbook.addWorksheet("Customer Numbers");
 
       worksheet.columns = [
-        { header: "No.", key: "no", width: 10 },
+        
         { header: "Customer Number", key: "customer_number", width: 25 },
-        { header: "Source", key: "source", width: 15 },
-        { header: "Date", key: "created_at", width: 25 }
+      
       ];
 
       rows.forEach((row, index) => {
