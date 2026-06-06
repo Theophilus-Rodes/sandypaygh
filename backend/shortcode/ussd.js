@@ -792,6 +792,7 @@ if (Number(vendorRows[0].ussd_locked) === 1) {
         }
 
         await incrementUssdCounter(vendorId);
+        await saveVendorCustomer(vendorId, msisdn, "moolre");
 
         db.query(
           "SELECT username FROM users WHERE id = ? LIMIT 1",
@@ -1015,6 +1016,7 @@ if (mainCode !== "426" || !uzoCode) {
       }
 
       await incrementUssdCounter(vendorId);
+      await saveVendorCustomer(vendorId, msisdn, "uzo");
 
       sessions[uzoSessionKey] = {
         step: "start",
@@ -1050,6 +1052,22 @@ if (mainCode !== "426" || !uzoCode) {
 });
 /////////////////////////////////////////////////////////////////////////////////////////
 
+
+
+async function saveVendorCustomer(vendorId, msisdn, source = "moolre") {
+  const customerNumber = normalizeMsisdn(msisdn);
+
+  if (!vendorId || !customerNumber) return;
+
+  await dbp.query(
+    `INSERT INTO vendor_customers 
+      (vendor_id, customer_number, source)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE 
+      source = VALUES(source)`,
+    [vendorId, customerNumber, source]
+  );
+}
 // HIT HELPERS
 async function getRemainingHits(vendorId) {
   const [rows] = await dbp.query(
