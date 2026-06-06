@@ -7736,6 +7736,67 @@ app.get("/api/vendor-orders/pending-countss", (req, res) => {
 });
 
 
+/////Lock Account Route
+// GET all vendors for USSD lock page
+app.get("/api/admin/ussd-lock-users", (req, res) => {
+  const sql = `
+    SELECT id, username, phone, ussd_code, ussd_locked
+    FROM users
+    WHERE role = 'vendor'
+    ORDER BY id DESC
+  `;
+
+  db.query(sql, (err, rows) => {
+    if (err) {
+      console.error("Fetch USSD lock users error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to load vendors"
+      });
+    }
+
+    res.json({
+      success: true,
+      users: rows
+    });
+  });
+});
+
+
+// Lock or unlock vendor USSD code
+app.post("/api/admin/ussd-lock-user", (req, res) => {
+  const { user_id, ussd_locked } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing user ID"
+    });
+  }
+
+  const sql = `
+    UPDATE users
+    SET ussd_locked = ?
+    WHERE id = ? AND role = 'vendor'
+  `;
+
+  db.query(sql, [ussd_locked ? 1 : 0, user_id], (err, result) => {
+    if (err) {
+      console.error("Update USSD lock error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to update lock status"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: ussd_locked ? "Vendor USSD code locked" : "Vendor USSD code unlocked"
+    });
+  });
+});
+
+
 
 
 
