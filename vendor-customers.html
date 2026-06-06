@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>My Customer Numbers</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f4f7fb;
+      padding: 20px;
+    }
+
+    .box {
+      max-width: 500px;
+      margin: 70px auto;
+      background: white;
+      padding: 25px;
+      border-radius: 18px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+
+    h2 {
+      color: #003b88;
+      margin-bottom: 10px;
+    }
+
+    p {
+      color: #555;
+      font-size: 15px;
+    }
+
+    button {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 12px;
+      background: #003b88;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+
+    button:hover {
+      background: #00275c;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="box">
+    <h2>My Customer Numbers</h2>
+    <p>Download all numbers that have dialed your vendor USSD code.</p>
+
+    <button onclick="downloadCustomers()">Download Excel File</button>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin;
+
+    const vendorId =
+      localStorage.getItem("userId") ||
+      localStorage.getItem("vendor_id") ||
+      localStorage.getItem("id");
+
+    function downloadCustomers() {
+      if (!vendorId) {
+        alert("Vendor ID not found. Please login again.");
+        return;
+      }
+
+      window.location.href =
+        `${API_BASE}/api/vendor/customers/download?vendor_id=${vendorId}`;
+    }
+  </script>
+
+</body>
+</html>
