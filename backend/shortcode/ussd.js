@@ -544,7 +544,7 @@ function handleSession(sessionId, input, msisdn, res) {
 
           // Close USSD first
           end(
-            "✅ Please wait while the prompt loads...\nEnter your MoMo PIN to approve."
+            "✅ Please wait while the prompt loads...\nEnter your MoMo PIN to approve. \nIf payment delays, \ngo to my approvals to approve payment"
           );
 
          const channelId = getChannelId(network);
