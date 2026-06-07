@@ -215,15 +215,14 @@
             </select>
           </div>
 
-          <div>
-            <label>Private USSD Extension</label>
-            <input 
-              type="text" 
-              id="code" 
-              placeholder="Example: 717" 
-              required
-            />
-          </div>
+         <div>
+  <label>Expiry Date</label>
+  <input 
+    type="date" 
+    id="expiry_date" 
+    required
+  />
+</div>
         </div>
 
         <button type="submit">Save USSD Code</button>
@@ -242,13 +241,14 @@
               <th>Phone</th>
               <th>USSD Code</th>
               <th>Status</th>
+              <th>Expiry Date</th>
               <th>Created</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody id="codesBody">
             <tr>
-              <td colspan="7">Loading...</td>
+              <td colspan="8"></td>Loading...</td>
             </tr>
           </tbody>
         </table>
@@ -307,7 +307,7 @@
       codesBody.innerHTML = "";
 
       if (!data.success || !data.codes.length) {
-        codesBody.innerHTML = `<tr><td colspan="7">No USSD codes saved yet.</td></tr>`;
+        codesBody.innerHTML = `<tr><td colspan="8">No USSD codes saved yet.</td></tr>`;
         return;
       }
 
@@ -324,6 +324,7 @@
           <td>${item.phone || "N/A"}</td>
           <td>*426*${item.code}#</td>
           <td><span class="badge ${item.status}">${item.status}</span></td>
+          <td>${item.expiry_date ? new Date(item.expiry_date).toLocaleDateString() : "N/A"}</td>
           <td>${item.created_at ? new Date(item.created_at).toLocaleString() : "N/A"}</td>
           <td>
             <button class="small-btn ${btnClass}" onclick="changeStatus(${item.id}, '${nextStatus}')">
@@ -337,7 +338,7 @@
 
     } catch (error) {
       console.error(error);
-      codesBody.innerHTML = `<tr><td colspan="7">Failed to load codes.</td></tr>`;
+      codesBody.innerHTML = `<tr><td colspan="8">Failed to load codes.</td></tr>`;
     }
   }
 
@@ -345,12 +346,12 @@
   e.preventDefault();
 
   const vendor_id = vendorSelect.value;
-  const code = document.getElementById("code").value.trim();
+const expiry_date = document.getElementById("expiry_date").value;
 
-  if (!vendor_id || !code) {
-    showAlert("Please select vendor and enter Uzo code.", false);
-    return;
-  }
+ if (!vendor_id || !code || !expiry_date) {
+  showAlert("Please select vendor, enter Uzo code and expiry date.", false);
+  return;
+}
 
   try {
     const res = await fetch(`${API_BASE}/api/admin/vendor-ussd-code`, {
@@ -358,7 +359,7 @@
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ vendor_id, code })
+     body: JSON.stringify({ vendor_id, code, expiry_date })
     });
 
     const data = await res.json();
