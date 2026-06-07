@@ -7034,37 +7034,15 @@ app.post("/api/admin/payment-sessions/export", async (req, res) => {
 // ADMIN: UZO VENDOR USSD CODES
 // ================================
 
-app.get("/api/admin/vendors-for-ussd", (req, res) => {
-  const sql = `
-    SELECT id, username, phone, momo_number, account_name, status
-    FROM users
-    WHERE role = 'vendor'
-    ORDER BY username ASC
-  `;
 
-  db.query(sql, (err, rows) => {
-    if (err) {
-      console.error("Fetch vendors error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to load vendors."
-      });
-    }
-
-    res.json({
-      success: true,
-      vendors: rows
-    });
-  });
-});
 
 app.post("/api/admin/vendor-ussd-code", (req, res) => {
-  const { vendor_id, code } = req.body;
+  const { vendor_id, code, expiry_date } = req.body;
 
-  if (!vendor_id || !code) {
+if (!vendor_id || !code || !expiry_date) {
     return res.status(400).json({
       success: false,
-      message: "Vendor and Uzo code are required."
+     message: "Vendor, Uzo code and expiry date are required."
     });
   }
 
@@ -7096,16 +7074,17 @@ app.post("/api/admin/vendor-ussd-code", (req, res) => {
         });
       }
 
-      const sql = `
-        INSERT INTO uzo_vendor_codes (vendor_id, code, status)
-        VALUES (?, ?, 'active')
-        ON DUPLICATE KEY UPDATE 
-          vendor_id = VALUES(vendor_id),
-          status = 'active',
-          updated_at = CURRENT_TIMESTAMP
-      `;
+   const sql = `
+  INSERT INTO uzo_vendor_codes (vendor_id, code, status, expiry_date)
+  VALUES (?, ?, 'active', ?)
+  ON DUPLICATE KEY UPDATE 
+    vendor_id = VALUES(vendor_id),
+    expiry_date = VALUES(expiry_date),
+    status = 'active',
+    updated_at = CURRENT_TIMESTAMP
+`;
 
-      db.query(sql, [vendor_id, cleanCode], (err2) => {
+db.query(sql, [vendor_id, cleanCode, expiry_date], (err2) => {
         if (err2) {
           console.error("Insert Uzo vendor code error:", err2);
           return res.status(500).json({
@@ -7123,6 +7102,7 @@ app.post("/api/admin/vendor-ussd-code", (req, res) => {
   );
 });
 
+
 app.get("/api/admin/vendor-ussd-codes", (req, res) => {
   const sql = `
     SELECT 
@@ -7130,7 +7110,9 @@ app.get("/api/admin/vendor-ussd-codes", (req, res) => {
       uvc.vendor_id,
       uvc.code,
       uvc.status,
+      uvc.expiry_date,
       uvc.created_at,
+      uvc.updated_at,
       u.username,
       u.phone,
       u.account_name
@@ -7155,6 +7137,7 @@ app.get("/api/admin/vendor-ussd-codes", (req, res) => {
   });
 });
 
+
 app.put("/api/admin/vendor-ussd-code/:id/status", (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -7167,7 +7150,11 @@ app.put("/api/admin/vendor-ussd-code/:id/status", (req, res) => {
   }
 
   db.query(
-    "UPDATE uzo_vendor_codes SET status = ? WHERE id = ?",
+    `
+      UPDATE uzo_vendor_codes 
+      SET status = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ?
+    `,
     [status, id],
     (err) => {
       if (err) {
@@ -7185,6 +7172,38 @@ app.put("/api/admin/vendor-ussd-code/:id/status", (req, res) => {
     }
   );
 });
+
+
+app.get("/api/admin/vendors-for-ussd", (req, res) => {
+  const sql = `
+    SELECT 
+      id, 
+      username, 
+      phone, 
+      momo_number, 
+      account_name, 
+      status
+    FROM users
+    WHERE role = 'vendor'
+    ORDER BY username ASC
+  `;
+
+  db.query(sql, (err, rows) => {
+    if (err) {
+      console.error("Fetch vendors error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to load vendors."
+      });
+    }
+
+    res.json({
+      success: true,
+      vendors: rows
+    });
+  });
+});
+
 
 
 
