@@ -7229,6 +7229,41 @@ app.delete("/api/admin/vendor-ussd-code/:id", (req, res) => {
 });
 
 
+app.get("/api/vendor/my-uzo-code/:vendor_id", (req, res) => {
+  const { vendor_id } = req.params;
+
+  const sql = `
+    SELECT code, status, expiry_date, created_at
+    FROM uzo_vendor_codes
+    WHERE vendor_id = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `;
+
+  db.query(sql, [vendor_id], (err, rows) => {
+    if (err) {
+      console.error("Fetch vendor UZO code error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to load UZO code."
+      });
+    }
+
+    if (!rows.length) {
+      return res.json({
+        success: false,
+        message: "No UZO code assigned yet."
+      });
+    }
+
+    res.json({
+      success: true,
+      code: rows[0]
+    });
+  });
+});
+
+
 
 
 app.post('/api/admin-packages-by-code', (req, res) => {
