@@ -215,7 +215,17 @@
             </select>
           </div>
 
-         <div>
+      <div>
+  <label>Private USSD Extension</label>
+  <input 
+    type="text" 
+    id="code" 
+    placeholder="Example: 717" 
+    required
+  />
+</div>
+
+<div>
   <label>Expiry Date</label>
   <input 
     type="date" 
@@ -248,7 +258,7 @@
           </thead>
           <tbody id="codesBody">
             <tr>
-              <td colspan="8"></td>Loading...</td>
+             <td colspan="8">Loading...</td>
             </tr>
           </tbody>
         </table>
@@ -345,7 +355,8 @@
   form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const vendor_id = vendorSelect.value;
+const vendor_id = vendorSelect.value;
+const code = document.getElementById("code").value.trim();
 const expiry_date = document.getElementById("expiry_date").value;
 
  if (!vendor_id || !code || !expiry_date) {
