@@ -7205,6 +7205,30 @@ app.get("/api/admin/vendors-for-ussd", (req, res) => {
 });
 
 
+app.delete("/api/admin/vendor-ussd-code/:id", (req, res) => {
+  const { id } = req.params;
+
+  db.query(
+    "DELETE FROM uzo_vendor_codes WHERE id = ?",
+    [id],
+    (err, result) => {
+      if (err) {
+        console.error("Delete Uzo code error:", err);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to delete Uzo code."
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Uzo code deleted successfully."
+      });
+    }
+  );
+});
+
+
 
 
 app.post('/api/admin-packages-by-code', (req, res) => {
