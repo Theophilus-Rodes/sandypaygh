@@ -3,301 +3,506 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Settings</title>
+  <title>Vendor Settings</title>
+
   <style>
+    * {
+      box-sizing: border-box;
+      font-family: "Segoe UI", sans-serif;
+    }
+
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background-color: #f5f7fa;
       margin: 0;
-      padding: 0;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #020617, #0f766e, #0284c7);
+      color: #fff;
+      padding: 18px;
     }
 
-    .activated-section {
-      padding: 20px;
+    .container {
+      max-width: 1050px;
+      margin: auto;
+      animation: fadeIn .6s ease;
     }
 
-    .activated-section h2 {
-      font-size: 18px;
-      color: #1e3a8a;
-      margin-bottom: 10px;
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(25px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
-    .activated-table {
-      width: 100%;
-      border-collapse: collapse;
-      background-color: #fff;
-      border-radius: 8px;
-      overflow: hidden;
-      box-shadow: 0 0 5px rgba(0, 0, 0, 0.05);
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 25px;
+      flex-wrap: wrap;
     }
 
-    .activated-table th, .activated-table td {
-      padding: 12px;
-      text-align: left;
+    .top h1 {
+      margin: 0;
+      font-size: 30px;
     }
 
-    .activated-table th {
-      background-color: #1e3a8a;
+    .back-btn {
       color: white;
+      text-decoration: none;
+      padding: 11px 18px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.16);
+      border: 1px solid rgba(255,255,255,.25);
     }
 
-    .activated-table td a {
-      color: #1e3a8a;
-      text-decoration: underline;
+    .hero {
+      background: rgba(255,255,255,.14);
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 28px;
+      padding: 28px;
+      margin-bottom: 25px;
+      box-shadow: 0 25px 60px rgba(0,0,0,.25);
+      backdrop-filter: blur(14px);
+      animation: slideUp .6s ease;
     }
 
-    .settings-container {
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .hero h2 {
+      margin-top: 0;
+      font-size: 24px;
+    }
+
+    .service-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 15px;
+      margin-bottom: 25px;
+    }
+
+    .service-card {
+      background: rgba(255,255,255,.15);
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 22px;
       padding: 20px;
+      box-shadow: 0 18px 40px rgba(0,0,0,.22);
+      backdrop-filter: blur(14px);
+      transition: .3s;
     }
 
-    .settings-box {
-      background-color: white;
-      padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-      margin-top: 20px;
+    .service-card:hover {
+      transform: translateY(-6px);
+      background: rgba(255,255,255,.22);
     }
 
-    .settings-box label {
+    .service-card h3 {
+      margin: 0 0 8px;
+    }
+
+    .service-card p {
+      color: #dbeafe;
+      font-size: 14px;
+      min-height: 40px;
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+    }
+
+    .box {
+      background: rgba(255,255,255,.14);
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 24px;
+      padding: 23px;
+      box-shadow: 0 20px 45px rgba(0,0,0,.22);
+      backdrop-filter: blur(15px);
+      animation: slideUp .7s ease;
+    }
+
+    .box h2 {
+      margin-top: 0;
+      font-size: 21px;
+    }
+
+    label {
       display: block;
-      margin-top: 10px;
-      font-weight: bold;
+      margin: 13px 0 7px;
+      font-weight: 700;
     }
 
-    .settings-box input {
+    input {
       width: 100%;
-      padding: 10px;
-      margin-top: 5px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-    }
-
-    .save-button {
-      margin-top: 20px;
-      width: 100%;
-      background-color: #0a0f5a;
-      color: white;
+      padding: 14px;
+      border-radius: 14px;
       border: none;
-      padding: 12px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-weight: bold;
+      outline: none;
+      background: rgba(255,255,255,.96);
+      color: #0f172a;
+      font-size: 15px;
     }
 
-    /* ✅ Coming Soon Modal Styles */
-    #comingSoonModal {
-      position: fixed;
-      top: 0; left: 0;
+    .btn {
       width: 100%;
-      height: 100%;
-      background-color: rgba(0, 0, 0, 0.4);
+      margin-top: 18px;
+      border: none;
+      padding: 14px 18px;
+      border-radius: 14px;
+      color: white;
+      font-weight: 800;
+      cursor: pointer;
+      background: linear-gradient(135deg, #22c55e, #0ea5e9);
+      transition: .25s;
+    }
+
+    .btn:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 15px 35px rgba(0,0,0,.25);
+    }
+
+    .btn-dark {
+      background: linear-gradient(135deg, #1e3a8a, #0284c7);
+    }
+
+    .btn-orange {
+      background: linear-gradient(135deg, #f97316, #ef4444);
+    }
+
+    .alert {
+      display: none;
+      position: fixed;
+      top: 22px;
+      right: 22px;
+      background: rgba(15,23,42,.96);
+      color: white;
+      padding: 15px 20px;
+      border-radius: 16px;
+      box-shadow: 0 18px 40px rgba(0,0,0,.35);
+      z-index: 999999;
+      max-width: 330px;
+      animation: pop .25s ease;
+    }
+
+    @keyframes pop {
+      from { opacity: 0; transform: scale(.9); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(2,6,23,.72);
       display: none;
       justify-content: center;
       align-items: center;
-      z-index: 9999;
+      z-index: 99999;
+      backdrop-filter: blur(8px);
+      padding: 18px;
     }
 
-    #comingSoonModal .modal-content {
-      background: white;
-      padding: 25px 30px;
-      border-radius: 14px;
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    .modal-box {
+      width: 100%;
+      max-width: 430px;
+      background: linear-gradient(135deg, #ffffff, #eef7ff);
+      color: #0f172a;
+      border-radius: 26px;
+      padding: 25px;
       text-align: center;
-      max-width: 320px;
+      box-shadow: 0 30px 70px rgba(0,0,0,.4);
+      animation: modalIn .35s ease;
+      position: relative;
     }
 
-    #comingSoonModal .modal-content h3 {
-      margin-bottom: 10px;
-      color: #0a0f5a;
+    @keyframes modalIn {
+      from { opacity: 0; transform: translateY(30px) scale(.88); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
     }
 
-    #comingSoonModal .modal-content button {
-      background-color: #2563eb;
-      color: white;
+    .close-x {
+      position: absolute;
+      right: 14px;
+      top: 14px;
+      width: 34px;
+      height: 34px;
       border: none;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: 15px;
+      border-radius: 50%;
+      background: #ef4444;
+      color: white;
+      font-size: 22px;
       cursor: pointer;
+    }
+
+    .code-display {
+      margin: 20px 0;
+      padding: 20px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, #0f766e, #0284c7);
+      color: white;
+      font-size: 31px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      word-break: break-all;
+    }
+
+    .info-pill {
+      background: #e0f2fe;
+      color: #075985;
+      padding: 10px;
+      border-radius: 12px;
+      margin: 8px 0;
+      font-weight: 700;
+    }
+
+    @media(max-width: 800px) {
+      .settings-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .top h1 {
+        font-size: 24px;
+      }
+
+      .hero {
+        padding: 22px;
+      }
     }
   </style>
 </head>
+
 <body>
 
-  <!-- ✅ Activated Services Section -->
-  <section class="activated-section">
-    <h2>Activated Services</h2>
-    <table class="activated-table">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Created</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><a href="#" onclick="showComingSoon()">ussd</a></td>
-          <td>Wednesday, February 19, 2025</td>
-        </tr>
-      </tbody>
-    </table>
-  </section>
+  <div class="alert" id="alertBox"></div>
 
-  <!-- ✅ Settings Form Section -->
-  <main class="settings-container">
-
-    <!-- ✅ Basic Settings -->
-    <div class="settings-box">
-      <label for="businessName">Business Name</label>
-      <input type="text" id="businessName" placeholder="Enter your business name" />
-
-      <label for="supportNumber">Support Number (Call/ WhatsApp)</label>
-      <input type="tel" id="supportNumber" placeholder="Enter support number" />
-
-
-
-<label for="senderId">Sender ID</label>
-<input type="text" id="senderId" placeholder="Enter Sender ID" />
-
-<!-- ✅ NEW: MoMo Details -->
-<label for="momoNumber">MoMo Number</label>
-<input type="tel" id="momoNumber" placeholder="Enter MoMo number" />
-
-<label for="accountName">Account Name</label>
-<input type="text" id="accountName" placeholder="Enter account name" />
-
-
-
-
-      <button class="save-button" onclick="saveSettings()">Save Settings</button>
+  <div class="container">
+    <div class="top">
+      <h1>Vendor Settings</h1>
+      <a href="dashboard.html" class="back-btn">← Back</a>
     </div>
 
-    <!-- ✅ Change PIN Section -->
-    <div class="settings-box">
-      <label for="oldPin">Old PIN</label>
-      <input type="password" id="oldPin" placeholder="Enter old PIN" />
-
-      <label for="newPin">New PIN</label>
-      <input type="password" id="newPin" placeholder="Enter new PIN" />
-
-      <label for="confirmPin">Confirm New PIN</label>
-      <input type="password" id="confirmPin" placeholder="Confirm new PIN" />
-
-      <button class="save-button" onclick="changePin()">Change PIN</button>
+    <div class="hero">
+      <h2>Manage Your Sandipay Account</h2>
+      <p>Update your business details, view your public selling link, and check your private UZO USSD code.</p>
     </div>
 
-    <!-- ✅ View Site Link Button -->
-    <div class="settings-box">
-      <button class="save-button" onclick="viewSiteLink()">View Site Link</button>
-    </div>
-  </main>
+    <div class="service-grid">
+      <div class="service-card">
+        <h3>🌐 Site Link</h3>
+        <p>View and copy your public customer buying link.</p>
+        <button class="btn btn-dark" onclick="viewSiteLink()">View Site Link</button>
+      </div>
 
-  <!-- ✅ JavaScript -->
+      <div class="service-card">
+        <h3>📲 My UZO Code</h3>
+        <p>Display your private UZO code and expiry date.</p>
+        <button class="btn" onclick="viewUzoCode()">View UZO Code</button>
+      </div>
+
+      <div class="service-card">
+        <h3>👥 Customers</h3>
+        <p>Download numbers that have dialed your vendor code.</p>
+        <button class="btn btn-orange" onclick="window.location.href='vendor-customers.html'">
+          Customer Numbers
+        </button>
+      </div>
+    </div>
+
+    <div class="settings-grid">
+      <div class="box">
+        <h2>Business Settings</h2>
+
+        <label for="businessName">Business Name</label>
+        <input type="text" id="businessName" placeholder="Enter business name" />
+
+        <label for="supportNumber">Support Number</label>
+        <input type="tel" id="supportNumber" placeholder="Enter support number" />
+
+        <label for="senderId">Sender ID</label>
+        <input type="text" id="senderId" placeholder="Enter Sender ID" />
+
+        <label for="momoNumber">MoMo Number</label>
+        <input type="tel" id="momoNumber" placeholder="Enter MoMo number" />
+
+        <label for="accountName">Account Name</label>
+        <input type="text" id="accountName" placeholder="Enter account name" />
+
+        <button class="btn" onclick="saveSettings()">Save Settings</button>
+      </div>
+
+      <div class="box">
+        <h2>Change PIN</h2>
+
+        <label for="oldPin">Old PIN</label>
+        <input type="password" id="oldPin" placeholder="Enter old PIN" />
+
+        <label for="newPin">New PIN</label>
+        <input type="password" id="newPin" placeholder="Enter new PIN" />
+
+        <label for="confirmPin">Confirm New PIN</label>
+        <input type="password" id="confirmPin" placeholder="Confirm new PIN" />
+
+        <button class="btn btn-dark" onclick="changePin()">Change PIN</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="linkModal" class="modal">
+    <div class="modal-box">
+      <button class="close-x" onclick="closeLinkModal()">×</button>
+      <h2>Your Site Link</h2>
+      <input type="text" id="vendorLinkBox" readonly />
+      <button class="btn" onclick="copyVendorLink()">Copy Link</button>
+    </div>
+  </div>
+
+  <div id="uzoModal" class="modal">
+    <div class="modal-box">
+      <button class="close-x" onclick="closeUzoModal()">×</button>
+      <h2>My UZO USSD Code</h2>
+
+      <div class="code-display" id="uzoCodeText">Loading...</div>
+      <div class="info-pill" id="uzoExpiryText"></div>
+      <div class="info-pill" id="uzoStatusText"></div>
+
+      <button class="btn" onclick="copyUzoCode()">Copy Code</button>
+    </div>
+  </div>
+
   <script>
+    const API_BASE = "https://sandipay.co";
     const userId = localStorage.getItem("userId");
+    let currentUzoCode = "";
+
+    const alertBox = document.getElementById("alertBox");
+
+    function showAlert(message, good = true) {
+      alertBox.textContent = message;
+      alertBox.style.display = "block";
+      alertBox.style.borderLeft = good ? "5px solid #22c55e" : "5px solid #ef4444";
+
+      setTimeout(() => {
+        alertBox.style.display = "none";
+      }, 3000);
+    }
 
     document.addEventListener("DOMContentLoaded", () => {
       if (!userId) {
-        alert("User ID not found. Please log in again.");
+        showAlert("User ID not found. Please login again.", false);
         return;
       }
 
-      fetch("https://sandipay.co/api/user-info", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data) {
-          document.getElementById("businessName").value = data.username || "";
-          document.getElementById("supportNumber").value = data.phone || "";
-          document.getElementById("senderId").value = data.sender_id || "";
-          document.getElementById("momoNumber").value = data.momo_number || "";
-document.getElementById("accountName").value = data.account_name || "";
-
-          localStorage.setItem("publicLink", data.public_link || "");
-        }
-      })
-      .catch(err => {
-        console.error("Error fetching settings:", err);
-        alert("Failed to load user settings.");
-      });
+      loadSettings();
     });
 
-    function saveSettings() {
-      const username = document.getElementById("businessName").value;
-      const phone = document.getElementById("supportNumber").value;
-      const sender_id = document.getElementById("senderId").value;
-      const momo_number = document.getElementById("momoNumber").value;
-const account_name = document.getElementById("accountName").value;
+    async function loadSettings() {
+      try {
+        const res = await fetch(`${API_BASE}/api/user-info`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId })
+        });
 
+        const data = await res.json();
 
-      if (!userId) return alert("User ID not found.");
+        document.getElementById("businessName").value = data.username || "";
+        document.getElementById("supportNumber").value = data.phone || "";
+        document.getElementById("senderId").value = data.sender_id || "";
+        document.getElementById("momoNumber").value = data.momo_number || "";
+        document.getElementById("accountName").value = data.account_name || "";
 
-      fetch("https://sandipay.co/api/update-settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-       body: JSON.stringify({ userId, username, phone, sender_id, momo_number, account_name })
+        localStorage.setItem("publicLink", data.public_link || "");
 
-      })
-      .then(res => res.text())
-      .then(alert)
-      .catch(err => {
-        console.error(err);
-        alert("Failed to update settings.");
-      });
+      } catch (error) {
+        console.error(error);
+        showAlert("Failed to load settings.", false);
+      }
     }
 
-    function changePin() {
-      const oldPin = document.getElementById("oldPin").value;
-      const newPin = document.getElementById("newPin").value;
-      const confirmPin = document.getElementById("confirmPin").value;
+    async function saveSettings() {
+      const username = document.getElementById("businessName").value.trim();
+      const phone = document.getElementById("supportNumber").value.trim();
+      const sender_id = document.getElementById("senderId").value.trim();
+      const momo_number = document.getElementById("momoNumber").value.trim();
+      const account_name = document.getElementById("accountName").value.trim();
 
-      if (!oldPin || !newPin || !confirmPin) {
-        return alert("Please fill all PIN fields.");
-      }
-      if (newPin !== confirmPin) {
-        return alert("New PINs do not match.");
-      }
-
-      fetch("https://sandipay.co/api/change-pin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, oldPin, newPin })
-      })
-      .then(res => res.text())
-      .then(alert)
-      .catch(err => {
-        console.error(err);
-        alert("Failed to change PIN.");
-      });
-    }
-
-    function viewSiteLink() {
       if (!userId) {
-        alert("User ID not found.");
+        showAlert("User ID not found.", false);
         return;
       }
 
-      fetch("https://sandipay.co/api/user-info", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId })
-      })
-      .then(res => res.json())
-      .then(data => {
+      try {
+        const res = await fetch(`${API_BASE}/api/update-settings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, username, phone, sender_id, momo_number, account_name })
+        });
+
+        const text = await res.text();
+        showAlert(text || "Settings updated successfully.");
+
+      } catch (error) {
+        console.error(error);
+        showAlert("Failed to update settings.", false);
+      }
+    }
+
+    async function changePin() {
+      const oldPin = document.getElementById("oldPin").value.trim();
+      const newPin = document.getElementById("newPin").value.trim();
+      const confirmPin = document.getElementById("confirmPin").value.trim();
+
+      if (!oldPin || !newPin || !confirmPin) {
+        showAlert("Please fill all PIN fields.", false);
+        return;
+      }
+
+      if (newPin !== confirmPin) {
+        showAlert("New PINs do not match.", false);
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/api/change-pin`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, oldPin, newPin })
+        });
+
+        const text = await res.text();
+        showAlert(text || "PIN changed successfully.");
+
+        document.getElementById("oldPin").value = "";
+        document.getElementById("newPin").value = "";
+        document.getElementById("confirmPin").value = "";
+
+      } catch (error) {
+        console.error(error);
+        showAlert("Failed to change PIN.", false);
+      }
+    }
+
+    async function viewSiteLink() {
+      try {
+        const res = await fetch(`${API_BASE}/api/user-info`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId })
+        });
+
+        const data = await res.json();
+
         if (data && data.public_link) {
           document.getElementById("vendorLinkBox").value = data.public_link;
           document.getElementById("linkModal").style.display = "flex";
         } else {
-          alert("Public link not available.");
+          showAlert("Public link not available.", false);
         }
-      })
-      .catch(err => {
-        console.error(err);
-        alert("Failed to fetch site link.");
-      });
+
+      } catch (error) {
+        console.error(error);
+        showAlert("Failed to fetch site link.", false);
+      }
     }
 
     function closeLinkModal() {
@@ -309,50 +514,64 @@ const account_name = document.getElementById("accountName").value;
       input.select();
       input.setSelectionRange(0, 99999);
       document.execCommand("copy");
-      alert("Link copied to clipboard!");
+      showAlert("Link copied successfully.");
     }
 
-  function showComingSoon() {
-  const params = new URLSearchParams(window.location.search);
-  const vendorId = params.get("vendor_id") || params.get("id");
+    async function viewUzoCode() {
+      if (!userId) {
+        showAlert("User ID not found. Please login again.", false);
+        return;
+      }
 
-  if (!vendorId) {
-    alert("Vendor ID not found in URL.");
-    return;
-  }
+      document.getElementById("uzoModal").style.display = "flex";
+      document.getElementById("uzoCodeText").textContent = "Loading...";
+      document.getElementById("uzoExpiryText").textContent = "";
+      document.getElementById("uzoStatusText").textContent = "";
 
-  window.location.href = `ussd.html?vendor_id=${vendorId}`;
-}
+      try {
+        const res = await fetch(`${API_BASE}/api/vendor/my-uzo-code/${userId}`);
+        const data = await res.json();
 
-    function closeComingSoon() {
-      document.getElementById("comingSoonModal").style.display = "none";
+        if (!data.success) {
+          currentUzoCode = "";
+          document.getElementById("uzoCodeText").textContent = "No Code";
+          document.getElementById("uzoExpiryText").textContent = data.message || "No UZO code assigned.";
+          document.getElementById("uzoStatusText").textContent = "";
+          return;
+        }
+
+        currentUzoCode = `*426*${data.code.code}#`;
+
+        document.getElementById("uzoCodeText").textContent = currentUzoCode;
+        document.getElementById("uzoExpiryText").textContent =
+          "Expiry Date: " + (data.code.expiry_date ? new Date(data.code.expiry_date).toLocaleDateString() : "Not set");
+
+        document.getElementById("uzoStatusText").textContent =
+          "Status: " + (data.code.status || "N/A");
+
+      } catch (error) {
+        console.error(error);
+        currentUzoCode = "";
+        document.getElementById("uzoCodeText").textContent = "Error";
+        document.getElementById("uzoExpiryText").textContent = "Failed to load UZO code.";
+      }
+    }
+
+    function closeUzoModal() {
+      document.getElementById("uzoModal").style.display = "none";
+    }
+
+    function copyUzoCode() {
+      if (!currentUzoCode) {
+        showAlert("No UZO code to copy.", false);
+        return;
+      }
+
+      navigator.clipboard.writeText(currentUzoCode)
+        .then(() => showAlert("UZO code copied successfully."))
+        .catch(() => showAlert("Failed to copy code.", false));
     }
   </script>
-
-  <!-- ✅ Coming Soon Modal -->
-  <div id="comingSoonModal">
-    <div class="modal-content">
-      <h3>🚧 Coming Soon</h3>
-      <p>This service is being prepared. Please check back soon!</p>
-      <button onclick="closeComingSoon()">OK</button>
-    </div>
-  </div>
-
-  <!-- ✅ Modal for Viewing Site Link -->
-  <div id="linkModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-     background-color: rgba(0,0,0,0.4); justify-content: center; align-items: center; z-index: 9999;">
-    <div style="background: white; padding: 20px; border-radius: 10px; text-align: center; width: 90%; max-width: 350px;">
-      <h3 style="margin-top: 0;">Your Site Link</h3>
-      <input type="text" id="vendorLinkBox" readonly
-             style="width: 100%; padding: 10px; font-size: 14px; margin: 15px 0; border: 1px solid #ccc; border-radius: 6px;" />
-      <button onclick="copyVendorLink()" style="background: #0a0f5a; color: white; padding: 10px 20px; border: none; border-radius: 6px;">
-        Copy Link
-      </button><br/><br/>
-      <button onclick="closeLinkModal()" style="background: #ccc; padding: 8px 16px; border: none; border-radius: 6px;">
-        Close
-      </button>
-    </div>
-  </div>
 
 </body>
 </html>
