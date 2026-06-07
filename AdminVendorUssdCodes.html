@@ -336,11 +336,18 @@
           <td><span class="badge ${item.status}">${item.status}</span></td>
           <td>${item.expiry_date ? new Date(item.expiry_date).toLocaleDateString() : "N/A"}</td>
           <td>${item.created_at ? new Date(item.created_at).toLocaleString() : "N/A"}</td>
-          <td>
-            <button class="small-btn ${btnClass}" onclick="changeStatus(${item.id}, '${nextStatus}')">
-              ${btnText}
-            </button>
-          </td>
+         <td>
+  <button class="small-btn ${btnClass}" onclick="changeStatus(${item.id}, '${nextStatus}')">
+    ${btnText}
+  </button>
+
+  <button
+    class="small-btn danger"
+    style="margin-top:6px;"
+    onclick="deleteCode(${item.id})">
+    Delete
+  </button>
+</td>
         `;
 
         codesBody.appendChild(tr);
@@ -416,6 +423,36 @@ const expiry_date = document.getElementById("expiry_date").value;
       showAlert("Connection error. Please try again.", false);
     }
   }
+
+  async function deleteCode(id) {
+
+  if (!confirm("Are you sure you want to permanently delete this USSD code?")) {
+    return;
+  }
+
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/admin/vendor-ussd-code/${id}`,
+      {
+        method: "DELETE"
+      }
+    );
+
+    const data = await res.json();
+
+    if (!data.success) {
+      showAlert(data.message || "Failed to delete code.", false);
+      return;
+    }
+
+    showAlert(data.message || "Code deleted successfully.");
+    loadCodes();
+
+  } catch (error) {
+    console.error(error);
+    showAlert("Connection error.", false);
+  }
+}
 
   loadVendors();
   loadCodes();
