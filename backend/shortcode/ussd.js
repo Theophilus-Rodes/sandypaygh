@@ -61,7 +61,7 @@ if (!DB_PASSWORD) {
 }
 
 // Your short code extension (from Moolre)
-const ADMIN_EXTENSION = "888";
+const ADMIN_EXTENSIONS = ["888", "444"];
 const USER_EXTENSION = "500";
 
 // ✅ Moolre config (from your account)
@@ -647,7 +647,7 @@ router.post("/", (req, res) => {
  const ext = String(extension || "").trim();
 
 // Only allow admin(888) or user/vendor(500)
-if (ext !== ADMIN_EXTENSION && ext !== USER_EXTENSION) {
+if (!ADMIN_EXTENSIONS.includes(ext) && ext !== USER_EXTENSION) {
   console.log("❌ Invalid extension:", extension);
   return res.json({ message: "END Invalid USSD entry point", reply: false });
 }
@@ -664,7 +664,7 @@ if (ext !== ADMIN_EXTENSION && ext !== USER_EXTENSION) {
   });
 
   // CASE 1: NEW PLAIN SESSION (*203*717#)
-if (isNewSession && !inputFromUser && ext === ADMIN_EXTENSION) {
+if (isNewSession && !inputFromUser && ADMIN_EXTENSIONS.includes(ext)) {
     console.log("🟦 NEW PLAIN SESSION for:", msisdn);
 
     const [intl, local, plusIntl] = msisdnVariants(msisdn);
