@@ -936,6 +936,62 @@ if (sessions[uzoSessionKey]) {
   });
 }
 
+
+// ✅ UZO ADMIN CODE: *426*87#
+// Works like admin 888/plain mode
+if (mainCode === "426" && uzoCode === "87") {
+  const [intl, local, plusIntl] = msisdnVariants(msisdn);
+
+  return db.query(
+    `SELECT 1
+       FROM telephone_numbers
+      WHERE phone_number IN (?, ?, ?)
+        AND (status IS NULL OR status='allowed')
+      LIMIT 1`,
+    [intl, local, plusIntl],
+    (err, rows) => {
+      if (err) {
+        console.error("❌ UZO admin telephone_numbers lookup error:", err);
+        return res.json({
+          message: "APPLICATION UNKNOWN.",
+          ussdServiceOp: 17,
+        });
+      }
+
+      if (!rows || !rows.length) {
+        console.log("❌ UZO ADMIN MSISDN not allowed:", msisdn);
+        return res.json({
+          message: "APPLICATION UNKNOWN.",
+          ussdServiceOp: 17,
+        });
+      }
+
+      sessions[uzoSessionKey] = {
+        step: "start",
+        vendorId: 1,
+        brandName: "SandyPay",
+        isPlain: true,
+        network: "",
+        selectedPkg: "",
+        recipient: "",
+        packageList: [],
+        packagePage: 0,
+        moolreSessionId: uzoSessionKey,
+        uzoCode: "87",
+      };
+
+      console.log("🟦 CREATED UZO ADMIN SESSION:", sessions[uzoSessionKey]);
+
+      return handleSession(
+        uzoSessionKey,
+        "",
+        String(msisdn || ""),
+        uzoRes
+      );
+    }
+  );
+}
+
 // ONLY validate entry point for NEW session
 if (mainCode !== "426" || !uzoCode) {
   return res.json({
