@@ -80,10 +80,26 @@ const VENDOR_MOOLRE = {
   wallet: process.env.VENDOR_MOOLRE_WALLET || "10691706070650",
 };
 
+
+const UZO_ADMIN_87_MOOLRE = {
+  url: "https://api.moolre.com/open/transact/payment",
+  user: process.env.UZO_ADMIN_87_MOOLRE_USER || "dataguygh",
+  pubkey: process.env.UZO_ADMIN_87_MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTU2NTQ1OTk5fQ.hpJg5emG0kyO40d7XIaZ12iUAspshzKvNoJPkiorkq8",
+  wallet: process.env.UZO_ADMIN_87_MOOLRE_WALLET || "10691706058501",
+};
+
 function getMoolreAccount(state) {
+  // ✅ Special Uzo admin code *426*87#
+  if (state && state.isUzoAdmin87 === true) {
+    return UZO_ADMIN_87_MOOLRE;
+  }
+
+  // ✅ Normal admin 888 / 444
   if (state && state.isPlain === true) {
     return ADMIN_MOOLRE;
   }
+
+  // ✅ Vendor
   return VENDOR_MOOLRE;
 }
 
@@ -971,6 +987,7 @@ if (mainCode === "426" && uzoCode === "87") {
         vendorId: 1,
         brandName: "SandyPay",
         isPlain: true,
+        isUzoAdmin87: true,
         network: "",
         selectedPkg: "",
         recipient: "",
