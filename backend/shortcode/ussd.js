@@ -935,7 +935,16 @@ if (sessions[uzoSessionKey]) {
       ? parts[parts.length - 1]
       : String(ussdString || "").trim();
 
-  return checkAccess(msisdn, (allowed) => {
+if (sessions[uzoSessionKey]?.isUzoAdmin87 === true) {
+  return handleSession(
+    uzoSessionKey,
+    lastInput || "",
+    String(msisdn || ""),
+    uzoRes
+  );
+}
+
+return checkAccess(msisdn, (allowed) => {
     if (!allowed) {
       return res.json({
         message: "Sorry, you don't have access.",
@@ -955,60 +964,36 @@ if (sessions[uzoSessionKey]) {
 
 // ✅ UZO ADMIN CODE: *426*87#
 // Works like admin 888/plain mode
+// ✅ UZO ADMIN CODE: *426*87#
+// Allows ALL numbers, uses AdminData, but uses special UZO payment account
 if (mainCode === "426" && uzoCode === "87") {
-  const [intl, local, plusIntl] = msisdnVariants(msisdn);
+  sessions[uzoSessionKey] = {
+    step: "start",
+    vendorId: 1,
+    brandName: "SandyPay",
+    isPlain: true,
+    isUzoAdmin87: true,
+    network: "",
+    selectedPkg: "",
+    recipient: "",
+    packageList: [],
+    packagePage: 0,
+    moolreSessionId: uzoSessionKey,
+    uzoCode: "87",
+  };
 
-  return db.query(
-    `SELECT 1
-       FROM telephone_numbers
-      WHERE phone_number IN (?, ?, ?)
-        AND (status IS NULL OR status='allowed')
-      LIMIT 1`,
-    [intl, local, plusIntl],
-    (err, rows) => {
-      if (err) {
-        console.error("❌ UZO admin telephone_numbers lookup error:", err);
-        return res.json({
-          message: "APPLICATION UNKNOWN.",
-          ussdServiceOp: 17,
-        });
-      }
+  console.log("🟦 CREATED UZO ADMIN 87 SESSION - ALL NUMBERS ALLOWED:", {
+    uzoSessionKey,
+    msisdn,
+  });
 
-      if (!rows || !rows.length) {
-        console.log("❌ UZO ADMIN MSISDN not allowed:", msisdn);
-        return res.json({
-          message: "APPLICATION UNKNOWN.",
-          ussdServiceOp: 17,
-        });
-      }
-
-      sessions[uzoSessionKey] = {
-        step: "start",
-        vendorId: 1,
-        brandName: "SandyPay",
-        isPlain: true,
-        isUzoAdmin87: true,
-        network: "",
-        selectedPkg: "",
-        recipient: "",
-        packageList: [],
-        packagePage: 0,
-        moolreSessionId: uzoSessionKey,
-        uzoCode: "87",
-      };
-
-      console.log("🟦 CREATED UZO ADMIN SESSION:", sessions[uzoSessionKey]);
-
-      return handleSession(
-        uzoSessionKey,
-        "",
-        String(msisdn || ""),
-        uzoRes
-      );
-    }
+  return handleSession(
+    uzoSessionKey,
+    "",
+    String(msisdn || ""),
+    uzoRes
   );
 }
-
 // ONLY validate entry point for NEW session
 if (mainCode !== "426" || !uzoCode) {
   return res.json({
