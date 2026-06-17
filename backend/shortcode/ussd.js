@@ -64,44 +64,52 @@ if (!DB_PASSWORD) {
 const ADMIN_EXTENSIONS = ["888", "444"];
 const USER_EXTENSION = "500";
 
-// ✅ Moolre config (from your account)
-// ✅ Moolre payment accounts
-const ADMIN_MOOLRE = {
-  url: "https://api.moolre.com/open/transact/payment",
-  user: process.env.ADMIN_MOOLRE_USER || "acheamp",
-  pubkey: process.env.ADMIN_MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjU0OSwiZXhwIjoxOTI1MDA5OTk5fQ.YNoLN19xWWZRyr2Gdy_2DexpGLZv4V9yATnyYSFef2M",
-  wallet: process.env.ADMIN_MOOLRE_WALLET || "10654906056819",
+
+
+
+// ✅ BulkClix payment accounts
+const BULKCLIX_BASE_URL = "https://api.bulkclix.com/api/v1/payment-api";
+
+const ADMIN_BULKCLIX = {
+  url: `${BULKCLIX_BASE_URL}/momopay`,
+  apiKey: process.env.ADMIN_BULKCLIX_API_KEY || "fTQMwISNm8wyFn6Xg5eY6xj8IU6tdqEdIwRLJk3K",
 };
 
-const VENDOR_MOOLRE = {
-  url: "https://api.moolre.com/open/transact/payment",
-  user: process.env.VENDOR_MOOLRE_USER || "dataguygh",
-  pubkey: process.env.VENDOR_MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTU2NTQ1OTk5fQ.hpJg5emG0kyO40d7XIaZ12iUAspshzKvNoJPkiorkq8",
-  wallet: process.env.VENDOR_MOOLRE_WALLET || "10691706070650",
+const VENDOR_BULKCLIX = {
+  url: `${BULKCLIX_BASE_URL}/momopay`,
+  apiKey: process.env.VENDOR_BULKCLIX_API_KEY || "fTQMwISNm8wyFn6Xg5eY6xj8IU6tdqEdIwRLJk3K",
 };
 
-
-const UZO_ADMIN_87_MOOLRE = {
-  url: "https://api.moolre.com/open/transact/payment",
-  user: process.env.UZO_ADMIN_87_MOOLRE_USER || "dataguygh",
-  pubkey: process.env.UZO_ADMIN_87_MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTU2NTQ1OTk5fQ.hpJg5emG0kyO40d7XIaZ12iUAspshzKvNoJPkiorkq8",
-  wallet: process.env.UZO_ADMIN_87_MOOLRE_WALLET || "10691706058501",
+const UZO_ADMIN_87_BULKCLIX = {
+  url: `${BULKCLIX_BASE_URL}/momopay`,
+  apiKey: process.env.UZO_ADMIN_87_BULKCLIX_API_KEY || "fTQMwISNm8wyFn6Xg5eY6xj8IU6tdqEdIwRLJk3K",
 };
 
-function getMoolreAccount(state) {
-  // ✅ Special Uzo admin code *426*87#
-  if (state && state.isUzoAdmin87 === true) {
-    return UZO_ADMIN_87_MOOLRE;
-  }
-
-  // ✅ Normal admin 888 / 444
-  if (state && state.isPlain === true) {
-    return ADMIN_MOOLRE;
-  }
-
-  // ✅ Vendor
-  return VENDOR_MOOLRE;
+function getBulkClixAccount(state) {
+  if (state && state.isUzoAdmin87 === true) return UZO_ADMIN_87_BULKCLIX;
+  if (state && state.isPlain === true) return ADMIN_BULKCLIX;
+  return VENDOR_BULKCLIX;
 }
+
+function getBulkClixNetwork(network) {
+  switch ((network || "").toLowerCase()) {
+    case "mtn":
+      return "MTN";
+    case "airteltigo":
+    case "airtel":
+    case "at":
+      return "AIRTELTIGO";
+    case "telecel":
+    case "vodafone":
+    case "voda":
+      return "TELECEL";
+    default:
+      return null;
+  }
+}
+
+
+
 
 // ====== MIDDLEWARE (scoped to this router) ======
 router.use(express.json({ type: "application/json" })); // for JSON
@@ -518,7 +526,7 @@ function handleSession(sessionId, input, msisdn, res) {
         const choice = (input || "").trim();
 
         if (choice === "1") {
-          // ====== INITIATE PAYMENT VIA MOOLRE (NO DB INSERT HERE) ======
+          // ====== INITIATE PAYMENT VIA BULKCLIX ======
           const m = String(state.selectedPkg || "").match(
             /@ GHS\s*(\d+(\.\d+)?)/i
           );
@@ -563,70 +571,51 @@ end(
   "Please wait for payment prompt.\nEnter your MoMo PIN to approve.\nCheck My Approvals if delayed."
 );
 
-         const channelId = getChannelId(network);
-if (!channelId) {
-  console.error(
-    "❌ Unsupported network for Moolre channel:",
-    network
-  );
+         const bulkNetwork = getBulkClixNetwork(network);
+
+if (!bulkNetwork) {
+  console.error("❌ Unsupported network for BulkClix:", network);
   return;
 }
 
-const payerLocal = toLocalMsisdn(momo_number);
-const moolreAccount = getMoolreAccount(state);
+const bulkClixAccount = getBulkClixAccount(state);
 
 const payload = {
-            type: 1,
-            channel: channelId,
-            currency: "GHS",
-            payer: payerLocal,
-            amount: Number(amount.toFixed(2)), // decimal, 2dp
-            externalref: transactionId, // comes back in webhook
-            reference: `Purchase of ${data_package}`,
-            accountnumber: moolreAccount.wallet,
-            sessionid: state.moolreSessionId,
+  amount: Number(amount.toFixed(2)),
+  phone_number: toLocalMsisdn(momo_number),
+  network: bulkNetwork,
+  transaction_id: transactionId,
+  callback_url: "https://sandipay.co/api/moolre/bulkclix-webhook",
+  reference: `SANDYPAY ${data_package}`,
+};
 
-            // 🔴 This is what the webhook will see as data.thirdpartyref
-            thirdpartyref: JSON.stringify({
-              mode: state.isPlain ? "plain" : "vendor", // plain = *203*717#, vendor = *203*717*ID#
-              vendor_id,
-              data_package,
-              network,
-              recipient_number,
-              momo_number,
-            }),
-          };
-
-         console.log("🟡 Using Moolre auth:", {
-  mode: state.isPlain ? "admin" : "vendor",
-  user: moolreAccount.user,
-  pubkeyStart: String(moolreAccount.pubkey || "").slice(0, 20) + "...",
-  wallet: moolreAccount.wallet,
+console.log("🟡 Using BulkClix:", {
+  mode: state.isUzoAdmin87
+    ? "uzo-admin-87"
+    : state.isPlain
+    ? "admin"
+    : "vendor",
+  network: bulkNetwork,
+  transactionId,
 });
-          console.log("📤 Sending to MOOLRE:", payload);
 
-          axios
-          .post(moolreAccount.url, payload, {
-  headers: {
-    "Content-Type": "application/json",
-    "X-API-USER": moolreAccount.user,
-    "X-API-PUBKEY": moolreAccount.pubkey,
-  },
-})
-            .then((response) => {
-              const resp = response.data || {};
-              console.log("✅ MOOLRE payment INIT response:", resp);
-              console.log(
-                "⏳ Payment request sent. Waiting for webhook (txstatus=1) to log the order."
-              );
-            })
-            .catch((err) => {
-              console.error(
-                "❌ MOOLRE error:",
-                err.response?.data || err.message
-              );
-            });
+console.log("📤 Sending to BULKCLIX:", payload);
 
+axios
+  .post(bulkClixAccount.url, payload, {
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "x-api-key": bulkClixAccount.apiKey,
+    },
+  })
+  .then((response) => {
+    console.log("✅ BULKCLIX payment INIT response:", response.data);
+    console.log("⏳ Waiting for BulkClix webhook success.");
+  })
+  .catch((err) => {
+    console.error("❌ BULKCLIX error:", err.response?.data || err.message);
+  });
           return;
         }
 
@@ -1164,5 +1153,136 @@ async function incrementUssdCounter(vendorId) {
     [vendorId]
   );
 }
+
+
+
+// ✅ BulkClix payment webhook
+router.post("/bulkclix-webhook", async (req, res) => {
+  try {
+    console.log("📩 BULKCLIX WEBHOOK:", req.body);
+
+    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+
+    const transactionId = body.transaction_id;
+    const status = String(body.status || "").toLowerCase();
+
+    if (!transactionId) {
+      return res.status(400).send("Missing transaction_id");
+    }
+
+    if (status !== "success") {
+      console.log("⚠️ BulkClix not successful:", status);
+      return res.status(200).send("OK");
+    }
+
+    const [orders] = await dbp.query(
+      `SELECT * FROM moolre_temp_orders WHERE externalref = ? LIMIT 1`,
+      [transactionId]
+    );
+
+    if (!orders || !orders.length) {
+      return res.status(200).send("No matching temp order");
+    }
+
+    const meta = orders[0];
+
+    const mode = meta.mode;
+    const vendor_id = Number(meta.vendor_id);
+    const data_package = meta.data_package;
+    const network = String(meta.network || "").toLowerCase();
+    const recipient_number = meta.recipient_number || body.phone_number;
+    const momo_number = meta.momo_number || body.phone_number;
+    const amountPaid = Number(meta.amount);
+
+    const package_id =
+      body.ext_transaction_id || new Date().toISOString().slice(0, 16).replace("T", " ");
+
+    if (mode === "plain") {
+      await dbp.query(
+        `INSERT INTO admin_orders
+         (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+         VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+        [1, recipient_number, data_package, amountPaid, network, package_id]
+      );
+
+      await dbp.query(
+        `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+         VALUES (?, ?, ?, NOW())`,
+        [1, "AdminData USSD sale", amountPaid]
+      );
+
+      await dbp.query(
+        `DELETE FROM moolre_temp_orders WHERE externalref = ?`,
+        [transactionId]
+      );
+
+      return res.status(200).send("OK");
+    }
+
+    const [baseRows] = await dbp.query(
+      `SELECT amount FROM admin_data_packages WHERE data_package = ? LIMIT 1`,
+      [data_package]
+    );
+
+    if (!baseRows || !baseRows.length) {
+      console.error("❌ admin_data_packages lookup failed:", data_package);
+      return res.status(500).send("Package lookup error");
+    }
+
+    const baseAmount = parseFloat(baseRows[0].amount);
+    let revenueAmount = baseAmount;
+    let vendorAmount = parseFloat((amountPaid - baseAmount).toFixed(2));
+
+    const [destRows] = await dbp.query(
+      `SELECT order_destination
+       FROM vendor_order_settings
+       WHERE vendor_id = ?
+       LIMIT 1`,
+      [vendor_id]
+    );
+
+    const destination =
+      destRows && destRows.length ? destRows[0].order_destination : "admin_orders";
+
+    const targetTable =
+      destination === "vendor_orders" ? "vendor_orders" : "admin_orders";
+
+    if (targetTable === "vendor_orders") {
+      revenueAmount = parseFloat((amountPaid * 0.01).toFixed(2));
+      vendorAmount = parseFloat((amountPaid - revenueAmount).toFixed(2));
+    }
+
+    await dbp.query(
+      `INSERT INTO ${targetTable}
+       (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
+       VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
+      [vendor_id, recipient_number, data_package, amountPaid, network, package_id]
+    );
+
+    await dbp.query(
+      `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
+       VALUES (?, ?, ?, NOW())`,
+      [vendor_id, momo_number, vendorAmount]
+    );
+
+    await dbp.query(
+      `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
+       VALUES (?, ?, ?, NOW())`,
+      [vendor_id, `Admin base for ${network} ${data_package}`, revenueAmount]
+    );
+
+    await dbp.query(
+      `DELETE FROM moolre_temp_orders WHERE externalref = ?`,
+      [transactionId]
+    );
+
+    console.log("✅ BulkClix order saved successfully:", transactionId);
+    return res.status(200).send("OK");
+
+  } catch (err) {
+    console.error("❌ BulkClix webhook error:", err);
+    return res.status(500).send("Server error");
+  }
+});
 
 module.exports = router;
