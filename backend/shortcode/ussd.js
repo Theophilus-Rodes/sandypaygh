@@ -108,7 +108,13 @@ function getBulkClixNetwork(network) {
   }
 }
 
-
+// ✅ Moolre account for VENDOR payments only
+const VENDOR_MOOLRE = {
+  url: "https://api.moolre.com/open/transact/payment",
+  user: process.env.VENDOR_MOOLRE_USER || "dataguygh",
+  pubkey: process.env.VENDOR_MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTU2NTQ1OTk5fQ.hpJg5emG0kyO40d7XIaZ12iUAspshzKvNoJPkiorkq8",
+  wallet: process.env.VENDOR_MOOLRE_WALLET || "10691706058501",
+};
 
 
 // ====== MIDDLEWARE (scoped to this router) ======
@@ -571,7 +577,58 @@ end(
   "Please wait for payment prompt.\nEnter your MoMo PIN to approve.\nCheck My Approvals if delayed."
 );
 
-         const bulkNetwork = getBulkClixNetwork(network);
+      // ✅ VENDOR PAYMENTS USE MOOLRE
+if (!state.isPlain && !state.isUzoAdmin87) {
+  const channelId = getChannelId(network);
+
+  if (!channelId) {
+    console.error("❌ Unsupported network for Moolre:", network);
+    return;
+  }
+
+  const payload = {
+    type: 1,
+    channel: channelId,
+    currency: "GHS",
+    payer: toLocalMsisdn(momo_number),
+    amount: Number(amount.toFixed(2)),
+    externalref: transactionId,
+    reference: `Purchase of ${data_package}`,
+    accountnumber: VENDOR_MOOLRE.wallet,
+    sessionid: state.moolreSessionId,
+
+    thirdpartyref: JSON.stringify({
+      mode: "vendor",
+      vendor_id,
+      data_package,
+      network,
+      recipient_number,
+      momo_number,
+    }),
+  };
+
+  console.log("📤 Sending VENDOR payment to MOOLRE:", payload);
+
+  axios
+    .post(VENDOR_MOOLRE.url, payload, {
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-USER": VENDOR_MOOLRE.user,
+        "X-API-PUBKEY": VENDOR_MOOLRE.pubkey,
+      },
+    })
+    .then((response) => {
+      console.log("✅ MOOLRE vendor payment INIT response:", response.data);
+    })
+    .catch((err) => {
+      console.error("❌ MOOLRE vendor error:", err.response?.data || err.message);
+    });
+
+  return;
+}
+
+// ✅ ADMIN PAYMENTS USE BULKCLIX
+const bulkNetwork = getBulkClixNetwork(network);
 
 if (!bulkNetwork) {
   console.error("❌ Unsupported network for BulkClix:", network);
@@ -589,17 +646,7 @@ const payload = {
   reference: `SANDYPAY ${data_package}`,
 };
 
-console.log("🟡 Using BulkClix:", {
-  mode: state.isUzoAdmin87
-    ? "uzo-admin-87"
-    : state.isPlain
-    ? "admin"
-    : "vendor",
-  network: bulkNetwork,
-  transactionId,
-});
-
-console.log("📤 Sending to BULKCLIX:", payload);
+console.log("📤 Sending ADMIN payment to BULKCLIX:", payload);
 
 axios
   .post(bulkClixAccount.url, payload, {
@@ -610,13 +657,11 @@ axios
     },
   })
   .then((response) => {
-    console.log("✅ BULKCLIX payment INIT response:", response.data);
-    console.log("⏳ Waiting for BulkClix webhook success.");
+    console.log("✅ BULKCLIX admin payment INIT response:", response.data);
   })
   .catch((err) => {
-    console.error("❌ BULKCLIX error:", err.response?.data || err.message);
-  });
-          return;
+    console.error("❌ BULKCLIX admin error:", err.response?.data || err.message);
+  });          return;
         }
 
         if (choice === "2") return end("Transaction cancelled.");
