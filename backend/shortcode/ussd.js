@@ -113,7 +113,7 @@ const VENDOR_MOOLRE = {
   url: "https://api.moolre.com/open/transact/payment",
   user: process.env.VENDOR_MOOLRE_USER || "dataguygh",
   pubkey: process.env.VENDOR_MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTU2NTQ1OTk5fQ.hpJg5emG0kyO40d7XIaZ12iUAspshzKvNoJPkiorkq8",
-  wallet: process.env.VENDOR_MOOLRE_WALLET || "10691706058501",
+  wallet: process.env.VENDOR_MOOLRE_WALLET || "10691706070650",
 };
 
 
