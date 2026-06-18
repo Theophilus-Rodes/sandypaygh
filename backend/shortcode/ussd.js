@@ -77,7 +77,9 @@ const ADMIN_BULKCLIX = {
 
 const VENDOR_BULKCLIX = {
   url: `${BULKCLIX_BASE_URL}/momopay`,
-  apiKey: process.env.VENDOR_BULKCLIX_API_KEY || "fTQMwISNm8wyFn6Xg5eY6xj8IU6tdqEdIwRLJk3K",
+  apiKey:
+    process.env.VENDOR_BULKCLIX_API_KEY ||
+    "atsrf36Y37tVpSvzwI2nS2N451G9NwYpJLxzEPht",
 };
 
 const UZO_ADMIN_87_BULKCLIX = {
@@ -107,14 +109,6 @@ function getBulkClixNetwork(network) {
       return null;
   }
 }
-
-// ✅ Moolre account for VENDOR payments only
-const VENDOR_MOOLRE = {
-  url: "https://api.moolre.com/open/transact/payment",
-  user: process.env.VENDOR_MOOLRE_USER || "dataguygh",
-  pubkey: process.env.VENDOR_MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTU2NTQ1OTk5fQ.hpJg5emG0kyO40d7XIaZ12iUAspshzKvNoJPkiorkq8",
-  wallet: process.env.VENDOR_MOOLRE_WALLET || "10691706070650",
-};
 
 
 // ====== MIDDLEWARE (scoped to this router) ======
@@ -577,55 +571,6 @@ end(
   "Please wait for payment prompt.\nEnter your MoMo PIN to approve.\nCheck My Approvals if delayed."
 );
 
-      // ✅ VENDOR PAYMENTS USE MOOLRE
-if (!state.isPlain && !state.isUzoAdmin87) {
-  const channelId = getChannelId(network);
-
-  if (!channelId) {
-    console.error("❌ Unsupported network for Moolre:", network);
-    return;
-  }
-
-  const payload = {
-    type: 1,
-    channel: channelId,
-    currency: "GHS",
-    payer: toLocalMsisdn(momo_number),
-    amount: Number(amount.toFixed(2)),
-    externalref: transactionId,
-    reference: `Purchase of ${data_package}`,
-    accountnumber: VENDOR_MOOLRE.wallet,
-    sessionid: state.moolreSessionId,
-
-    thirdpartyref: JSON.stringify({
-      mode: "vendor",
-      vendor_id,
-      data_package,
-      network,
-      recipient_number,
-      momo_number,
-    }),
-  };
-
-  console.log("📤 Sending VENDOR payment to MOOLRE:", payload);
-
-  axios
-    .post(VENDOR_MOOLRE.url, payload, {
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-USER": VENDOR_MOOLRE.user,
-        "X-API-PUBKEY": VENDOR_MOOLRE.pubkey,
-      },
-    })
-    .then((response) => {
-      console.log("✅ MOOLRE vendor payment INIT response:", response.data);
-    })
-    .catch((err) => {
-      console.error("❌ MOOLRE vendor error:", err.response?.data || err.message);
-    });
-
-  return;
-}
 
 // ✅ ADMIN PAYMENTS USE BULKCLIX
 const bulkNetwork = getBulkClixNetwork(network);
@@ -646,7 +591,7 @@ const payload = {
   reference: `SANDYPAY ${data_package}`,
 };
 
-console.log("📤 Sending ADMIN payment to BULKCLIX:", payload);
+console.log("📤 Sending payment to BULKCLIX:", payload);
 
 axios
   .post(bulkClixAccount.url, payload, {
