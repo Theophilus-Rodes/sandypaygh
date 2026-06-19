@@ -7612,13 +7612,25 @@ app.post("/api/admin/vendor-order-settings", (req, res) => {
   });
 });
 
+
+
 app.post("/api/send-withdrawal-whatsapp", async (req, res) => {
   console.log("========== WITHDRAWAL GIANTSMS REQUEST START ==========");
 
   try {
     const { tel, network, amount, username, userId } = req.body;
 
+    console.log("STEP 1: Incoming request body:", {
+      tel,
+      network,
+      amount,
+      username,
+      userId
+    });
+
     if (!tel || !network || !amount || !username || !userId) {
+      console.log("STEP 1 FAILED: Missing withdrawal details");
+
       return res.status(400).json({
         success: false,
         message: "Missing withdrawal details."
@@ -7627,37 +7639,56 @@ app.post("/api/send-withdrawal-whatsapp", async (req, res) => {
 
     const withdrawAmount = Number(amount);
 
+    console.log("STEP 2: Converted withdraw amount:", withdrawAmount);
+
     if (withdrawAmount < 50) {
+      console.log("STEP 2 FAILED: Amount below minimum");
+
       return res.status(400).json({
         success: false,
         message: "Minimum withdrawal amount is GHS 50."
       });
     }
 
-    // ✅ Check vendor wallet balance
     const balanceSql = `
       SELECT COALESCE(SUM(amount), 0) AS balance
       FROM wallet_loads
       WHERE vendor_id = ?
     `;
 
+    console.log("STEP 3: Checking wallet balance with userId/vendor_id:", userId);
+    console.log("STEP 3 SQL:", balanceSql);
+
     db.query(balanceSql, [userId], async (balanceErr, balanceRows) => {
       if (balanceErr) {
-        console.error("Wallet balance check error:", balanceErr);
+        console.error("STEP 3 FAILED: Wallet balance check error:", balanceErr);
+
         return res.status(500).json({
           success: false,
           message: "Failed to check wallet balance."
         });
       }
 
-      const currentBalance = Number(balanceRows[0].balance || 0);
+      console.log("STEP 3 RESULT: Balance rows:", balanceRows);
+
+      const currentBalance = Number(balanceRows[0]?.balance || 0);
+
+      console.log("STEP 4: Current wallet balance:", currentBalance);
+      console.log("STEP 4: Requested withdrawal amount:", withdrawAmount);
 
       if (currentBalance < withdrawAmount) {
+        console.log("STEP 4 FAILED: Insufficient wallet balance", {
+          currentBalance,
+          withdrawAmount
+        });
+
         return res.status(400).json({
           success: false,
           message: `Insufficient wallet balance. Your balance is GHS ${currentBalance.toFixed(2)}`
         });
       }
+
+      console.log("STEP 4 PASSED: Wallet balance is enough");
 
       const adminPhone = "233559126985";
 
@@ -7670,6 +7701,12 @@ Amount: GHS ${withdrawAmount}
 
 Please process this withdrawal.`;
 
+      console.log("STEP 5: SMS details prepared:", {
+        adminPhone,
+        sender: "SANDYPAY",
+        message
+      });
+
       const GIANTSMS_TOKEN = "MjY5ODVfZWR5Z3h0OmlXWmpPbWdOaEpIZQ==";
       const GIANTSMS_SENDER_ID = "SANDYPAY";
       const GIANTSMS_URL = "https://api.giantsms.com/api/v1/send";
@@ -7680,6 +7717,8 @@ Please process this withdrawal.`;
       formData.append("msg", message);
 
       try {
+        console.log("STEP 6: Sending SMS to GiantSMS...");
+
         const response = await axios.post(GIANTSMS_URL, formData, {
           headers: {
             Authorization: `Basic ${GIANTSMS_TOKEN}`,
@@ -7688,38 +7727,47 @@ Please process this withdrawal.`;
           timeout: 20000
         });
 
-        console.log("GiantSMS response:", response.data);
+        console.log("STEP 6 RESULT: GiantSMS full response:", response.data);
 
         if (response.data.status === false) {
+          console.log("STEP 6 FAILED: GiantSMS returned false:", response.data);
+
           return res.status(400).json({
             success: false,
             message: response.data.message || "SMS failed."
           });
         }
 
-        // ✅ Deduct withdrawal amount from wallet_loads
+        console.log("STEP 6 PASSED: SMS sent successfully");
+
         const deductSql = `
           INSERT INTO wallet_loads
           (vendor_id, momo, amount, date_loaded)
           VALUES (?, ?, ?, NOW())
         `;
 
+        console.log("STEP 7: Deducting wallet:", {
+          vendor_id: userId,
+          momo: tel,
+          amount: -withdrawAmount
+        });
+
         db.query(
           deductSql,
-          [
-            userId,
-            tel,
-            -withdrawAmount
-          ],
-          (deductErr) => {
+          [userId, tel, -withdrawAmount],
+          (deductErr, deductResult) => {
             if (deductErr) {
-              console.error("Wallet deduction error:", deductErr);
+              console.error("STEP 7 FAILED: Wallet deduction error:", deductErr);
 
               return res.status(500).json({
                 success: false,
                 message: "SMS sent but wallet deduction failed."
               });
             }
+
+            console.log("STEP 7 PASSED: Wallet deducted successfully:", deductResult);
+
+            console.log("========== WITHDRAWAL GIANTSMS REQUEST END SUCCESS ==========");
 
             return res.json({
               success: true,
@@ -7733,7 +7781,11 @@ Please process this withdrawal.`;
         );
 
       } catch (smsError) {
-        console.error("GiantSMS Error:", smsError.response?.data || smsError.message);
+        console.error("STEP 6 ERROR: GiantSMS Error:", {
+          responseData: smsError.response?.data,
+          status: smsError.response?.status,
+          message: smsError.message
+        });
 
         return res.status(500).json({
           success: false,
@@ -7744,7 +7796,7 @@ Please process this withdrawal.`;
     });
 
   } catch (error) {
-    console.error("Withdrawal route error:", error);
+    console.error("MAIN ROUTE ERROR:", error);
 
     return res.status(500).json({
       success: false,
@@ -7753,7 +7805,6 @@ Please process this withdrawal.`;
     });
   }
 });
-
 
 /////Pending orders 
 app.get("/api/vendor-orders/pending-countss", (req, res) => {
