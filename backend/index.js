@@ -7729,14 +7729,14 @@ Please process this withdrawal.`;
 
         console.log("STEP 6 RESULT: GiantSMS full response:", response.data);
 
-        if (response.data.status === false) {
-          console.log("STEP 6 FAILED: GiantSMS returned false:", response.data);
+       if (response.data.status === false) {
+  console.log("GIANTSMS FAILED:", response.data);
 
-          return res.status(400).json({
-            success: false,
-            message: response.data.message || "SMS failed."
-          });
-        }
+  return res.status(400).json({
+    success: false,
+    message: "Withdrawal request could not be sent because SMS credit is low. Please contact admin."
+  });
+}
 
         console.log("STEP 6 PASSED: SMS sent successfully");
 
