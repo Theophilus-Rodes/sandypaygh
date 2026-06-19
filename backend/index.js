@@ -7707,7 +7707,7 @@ Please process this withdrawal.`;
         message
       });
 
-      const GIANTSMS_TOKEN = "MjY5ODVfZWR5Z3h0OmlXWmpPbWdOaEpIZQ==";
+      const GIANTSMS_TOKEN = "cEFkTFNYRGE6bkVNcWFzZUNBWQ==";
       const GIANTSMS_SENDER_ID = "SANDYPAY";
       const GIANTSMS_URL = "https://api.giantsms.com/api/v1/send";
 
