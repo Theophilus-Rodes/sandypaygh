@@ -600,7 +600,7 @@ let vendorAmount = parseFloat((amountPaid - baseAmount).toFixed(2));
                 // ✅ If vendor handles their own orders,
 // admin takes only 1%, vendor gets 99%
 if (targetTable === "vendor_orders") {
-  revenueAmount = parseFloat((amountPaid * 0.01).toFixed(2));
+ revenueAmount = parseFloat((amountPaid * 0.02).toFixed(2));
   vendorAmount = parseFloat((amountPaid - revenueAmount).toFixed(2));
 }
 
