@@ -246,8 +246,46 @@ function checkAccess(msisdn, cb) {
   }
 }
 
+
+async function getLockedNetworks(userId) {
+  if (!userId) return [];
+
+  const [rows] = await dbp.query(
+    `SELECT network
+     FROM user_network_locks
+     WHERE user_id = ? AND status = 'locked'`,
+    [userId]
+  );
+
+  return rows.map(r => String(r.network).toLowerCase());
+}
+
+function renderNetworkMenu(state) {
+  const locked = state.lockedNetworks || [];
+
+  const networks = [
+    { key: "mtn", label: "MTN" },
+    { key: "airteltigo", label: "AirtelTigo" },
+    { key: "telecel", label: "Telecel" }
+  ].filter(n => !locked.includes(n.key.toLowerCase()));
+
+  state.availableNetworks = networks;
+
+  if (!networks.length) {
+    return "No network is available for you now.";
+  }
+
+  let msg = "Network\n";
+  networks.forEach((n, index) => {
+    msg += `${index + 1}) ${n.label}\n`;
+  });
+  msg += "0) Back";
+
+  return msg;
+}
+
 // ====== CORE SESSION HANDLER ======
-function handleSession(sessionId, input, msisdn, res) {
+async function handleSession(sessionId, input, msisdn, res) {
   const state = sessions[sessionId];
 
   if (!state) {
@@ -293,11 +331,19 @@ function handleSession(sessionId, input, msisdn, res) {
       // ================== MENU ==================
       case "menu": {
         const choice = (input || "").trim();
+if (choice === "1") {
+  state.lockedNetworks = await getLockedNetworks(state.vendorId);
 
-        if (choice === "1") {
-          state.step = "network";
-          return reply("Network\n1) MTN\n2) AirtelTigo\n3) Telecel\n0) Back");
-        }
+  state.step = "network";
+
+  const menu = renderNetworkMenu(state);
+
+  if (menu === "No network is available for you now.") {
+    return end(menu);
+  }
+
+  return reply(menu);
+}
 
         if (choice === "2") {
           if (!state.vendorId || state.isPlain) {
@@ -336,17 +382,23 @@ function handleSession(sessionId, input, msisdn, res) {
       case "network": {
         const choice = (input || "").trim();
 
-        if (choice === "1") state.network = "mtn";
-        else if (choice === "2") state.network = "airteltigo";
-        else if (choice === "3") state.network = "telecel";
-        else if (choice === "0") {
-          state.step = "menu";
-          return reply("Back to menu:\n1. Buy Data\n2. Contact Us");
-        } else {
-          return reply(
-            "Invalid network. Choose:\n1) MTN\n2) AirtelTigo\n3) Telecel"
-          );
-        }
+       if (choice === "0") {
+  state.step = "menu";
+  return reply("Back to menu:\n1. Buy Data\n2. Contact Us");
+}
+
+const availableNetworks = state.availableNetworks || [];
+const selectedIndex = parseInt(choice, 10) - 1;
+
+if (
+  !Number.isInteger(selectedIndex) ||
+  selectedIndex < 0 ||
+  selectedIndex >= availableNetworks.length
+) {
+  return reply("Invalid network. Choose:\n" + renderNetworkMenu(state));
+}
+
+state.network = availableNetworks[selectedIndex].key;
 
         // PLAIN MODE → AdminData
         if (state.isPlain) {
@@ -449,7 +501,7 @@ function handleSession(sessionId, input, msisdn, res) {
             // last page → back to network
             state.packagePage = 0;
             state.step = "network";
-            return reply("Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel");
+           return reply(renderNetworkMenu(state));
           }
         }
 
