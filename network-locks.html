@@ -6,98 +6,217 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
+*{
+  box-sizing:border-box;
+}
+
 body{
   margin:0;
   font-family:Arial,sans-serif;
-  background:#eef3ff;
-  color:#06133b;
+  background:linear-gradient(135deg,#eef3ff,#ffffff);
+  color:#07113d;
 }
+
 .header{
-  background:#111b72;
+  background:linear-gradient(135deg,#08166e,#172ca8);
   color:white;
   padding:18px;
   font-size:22px;
   font-weight:bold;
+  position:sticky;
+  top:0;
+  z-index:10;
 }
+
 .container{
-  padding:20px;
+  padding:18px;
   max-width:1200px;
   margin:auto;
 }
+
 .top{
   display:flex;
   justify-content:space-between;
+  gap:12px;
   align-items:center;
-  margin-bottom:20px;
+  margin-bottom:18px;
 }
+
+.top h2{
+  margin:0;
+  font-size:24px;
+}
+
 .back{
   background:#0b45d9;
   color:white;
   border:0;
   padding:12px 18px;
-  border-radius:12px;
+  border-radius:14px;
   cursor:pointer;
   font-weight:bold;
 }
+
+.info-box{
+  background:white;
+  border-radius:18px;
+  padding:16px;
+  margin-bottom:18px;
+  box-shadow:0 10px 25px rgba(0,0,0,.07);
+  border:1px solid #dbe4ff;
+}
+
+.info-box b{
+  color:#0b45d9;
+}
+
 .search{
   width:100%;
-  padding:14px;
+  padding:15px;
   border:1px solid #cbd5e1;
-  border-radius:14px;
-  margin-bottom:20px;
+  border-radius:16px;
+  margin-bottom:18px;
   font-size:16px;
+  outline:none;
 }
-.table-wrap{
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:16px;
+}
+
+.user-card{
   background:white;
-  border-radius:20px;
-  overflow:auto;
-  box-shadow:0 10px 30px rgba(0,0,0,.08);
+  border-radius:22px;
+  padding:18px;
+  box-shadow:0 12px 30px rgba(0,0,0,.08);
+  border:1px solid #e5e9ff;
 }
-table{
-  width:100%;
-  border-collapse:collapse;
+
+.user-head{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:14px;
+  align-items:flex-start;
 }
-th,td{
-  padding:16px;
-  border-bottom:1px solid #e5e7eb;
-  text-align:left;
-}
-th{
-  background:#f8fafc;
-  font-size:14px;
-}
-.badge{
-  padding:7px 12px;
-  border-radius:20px;
-  font-size:13px;
+
+.user-name{
+  font-size:18px;
   font-weight:bold;
 }
+
+.user-phone{
+  color:#64748b;
+  font-size:14px;
+  margin-top:4px;
+}
+
+.user-id{
+  background:#eef3ff;
+  color:#0b45d9;
+  padding:7px 10px;
+  border-radius:999px;
+  font-weight:bold;
+  font-size:13px;
+}
+
+.lock-title{
+  font-weight:bold;
+  margin:12px 0 10px;
+  color:#334155;
+}
+
+.networks{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:10px;
+}
+
+.net-box{
+  border:1px solid #e2e8f0;
+  border-radius:16px;
+  padding:12px;
+  text-align:center;
+  background:#f8fafc;
+}
+
+.net-name{
+  font-weight:bold;
+  margin-bottom:8px;
+}
+
+.badge{
+  display:inline-block;
+  padding:6px 10px;
+  border-radius:20px;
+  font-size:12px;
+  font-weight:bold;
+  margin-bottom:10px;
+}
+
 .locked{
   background:#fee2e2;
   color:#991b1b;
 }
+
 .open{
   background:#dcfce7;
   color:#166534;
 }
+
 .toggle{
   border:0;
-  padding:9px 14px;
-  border-radius:10px;
+  padding:9px 12px;
+  border-radius:12px;
   cursor:pointer;
   font-weight:bold;
   color:white;
+  width:100%;
 }
+
 .lock-btn{
   background:#dc2626;
 }
+
 .unlock-btn{
   background:#16a34a;
 }
+
 .loading{
   text-align:center;
   padding:30px;
   font-weight:bold;
+  background:white;
+  border-radius:18px;
+}
+
+@media(max-width:800px){
+  .grid{
+    grid-template-columns:1fr;
+  }
+
+  .top{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .back{
+    width:100%;
+  }
+
+  .networks{
+    grid-template-columns:1fr;
+  }
+
+  .header{
+    font-size:19px;
+  }
+
+  .top h2{
+    font-size:20px;
+  }
 }
 </style>
 </head>
@@ -109,10 +228,15 @@ th{
 <div class="container">
 
   <div class="top">
-    <h2>Hide Networks For Users</h2>
+    <h2>Hide Networks</h2>
     <button class="back" onclick="window.location.href='admindashboard.html'">
       Back to Dashboard
     </button>
+  </div>
+
+  <div class="info-box">
+    <p><b>Admin Code:</b> hides network for the customer/user dialing the admin USSD.</p>
+    <p><b>Vendor Code:</b> hides network for that vendor’s USSD menu.</p>
   </div>
 
   <input 
@@ -123,24 +247,8 @@ th{
     onkeyup="filterUsers()"
   >
 
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>User ID</th>
-          <th>Username</th>
-          <th>Phone</th>
-          <th>MTN</th>
-          <th>Telecel</th>
-          <th>AirtelTigo</th>
-        </tr>
-      </thead>
-      <tbody id="usersTable">
-        <tr>
-          <td colspan="6" class="loading">Loading users...</td>
-        </tr>
-      </tbody>
-    </table>
+  <div id="usersGrid" class="grid">
+    <div class="loading">Loading users...</div>
   </div>
 
 </div>
@@ -154,8 +262,8 @@ async function loadUsers(){
     const data = await res.json();
 
     if(!data.success){
-      document.getElementById("usersTable").innerHTML =
-        `<tr><td colspan="6" class="loading">Failed to load users.</td></tr>`;
+      document.getElementById("usersGrid").innerHTML =
+        `<div class="loading">Failed to load users.</div>`;
       return;
     }
 
@@ -164,29 +272,39 @@ async function loadUsers(){
 
   }catch(err){
     console.error(err);
-    document.getElementById("usersTable").innerHTML =
-      `<tr><td colspan="6" class="loading">Server error loading users.</td></tr>`;
+    document.getElementById("usersGrid").innerHTML =
+      `<div class="loading">Server error loading users.</div>`;
   }
 }
 
 function renderUsers(users){
-  const tbody = document.getElementById("usersTable");
+  const grid = document.getElementById("usersGrid");
 
   if(users.length === 0){
-    tbody.innerHTML = `<tr><td colspan="6" class="loading">No users found.</td></tr>`;
+    grid.innerHTML = `<div class="loading">No users found.</div>`;
     return;
   }
 
-  tbody.innerHTML = users.map(user => `
-    <tr>
-      <td>${user.id}</td>
-      <td>${user.username || "N/A"}</td>
-      <td>${user.phone || user.telephone || "N/A"}</td>
+  grid.innerHTML = users.map(user => `
+    <div class="user-card">
+      <div class="user-head">
+        <div>
+          <div class="user-name">${user.username || "N/A"}</div>
+          <div class="user-phone">${user.phone || user.telephone || "N/A"}</div>
+        </div>
+        <div class="user-id">ID: ${user.id}</div>
+      </div>
 
-      <td>${networkControl(user, "MTN", user.mtn_locked)}</td>
-      <td>${networkControl(user, "Telecel", user.telecel_locked)}</td>
-      <td>${networkControl(user, "AirtelTigo", user.airteltigo_locked)}</td>
-    </tr>
+      <div class="lock-title">
+        ${user.role === "vendor" ? "Vendor Code Network Locks" : "Admin/Plain Code Network Locks"}
+      </div>
+
+      <div class="networks">
+        ${networkControl(user, "MTN", user.mtn_locked)}
+        ${networkControl(user, "Telecel", user.telecel_locked)}
+        ${networkControl(user, "AirtelTigo", user.airteltigo_locked)}
+      </div>
+    </div>
   `).join("");
 }
 
@@ -194,16 +312,20 @@ function networkControl(user, network, locked){
   const isLocked = Number(locked) === 1;
 
   return `
-    <span class="badge ${isLocked ? "locked" : "open"}">
-      ${isLocked ? "Hidden" : "Showing"}
-    </span>
-    <br><br>
-    <button 
-      class="toggle ${isLocked ? "unlock-btn" : "lock-btn"}"
-      onclick="toggleNetwork(${user.id}, '${network}', ${!isLocked})"
-    >
-      ${isLocked ? "Unlock" : "Hide"}
-    </button>
+    <div class="net-box">
+      <div class="net-name">${network}</div>
+
+      <span class="badge ${isLocked ? "locked" : "open"}">
+        ${isLocked ? "Hidden" : "Showing"}
+      </span>
+
+      <button 
+        class="toggle ${isLocked ? "unlock-btn" : "lock-btn"}"
+        onclick="toggleNetwork(${user.id}, '${network}', ${!isLocked})"
+      >
+        ${isLocked ? "Unlock" : "Hide"}
+      </button>
+    </div>
   `;
 }
 
@@ -242,7 +364,8 @@ function filterUsers(){
   const filtered = allUsers.filter(user => {
     return String(user.id).includes(keyword) ||
       String(user.username || "").toLowerCase().includes(keyword) ||
-      String(user.phone || user.telephone || "").toLowerCase().includes(keyword);
+      String(user.phone || user.telephone || "").toLowerCase().includes(keyword) ||
+      String(user.role || "").toLowerCase().includes(keyword);
   });
 
   renderUsers(filtered);
