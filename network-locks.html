@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Network Locks - Sandypay</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body{
+  margin:0;
+  font-family:Arial,sans-serif;
+  background:#eef3ff;
+  color:#06133b;
+}
+.header{
+  background:#111b72;
+  color:white;
+  padding:18px;
+  font-size:22px;
+  font-weight:bold;
+}
+.container{
+  padding:20px;
+  max-width:1200px;
+  margin:auto;
+}
+.top{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:20px;
+}
+.back{
+  background:#0b45d9;
+  color:white;
+  border:0;
+  padding:12px 18px;
+  border-radius:12px;
+  cursor:pointer;
+  font-weight:bold;
+}
+.search{
+  width:100%;
+  padding:14px;
+  border:1px solid #cbd5e1;
+  border-radius:14px;
+  margin-bottom:20px;
+  font-size:16px;
+}
+.table-wrap{
+  background:white;
+  border-radius:20px;
+  overflow:auto;
+  box-shadow:0 10px 30px rgba(0,0,0,.08);
+}
+table{
+  width:100%;
+  border-collapse:collapse;
+}
+th,td{
+  padding:16px;
+  border-bottom:1px solid #e5e7eb;
+  text-align:left;
+}
+th{
+  background:#f8fafc;
+  font-size:14px;
+}
+.badge{
+  padding:7px 12px;
+  border-radius:20px;
+  font-size:13px;
+  font-weight:bold;
+}
+.locked{
+  background:#fee2e2;
+  color:#991b1b;
+}
+.open{
+  background:#dcfce7;
+  color:#166534;
+}
+.toggle{
+  border:0;
+  padding:9px 14px;
+  border-radius:10px;
+  cursor:pointer;
+  font-weight:bold;
+  color:white;
+}
+.lock-btn{
+  background:#dc2626;
+}
+.unlock-btn{
+  background:#16a34a;
+}
+.loading{
+  text-align:center;
+  padding:30px;
+  font-weight:bold;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">🔒 Sandypay Network Locks</div>
+
+<div class="container">
+
+  <div class="top">
+    <h2>Hide Networks For Users</h2>
+    <button class="back" onclick="window.location.href='admindashboard.html'">
+      Back to Dashboard
+    </button>
+  </div>
+
+  <input 
+    type="text" 
+    id="searchBox" 
+    class="search" 
+    placeholder="Search by username, phone or user ID..."
+    onkeyup="filterUsers()"
+  >
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>User ID</th>
+          <th>Username</th>
+          <th>Phone</th>
+          <th>MTN</th>
+          <th>Telecel</th>
+          <th>AirtelTigo</th>
+        </tr>
+      </thead>
+      <tbody id="usersTable">
+        <tr>
+          <td colspan="6" class="loading">Loading users...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+let allUsers = [];
+
+async function loadUsers(){
+  try{
+    const res = await fetch("/api/admin/network-locks/users");
+    const data = await res.json();
+
+    if(!data.success){
+      document.getElementById("usersTable").innerHTML =
+        `<tr><td colspan="6" class="loading">Failed to load users.</td></tr>`;
+      return;
+    }
+
+    allUsers = data.users || [];
+    renderUsers(allUsers);
+
+  }catch(err){
+    console.error(err);
+    document.getElementById("usersTable").innerHTML =
+      `<tr><td colspan="6" class="loading">Server error loading users.</td></tr>`;
+  }
+}
+
+function renderUsers(users){
+  const tbody = document.getElementById("usersTable");
+
+  if(users.length === 0){
+    tbody.innerHTML = `<tr><td colspan="6" class="loading">No users found.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = users.map(user => `
+    <tr>
+      <td>${user.id}</td>
+      <td>${user.username || "N/A"}</td>
+      <td>${user.phone || user.telephone || "N/A"}</td>
+
+      <td>${networkControl(user, "MTN", user.mtn_locked)}</td>
+      <td>${networkControl(user, "Telecel", user.telecel_locked)}</td>
+      <td>${networkControl(user, "AirtelTigo", user.airteltigo_locked)}</td>
+    </tr>
+  `).join("");
+}
+
+function networkControl(user, network, locked){
+  const isLocked = Number(locked) === 1;
+
+  return `
+    <span class="badge ${isLocked ? "locked" : "open"}">
+      ${isLocked ? "Hidden" : "Showing"}
+    </span>
+    <br><br>
+    <button 
+      class="toggle ${isLocked ? "unlock-btn" : "lock-btn"}"
+      onclick="toggleNetwork(${user.id}, '${network}', ${!isLocked})"
+    >
+      ${isLocked ? "Unlock" : "Hide"}
+    </button>
+  `;
+}
+
+async function toggleNetwork(userId, network, locked){
+  try{
+    const res = await fetch("/api/admin/network-locks/toggle", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        network: network,
+        locked: locked
+      })
+    });
+
+    const data = await res.json();
+
+    if(!data.success){
+      alert(data.message || "Failed to update network.");
+      return;
+    }
+
+    await loadUsers();
+
+  }catch(err){
+    console.error(err);
+    alert("Server error. Try again.");
+  }
+}
+
+function filterUsers(){
+  const keyword = document.getElementById("searchBox").value.toLowerCase();
+
+  const filtered = allUsers.filter(user => {
+    return String(user.id).includes(keyword) ||
+      String(user.username || "").toLowerCase().includes(keyword) ||
+      String(user.phone || user.telephone || "").toLowerCase().includes(keyword);
+  });
+
+  renderUsers(filtered);
+}
+
+loadUsers();
+</script>
+
+</body>
+</html>
