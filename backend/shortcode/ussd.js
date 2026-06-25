@@ -246,7 +246,6 @@ function checkAccess(msisdn, cb) {
   }
 }
 
-
 async function getLockedNetworks(userId) {
   if (!userId) return [];
 
@@ -257,7 +256,15 @@ async function getLockedNetworks(userId) {
     [userId]
   );
 
-  return rows.map(r => String(r.network).toLowerCase());
+  return rows.map(r => {
+    const n = String(r.network || "").toLowerCase();
+
+    if (n === "airteltigo" || n === "airtel" || n === "at") {
+      return "at";
+    }
+
+    return n;
+  });
 }
 
 function renderNetworkMenu(state) {
