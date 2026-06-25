@@ -447,12 +447,14 @@ state.network = availableNetworks[selectedIndex].key;
 
         // VENDOR MODE → data_packages
         const net = state.network.toLowerCase();
-        db.query(
-          `SELECT data_package, amount
-           FROM data_packages
-           WHERE vendor_id = ? AND network = ? AND status = 'available'
-           ORDER BY amount ASC`,
-          [state.vendorId, net],
+    db.query(
+  `SELECT data_package, amount
+   FROM data_packages
+   WHERE vendor_id = ?
+     AND LOWER(network) = LOWER(?)
+     AND status = 'available'
+   ORDER BY amount ASC`,
+  [state.vendorId, net],
           (err, rows) => {
             try {
               if (err) {
