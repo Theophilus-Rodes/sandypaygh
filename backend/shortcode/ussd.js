@@ -265,7 +265,7 @@ function renderNetworkMenu(state) {
 
   const networks = [
     { key: "mtn", label: "MTN" },
-    { key: "airteltigo", label: "AirtelTigo" },
+   { key: "at", label: "AirtelTigo" },
     { key: "telecel", label: "Telecel" }
   ].filter(n => !locked.includes(n.key.toLowerCase()));
 
@@ -447,14 +447,17 @@ state.network = availableNetworks[selectedIndex].key;
 
         // VENDOR MODE → data_packages
         const net = state.network.toLowerCase();
-    db.query(
+   db.query(
   `SELECT data_package, amount
    FROM data_packages
    WHERE vendor_id = ?
-     AND LOWER(network) = LOWER(?)
+     AND (
+       LOWER(network) = LOWER(?)
+       OR (? = 'at' AND LOWER(network) IN ('at', 'airteltigo', 'airtel'))
+     )
      AND status = 'available'
    ORDER BY amount ASC`,
-  [state.vendorId, net],
+  [state.vendorId, net, net],
           (err, rows) => {
             try {
               if (err) {
