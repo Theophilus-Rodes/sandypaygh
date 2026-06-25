@@ -361,14 +361,22 @@ async function handleSession(sessionId, input, msisdn, res) {
       case "menu": {
         const choice = (input || "").trim();
 if (choice === "1") {
- let lockUserId = state.vendorId;
+let lockUserId = state.vendorId;
 
 try {
+  // Admin/plain codes 888, 444 and 426*87 should use admin lock account ID 3
   if (state.isPlain === true) {
-    lockUserId = await getUserIdByMsisdn(msisdn);
+    lockUserId = 3;
   }
 
   state.lockedNetworks = await getLockedNetworks(lockUserId);
+
+  console.log("🔒 NETWORK LOCK CHECK:", {
+    isPlain: state.isPlain,
+    lockUserId,
+    lockedNetworks: state.lockedNetworks
+  });
+
 } catch (err) {
   console.error("❌ Network lock check failed:", err.message);
   state.lockedNetworks = [];
