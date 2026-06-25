@@ -266,25 +266,29 @@ async function getLockedNetworks(userId) {
     return n;
   });
 }
+
 async function getUserIdByMsisdn(msisdn) {
   const [intl, local, plusIntl] = msisdnVariants(msisdn);
 
-  const [rows] = await dbp.query(
-    `SELECT id
-     FROM users
-     WHERE phone IN (?, ?, ?)
-        OR telephone IN (?, ?, ?)
-        OR other_telephone IN (?, ?, ?)
-     LIMIT 1`,
-    [
-      intl, local, plusIntl,
-      intl, local, plusIntl,
-      intl, local, plusIntl
-    ]
-  );
+  try {
+    const [rows] = await dbp.query(
+      `SELECT id
+       FROM users
+       WHERE phone IN (?, ?, ?)
+          OR telephone IN (?, ?, ?)
+       LIMIT 1`,
+      [intl, local, plusIntl, intl, local, plusIntl]
+    );
 
-  return rows && rows.length ? rows[0].id : null;
+    return rows && rows.length ? rows[0].id : null;
+
+  } catch (err) {
+    console.error("❌ getUserIdByMsisdn error:", err.message);
+    return null;
+  }
 }
+
+
 function renderNetworkMenu(state) {
   const locked = state.lockedNetworks || [];
 
@@ -359,11 +363,16 @@ async function handleSession(sessionId, input, msisdn, res) {
 if (choice === "1") {
  let lockUserId = state.vendorId;
 
-if (state.isPlain === true) {
-  lockUserId = await getUserIdByMsisdn(msisdn);
-}
+try {
+  if (state.isPlain === true) {
+    lockUserId = await getUserIdByMsisdn(msisdn);
+  }
 
-state.lockedNetworks = await getLockedNetworks(lockUserId);
+  state.lockedNetworks = await getLockedNetworks(lockUserId);
+} catch (err) {
+  console.error("❌ Network lock check failed:", err.message);
+  state.lockedNetworks = [];
+}
 
   state.step = "network";
 
