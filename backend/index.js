@@ -8009,6 +8009,65 @@ app.get("/api/vendor/customers/download", async (req, res) => {
 });
 
 
+/////Network Lock
+app.get("/api/admin/network-locks/users", (req, res) => {
+  const sql = `
+    SELECT 
+      u.id,
+      u.username,
+      u.phone,
+      MAX(CASE WHEN unl.network = 'MTN' AND unl.status = 'locked' THEN 1 ELSE 0 END) AS mtn_locked,
+      MAX(CASE WHEN unl.network = 'Telecel' AND unl.status = 'locked' THEN 1 ELSE 0 END) AS telecel_locked,
+      MAX(CASE WHEN unl.network = 'AirtelTigo' AND unl.status = 'locked' THEN 1 ELSE 0 END) AS airteltigo_locked
+    FROM users u
+    LEFT JOIN user_network_locks unl ON unl.user_id = u.id
+    GROUP BY u.id, u.username, u.phone
+    ORDER BY u.id DESC
+  `;
+
+  db.query(sql, (err, rows) => {
+    if (err) {
+      console.error("NETWORK LOCK USERS ERROR:", err);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+
+    res.json({ success: true, users: rows });
+  });
+});
+
+
+app.post("/api/admin/network-locks/toggle", (req, res) => {
+  const { user_id, network, locked } = req.body;
+
+  if (!user_id || !network) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing user or network."
+    });
+  }
+
+  const status = locked ? "locked" : "unlocked";
+
+  const sql = `
+    INSERT INTO user_network_locks (user_id, network, status)
+    VALUES (?, ?, ?)
+    ON DUPLICATE KEY UPDATE status = VALUES(status)
+  `;
+
+  db.query(sql, [user_id, network, status], (err) => {
+    if (err) {
+      console.error("TOGGLE NETWORK LOCK ERROR:", err);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+
+    res.json({
+      success: true,
+      message: `${network} ${locked ? "locked" : "unlocked"} successfully.`
+    });
+  });
+});
+
+
 
 
 
