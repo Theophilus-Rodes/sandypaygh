@@ -266,7 +266,25 @@ async function getLockedNetworks(userId) {
     return n;
   });
 }
+async function getUserIdByMsisdn(msisdn) {
+  const [intl, local, plusIntl] = msisdnVariants(msisdn);
 
+  const [rows] = await dbp.query(
+    `SELECT id
+     FROM users
+     WHERE phone IN (?, ?, ?)
+        OR telephone IN (?, ?, ?)
+        OR other_telephone IN (?, ?, ?)
+     LIMIT 1`,
+    [
+      intl, local, plusIntl,
+      intl, local, plusIntl,
+      intl, local, plusIntl
+    ]
+  );
+
+  return rows && rows.length ? rows[0].id : null;
+}
 function renderNetworkMenu(state) {
   const locked = state.lockedNetworks || [];
 
@@ -339,7 +357,13 @@ async function handleSession(sessionId, input, msisdn, res) {
       case "menu": {
         const choice = (input || "").trim();
 if (choice === "1") {
-  state.lockedNetworks = await getLockedNetworks(state.vendorId);
+ let lockUserId = state.vendorId;
+
+if (state.isPlain === true) {
+  lockUserId = await getUserIdByMsisdn(msisdn);
+}
+
+state.lockedNetworks = await getLockedNetworks(lockUserId);
 
   state.step = "network";
 
@@ -416,9 +440,13 @@ state.network = availableNetworks[selectedIndex].key;
                price AS amount,
                network
              FROM AdminData
-             WHERE status = 'active' AND network = ?
+           WHERE status = 'active'
+  AND (
+    LOWER(network) = LOWER(?)
+    OR (? = 'at' AND LOWER(network) IN ('at', 'airteltigo', 'airtel'))
+  )
              ORDER BY price ASC`,
-            [net],
+            [net, net],
             (err, rows) => {
               try {
                 if (err) {
