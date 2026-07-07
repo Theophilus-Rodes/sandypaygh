@@ -8035,42 +8035,31 @@ app.get("/api/admin/network-locks/users", (req, res) => {
   });
 });
 
-
 app.get("/api/admin-download-all-numbers", (req, res) => {
-  const vendorId = req.query.vendor_id;
-
-  let sql = `
+  const sql = `
     SELECT DISTINCT recipient_number
     FROM admin_orders
     WHERE recipient_number IS NOT NULL
       AND recipient_number != ''
+    ORDER BY recipient_number ASC
   `;
 
-  const params = [];
-
-  if (vendorId) {
-    sql += ` AND vendor_id = ?`;
-    params.push(vendorId);
-  }
-
-  sql += ` ORDER BY recipient_number ASC`;
-
-  db.query(sql, params, (err, rows) => {
+  db.query(sql, (err, rows) => {
     if (err) {
       console.error("Download all numbers error:", err);
       return res.status(500).send("Failed to download numbers");
     }
 
-    res.setHeader("Content-Type", "application/vnd.ms-excel");
+    res.setHeader("Content-Type", "text/csv");
     res.setHeader(
       "Content-Disposition",
-      "attachment; filename=all_unique_numbers.xls"
+      "attachment; filename=all_unique_numbers.csv"
     );
 
     res.write("Recipient Number\n");
 
     rows.forEach(row => {
-      res.write(`${row.recipient_number}\n`);
+      res.write(`="${row.recipient_number}"\n`);
     });
 
     res.end();
