@@ -144,6 +144,16 @@
       color: #fecaca;
     }
 
+    .uzo {
+  background: rgba(168,85,247,.25);
+  color: #e9d5ff;
+}
+
+.moolre {
+  background: rgba(14,165,233,.25);
+  color: #bae6fd;
+}
+
     .small-btn {
       padding: 8px 12px;
       border-radius: 10px;
@@ -204,36 +214,49 @@
 
     <div class="card">
       <h2>Assign Private USSD Code</h2>
-      <p>Select a vendor and enter the private Uzo code they bought.</p>
+     <p>Select a vendor, choose whether the code is Uzo or Moolre, then enter the private extension.</p>
 
       <form id="ussdForm">
-        <div class="grid">
-          <div>
-            <label>Select Vendor</label>
-            <select id="vendor_id" required>
-              <option value="">Loading vendors...</option>
-            </select>
-          </div>
+       <div class="grid">
 
-      <div>
-  <label>Private USSD Extension</label>
-  <input 
-    type="text" 
-    id="code" 
-    placeholder="Example: 717" 
-    required
-  />
-</div>
+  <div>
+    <label>Select Vendor</label>
+    <select id="vendor_id" required>
+      <option value="">Loading vendors...</option>
+    </select>
+  </div>
 
-<div>
-  <label>Expiry Date</label>
-  <input 
-    type="date" 
-    id="expiry_date" 
-    required
-  />
+  <div>
+    <label>Select Code Type</label>
+    <select id="code_type" required>
+      <option value="">Select code type</option>
+      <option value="uzo">Uzo</option>
+      <option value="moolre">Moolre</option>
+    </select>
+  </div>
+
+  <div>
+    <label>Private USSD Extension</label>
+    <input
+      type="text"
+      id="code"
+      placeholder="Example: 717"
+      inputmode="numeric"
+      maxlength="10"
+      required
+    />
+  </div>
+
+  <div>
+    <label>Expiry Date</label>
+    <input
+      type="date"
+      id="expiry_date"
+      required
+    />
+  </div>
+
 </div>
-        </div>
 
         <button type="submit">Save USSD Code</button>
       </form>
@@ -249,6 +272,7 @@
               <th>Vendor ID</th>
               <th>Vendor Name</th>
               <th>Phone</th>
+              <th>Code Type</th>
               <th>USSD Code</th>
               <th>Status</th>
               <th>Expiry Date</th>
@@ -258,7 +282,7 @@
           </thead>
           <tbody id="codesBody">
             <tr>
-             <td colspan="8">Loading...</td>
+         <td colspan="9">Loading...</td>
             </tr>
           </tbody>
         </table>
@@ -317,7 +341,7 @@
       codesBody.innerHTML = "";
 
       if (!data.success || !data.codes.length) {
-        codesBody.innerHTML = `<tr><td colspan="8">No USSD codes saved yet.</td></tr>`;
+        codesBody.innerHTML = `<tr><td colspan="9">No USSD codes saved yet.</td></tr>`;
         return;
       }
 
@@ -328,11 +352,23 @@
         const btnClass = item.status === "active" ? "danger" : "success";
         const btnText = item.status === "active" ? "Deactivate" : "Activate";
 
-        tr.innerHTML = `
-          <td>${item.vendor_id}</td>
-          <td>${item.username || item.account_name || "N/A"}</td>
-          <td>${item.phone || "N/A"}</td>
-          <td>*426*${item.code}#</td>
+       const codeType = String(item.code_type || "uzo").toLowerCase();
+
+const codeTypeLabel =
+  codeType === "moolre"
+    ? "Moolre"
+    : "Uzo";
+
+tr.innerHTML = `
+  <td>${item.vendor_id}</td>
+  <td>${item.username || item.account_name || "N/A"}</td>
+  <td>${item.phone || "N/A"}</td>
+  <td>
+    <span class="badge ${codeType}">
+      ${codeTypeLabel}
+    </span>
+  </td>
+  <td>*426*${item.code}#</td>
           <td><span class="badge ${item.status}">${item.status}</span></td>
           <td>${item.expiry_date ? new Date(item.expiry_date).toLocaleDateString() : "N/A"}</td>
           <td>${item.created_at ? new Date(item.created_at).toLocaleString() : "N/A"}</td>
@@ -355,46 +391,88 @@
 
     } catch (error) {
       console.error(error);
-      codesBody.innerHTML = `<tr><td colspan="8">Failed to load codes.</td></tr>`;
+     codesBody.innerHTML = `<tr><td colspan="9">Failed to load codes.</td></tr>`;
     }
   }
 
-  form.addEventListener("submit", async (e) => {
+ form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-const vendor_id = vendorSelect.value;
-const code = document.getElementById("code").value.trim();
-const expiry_date = document.getElementById("expiry_date").value;
+  const vendor_id = vendorSelect.value;
+  const code_type = document.getElementById("code_type").value;
+  const codeInput = document.getElementById("code");
+  const expiry_date = document.getElementById("expiry_date").value;
 
- if (!vendor_id || !code || !expiry_date) {
-  showAlert("Please select vendor, enter Uzo code and expiry date.", false);
-  return;
-}
+  const code = codeInput.value.replace(/\D/g, "");
+
+  if (!vendor_id) {
+    showAlert("Please select a vendor.", false);
+    return;
+  }
+
+  if (!code_type) {
+    showAlert("Please select Uzo or Moolre.", false);
+    return;
+  }
+
+  if (!code) {
+    showAlert("Please enter the private USSD extension.", false);
+    return;
+  }
+
+  if (!expiry_date) {
+    showAlert("Please select the expiry date.", false);
+    return;
+  }
 
   try {
-    const res = await fetch(`${API_BASE}/api/admin/vendor-ussd-code`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-     body: JSON.stringify({ vendor_id, code, expiry_date })
-    });
+    const res = await fetch(
+      `${API_BASE}/api/admin/vendor-ussd-code`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          vendor_id,
+          code_type,
+          code,
+          expiry_date
+        })
+      }
+    );
 
     const data = await res.json();
 
-    if (!data.success) {
-      showAlert(data.message || "Failed to save code.", false);
+    if (!res.ok || !data.success) {
+      showAlert(
+        data.message || "Failed to save vendor code.",
+        false
+      );
       return;
     }
 
-    showAlert(data.message || "Uzo code saved successfully.");
+    const readableType =
+      code_type === "moolre"
+        ? "Moolre"
+        : "Uzo";
+
+    showAlert(
+      data.message ||
+      `${readableType} code saved successfully.`
+    );
+
     form.reset();
     loadVendors();
     loadCodes();
 
   } catch (error) {
-    console.error(error);
-    showAlert("Connection error. Please try again.", false);
+    console.error("Save vendor code error:", error);
+
+    showAlert(
+      "Connection error. Please try again.",
+      false
+    );
   }
 });
 
@@ -453,6 +531,12 @@ const expiry_date = document.getElementById("expiry_date").value;
     showAlert("Connection error.", false);
   }
 }
+const codeInput = document.getElementById("code");
+
+codeInput.addEventListener("input", () => {
+  codeInput.value = codeInput.value.replace(/\D/g, "");
+});
+
 
   loadVendors();
   loadCodes();
