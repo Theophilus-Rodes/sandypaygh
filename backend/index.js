@@ -7035,143 +7035,304 @@ app.post("/api/admin/payment-sessions/export", async (req, res) => {
 // ================================
 
 
-
 app.post("/api/admin/vendor-ussd-code", (req, res) => {
-  const { vendor_id, code, expiry_date } = req.body;
+  const {
+    vendor_id,
+    code_type,
+    code,
+    expiry_date
+  } = req.body;
 
-if (!vendor_id || !code || !expiry_date) {
+  const vendorId = Number(vendor_id);
+
+  const cleanType = String(code_type || "")
+    .trim()
+    .toLowerCase();
+
+  const cleanCode = String(code || "")
+    .replace(/[^\d]/g, "");
+
+  const allowedCodeTypes = ["uzo", "moolre"];
+
+  // Validate all required fields
+  if (
+    !vendorId ||
+    !cleanType ||
+    !cleanCode ||
+    !expiry_date
+  ) {
     return res.status(400).json({
       success: false,
-     message: "Vendor, Uzo code and expiry date are required."
+      message:
+        "Vendor, code type, USSD extension and expiry date are required."
     });
   }
 
-  const cleanCode = String(code).replace(/[^\d]/g, "");
-
-  if (!cleanCode) {
+  // Only allow Uzo or Moolre
+  if (!allowedCodeTypes.includes(cleanType)) {
     return res.status(400).json({
       success: false,
-      message: "Invalid Uzo code."
+      message: "Invalid code type. Select Uzo or Moolre."
     });
   }
 
+  // Code must contain numbers only
+  if (!/^\d+$/.test(cleanCode)) {
+    return res.status(400).json({
+      success: false,
+      message: "The USSD extension must contain numbers only."
+    });
+  }
+
+  // Prevent extremely long extensions
+  if (cleanCode.length > 10) {
+    return res.status(400).json({
+      success: false,
+      message: "The USSD extension is too long."
+    });
+  }
+
+  // Validate expiry date
+  const expiryDateObject = new Date(`${expiry_date}T23:59:59`);
+
+  if (Number.isNaN(expiryDateObject.getTime())) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid expiry date."
+    });
+  }
+
+  // Verify that selected user is a vendor
   db.query(
-    "SELECT id FROM users WHERE id = ? AND role = 'vendor' LIMIT 1",
-    [vendor_id],
-    (err, vendorRows) => {
-      if (err) {
-        console.error("Vendor check error:", err);
+    `
+      SELECT id, username
+      FROM users
+      WHERE id = ?
+        AND LOWER(role) = 'vendor'
+      LIMIT 1
+    `,
+    [vendorId],
+    (vendorErr, vendorRows) => {
+      if (vendorErr) {
+        console.error(
+          "Vendor USSD assignment vendor check error:",
+          vendorErr
+        );
+
         return res.status(500).json({
           success: false,
-          message: "Failed to verify vendor."
+          message: "Failed to verify the selected vendor."
         });
       }
 
       if (!vendorRows.length) {
         return res.status(404).json({
           success: false,
-          message: "Vendor not found."
+          message: "The selected vendor was not found."
         });
       }
 
-   const sql = `
-  INSERT INTO uzo_vendor_codes (vendor_id, code, status, expiry_date)
-  VALUES (?, ?, 'active', ?)
-  ON DUPLICATE KEY UPDATE 
-    vendor_id = VALUES(vendor_id),
-    expiry_date = VALUES(expiry_date),
-    status = 'active',
-    updated_at = CURRENT_TIMESTAMP
-`;
+      /*
+        One active assignment is maintained for each vendor.
 
-db.query(sql, [vendor_id, cleanCode, expiry_date], (err2) => {
-        if (err2) {
-          console.error("Insert Uzo vendor code error:", err2);
-          return res.status(500).json({
-            success: false,
-            message: "Failed to save Uzo code."
+        If that vendor already has a code, it is replaced with
+        the newly selected Uzo or Moolre assignment.
+      */
+      const sql = `
+        INSERT INTO uzo_vendor_codes
+        (
+          vendor_id,
+          code,
+          code_type,
+          status,
+          expiry_date
+        )
+        VALUES (?, ?, ?, 'active', ?)
+
+        ON DUPLICATE KEY UPDATE
+          code = VALUES(code),
+          code_type = VALUES(code_type),
+          expiry_date = VALUES(expiry_date),
+          status = 'active',
+          updated_at = CURRENT_TIMESTAMP
+      `;
+
+      db.query(
+        sql,
+        [
+          vendorId,
+          cleanCode,
+          cleanType,
+          expiry_date
+        ],
+        (saveErr) => {
+          if (saveErr) {
+            console.error(
+              "Save vendor USSD assignment error:",
+              saveErr
+            );
+
+            if (saveErr.code === "ER_DUP_ENTRY") {
+              return res.status(409).json({
+                success: false,
+                message:
+                  "This USSD extension has already been assigned."
+              });
+            }
+
+            return res.status(500).json({
+              success: false,
+              message: "Failed to save the vendor USSD code."
+            });
+          }
+
+          const readableType =
+            cleanType === "moolre"
+              ? "Moolre"
+              : "Uzo";
+
+          return res.json({
+            success: true,
+            message:
+              `${readableType} code assigned successfully to ` +
+              `${vendorRows[0].username || "the vendor"}.`,
+            assignment: {
+              vendor_id: vendorId,
+              code_type: cleanType,
+              code: cleanCode,
+              expiry_date,
+              status: "active"
+            }
           });
         }
-
-        res.json({
-          success: true,
-          message: "Uzo vendor code saved successfully."
-        });
-      });
+      );
     }
   );
 });
 
-
 app.get("/api/admin/vendor-ussd-codes", (req, res) => {
   const sql = `
-    SELECT 
+    SELECT
       uvc.id,
       uvc.vendor_id,
       uvc.code,
+      uvc.code_type,
       uvc.status,
       uvc.expiry_date,
       uvc.created_at,
       uvc.updated_at,
+
       u.username,
       u.phone,
+      u.momo_number,
       u.account_name
+
     FROM uzo_vendor_codes uvc
-    JOIN users u ON u.id = uvc.vendor_id
+
+    JOIN users u
+      ON u.id = uvc.vendor_id
+
     ORDER BY uvc.id DESC
   `;
 
   db.query(sql, (err, rows) => {
     if (err) {
-      console.error("Fetch Uzo vendor codes error:", err);
+      console.error(
+        "Fetch vendor USSD assignments error:",
+        err
+      );
+
       return res.status(500).json({
         success: false,
-        message: "Failed to load Uzo codes."
+        message: "Failed to load vendor USSD codes."
       });
     }
 
-    res.json({
+    const codes = (rows || []).map(row => ({
+      ...row,
+
+      // Protect older records in case code_type is null
+      code_type:
+        String(row.code_type || "uzo")
+          .trim()
+          .toLowerCase(),
+
+      status:
+        String(row.status || "inactive")
+          .trim()
+          .toLowerCase()
+    }));
+
+    return res.json({
       success: true,
-      codes: rows
+      codes
     });
   });
 });
 
+app.put(
+  "/api/admin/vendor-ussd-code/:id/status",
+  (req, res) => {
+    const id = Number(req.params.id);
 
-app.put("/api/admin/vendor-ussd-code/:id/status", (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
+    const status = String(req.body.status || "")
+      .trim()
+      .toLowerCase();
 
-  if (!["active", "inactive"].includes(status)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid status."
-    });
-  }
-
-  db.query(
-    `
-      UPDATE uzo_vendor_codes 
-      SET status = ?, updated_at = CURRENT_TIMESTAMP 
-      WHERE id = ?
-    `,
-    [status, id],
-    (err) => {
-      if (err) {
-        console.error("Update Uzo code status error:", err);
-        return res.status(500).json({
-          success: false,
-          message: "Failed to update status."
-        });
-      }
-
-      res.json({
-        success: true,
-        message: "Status updated successfully."
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid vendor code ID."
       });
     }
-  );
-});
+
+    if (!["active", "inactive"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status."
+      });
+    }
+
+    db.query(
+      `
+        UPDATE uzo_vendor_codes
+        SET
+          status = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      [status, id],
+      (err, result) => {
+        if (err) {
+          console.error(
+            "Update vendor USSD status error:",
+            err
+          );
+
+          return res.status(500).json({
+            success: false,
+            message: "Failed to update the code status."
+          });
+        }
+
+        if (!result.affectedRows) {
+          return res.status(404).json({
+            success: false,
+            message: "Vendor USSD code not found."
+          });
+        }
+
+        return res.json({
+          success: true,
+          message:
+            status === "active"
+              ? "Vendor USSD code activated successfully."
+              : "Vendor USSD code deactivated successfully."
+        });
+      }
+    );
+  }
+);
 
 
 app.get("/api/admin/vendors-for-ussd", (req, res) => {
@@ -7205,64 +7366,199 @@ app.get("/api/admin/vendors-for-ussd", (req, res) => {
 });
 
 
-app.delete("/api/admin/vendor-ussd-code/:id", (req, res) => {
-  const { id } = req.params;
 
-  db.query(
-    "DELETE FROM uzo_vendor_codes WHERE id = ?",
-    [id],
-    (err, result) => {
+app.delete(
+  "/api/admin/vendor-ussd-code/:id",
+  (req, res) => {
+    const id = Number(req.params.id);
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid vendor code ID."
+      });
+    }
+
+    db.query(
+      `
+        DELETE FROM uzo_vendor_codes
+        WHERE id = ?
+      `,
+      [id],
+      (err, result) => {
+        if (err) {
+          console.error(
+            "Delete vendor USSD assignment error:",
+            err
+          );
+
+          return res.status(500).json({
+            success: false,
+            message: "Failed to delete the vendor USSD code."
+          });
+        }
+
+        if (!result.affectedRows) {
+          return res.status(404).json({
+            success: false,
+            message: "Vendor USSD code not found."
+          });
+        }
+
+        return res.json({
+          success: true,
+          message: "Vendor USSD code deleted successfully."
+        });
+      }
+    );
+  }
+);
+
+app.get(
+  "/api/vendor/my-ussd-code/:vendor_id",
+  (req, res) => {
+    const vendorId = Number(req.params.vendor_id);
+
+    if (!vendorId) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid vendor ID."
+      });
+    }
+
+    const sql = `
+      SELECT
+        id,
+        vendor_id,
+        code,
+        code_type,
+        status,
+        expiry_date,
+        created_at,
+        updated_at,
+
+        CASE
+          WHEN status <> 'active'
+            THEN 0
+
+          WHEN expiry_date IS NOT NULL
+            AND expiry_date < CURDATE()
+            THEN 0
+
+          ELSE 1
+        END AS is_available
+
+      FROM uzo_vendor_codes
+
+      WHERE vendor_id = ?
+
+      ORDER BY id DESC
+
+      LIMIT 1
+    `;
+
+    db.query(sql, [vendorId], (err, rows) => {
       if (err) {
-        console.error("Delete Uzo code error:", err);
+        console.error(
+          "Fetch vendor USSD code error:",
+          err
+        );
+
         return res.status(500).json({
           success: false,
-          message: "Failed to delete Uzo code."
+          message: "Failed to load the vendor USSD code."
         });
       }
 
-      res.json({
-        success: true,
-        message: "Uzo code deleted successfully."
-      });
-    }
-  );
-});
+      if (!rows.length) {
+        return res.json({
+          success: false,
+          message: "No private USSD code has been assigned yet."
+        });
+      }
 
+      const assignment = rows[0];
 
-app.get("/api/vendor/my-uzo-code/:vendor_id", (req, res) => {
-  const { vendor_id } = req.params;
-
-  const sql = `
-    SELECT code, status, expiry_date, created_at
-    FROM uzo_vendor_codes
-    WHERE vendor_id = ?
-    ORDER BY id DESC
-    LIMIT 1
-  `;
-
-  db.query(sql, [vendor_id], (err, rows) => {
-    if (err) {
-      console.error("Fetch vendor UZO code error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to load UZO code."
-      });
-    }
-
-    if (!rows.length) {
       return res.json({
+        success: true,
+        code: {
+          ...assignment,
+          code_type:
+            String(assignment.code_type || "uzo")
+              .toLowerCase(),
+          is_available:
+            Number(assignment.is_available) === 1
+        }
+      });
+    });
+  }
+);
+
+
+app.get(
+  "/api/vendor/my-uzo-code/:vendor_id",
+  (req, res) => {
+    const vendorId = Number(req.params.vendor_id);
+
+    if (!vendorId) {
+      return res.status(400).json({
         success: false,
-        message: "No UZO code assigned yet."
+        message: "Invalid vendor ID."
       });
     }
 
-    res.json({
-      success: true,
-      code: rows[0]
-    });
-  });
-});
+    const sql = `
+      SELECT
+        id,
+        vendor_id,
+        code,
+        code_type,
+        status,
+        expiry_date,
+        created_at,
+        updated_at
 
+      FROM uzo_vendor_codes
+
+      WHERE vendor_id = ?
+
+      ORDER BY id DESC
+
+      LIMIT 1
+    `;
+
+    db.query(sql, [vendorId], (err, rows) => {
+      if (err) {
+        console.error(
+          "Legacy vendor code fetch error:",
+          err
+        );
+
+        return res.status(500).json({
+          success: false,
+          message: "Failed to load the vendor code."
+        });
+      }
+
+      if (!rows.length) {
+        return res.json({
+          success: false,
+          message: "No USSD code assigned yet."
+        });
+      }
+
+      return res.json({
+        success: true,
+        code: {
+          ...rows[0],
+          code_type:
+            String(rows[0].code_type || "uzo")
+              .toLowerCase()
+        }
+      });
+    });
+  }
+);
 
 
 
