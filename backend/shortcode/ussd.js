@@ -62,6 +62,10 @@ if (!DB_PASSWORD) {
 
 // Your short code extension (from Moolre)
 const ADMIN_EXTENSIONS = ["888", "444"];
+
+// 444 works in two ways:
+// *203*444#       = admin
+// *203*444*ID#    = default vendor
 const USER_EXTENSION = "444";
 
 
@@ -730,7 +734,7 @@ if (isNewSession && !inputFromUser && ADMIN_EXTENSIONS.includes(ext)) {
 // NEW MOOLRE VENDOR SESSION
 //
 // DEFAULT VENDOR CODE:
-// *203*500*VENDOR_ID#
+// *203*444*VENDOR_ID#
 //
 // CUSTOM MOOLRE CODE:
 // *203*CUSTOM_EXTENSION#
@@ -739,7 +743,11 @@ if (isNewSession && !inputFromUser && ADMIN_EXTENSIONS.includes(ext)) {
 // UZO is handled separately inside router.post("/uzo")
 // ======================================================
 if (isNewSessionInner) {
-  if (ADMIN_EXTENSIONS.includes(ext)) {
+  // 888 is admin-only.
+  // 444 is shared:
+  //   *203*444#    = admin
+  //   *203*444*ID# = vendor
+  if (ADMIN_EXTENSIONS.includes(ext) && ext !== USER_EXTENSION) {
     return res.json({
       message: "END Invalid vendor entry point",
       reply: false,
@@ -761,8 +769,8 @@ if (isNewSessionInner) {
     let assignedCode = null;
 
     // ==================================================
-    // METHOD 1: DEFAULT EXTENSION 500
-    // Dial format: *203*500*VENDOR_ID#
+// METHOD 1: DEFAULT EXTENSION 444
+// Dial format: *203*444*VENDOR_ID#
     // ==================================================
     if (ext === USER_EXTENSION) {
       const rawVendorId = String(inputInner || "").trim();
@@ -777,7 +785,7 @@ if (isNewSessionInner) {
         vendorIdFromDial <= 0
       ) {
         console.log(
-          "❌ Default extension 500 received without valid vendor ID:",
+          "❌ Default extension 444 received without valid vendor ID:",
           inputInner
         );
 
