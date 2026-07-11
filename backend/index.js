@@ -9303,7 +9303,7 @@ app.get("/api/admin/vendor-number-locks", async (req, res) => {
       ORDER BY u.id DESC
     `;
 
-    const [vendors] = await db.query(sql);
+    const [vendors] = await db.promise().query(sql);
 
     return res.status(200).json({
       success: true,
@@ -9318,7 +9318,6 @@ app.get("/api/admin/vendor-number-locks", async (req, res) => {
     });
   }
 });
-
 
 app.put("/api/admin/vendor-number-lock/:vendorId", async (req, res) => {
   try {
@@ -9339,7 +9338,7 @@ app.put("/api/admin/vendor-number-lock/:vendorId", async (req, res) => {
         ? 1
         : 0;
 
-    const [result] = await db.query(
+    const [result] = await db.promise().query(
       `
       UPDATE users
       SET vendor_number_lock = ?
@@ -9360,9 +9359,8 @@ app.put("/api/admin/vendor-number-lock/:vendorId", async (req, res) => {
       success: true,
       message:
         lockValue === 1
-          ? "Vendor customer numbers locked successfully."
-          : "Vendor customer numbers unlocked successfully.",
-      vendorId,
+          ? "Vendor locked successfully."
+          : "Vendor unlocked successfully.",
       vendor_number_lock: lockValue
     });
   } catch (error) {
@@ -9375,7 +9373,6 @@ app.put("/api/admin/vendor-number-lock/:vendorId", async (req, res) => {
   }
 });
 
-
 app.put("/api/admin/vendor-number-locks/all", async (req, res) => {
   try {
     const { locked } = req.body;
@@ -9387,7 +9384,7 @@ app.put("/api/admin/vendor-number-locks/all", async (req, res) => {
         ? 1
         : 0;
 
-    const [result] = await db.query(
+    const [result] = await db.promise().query(
       `
       UPDATE users
       SET vendor_number_lock = ?
@@ -9402,8 +9399,7 @@ app.put("/api/admin/vendor-number-locks/all", async (req, res) => {
         lockValue === 1
           ? "All vendors have been locked successfully."
           : "All vendors have been unlocked successfully.",
-      updatedVendors: result.affectedRows,
-      vendor_number_lock: lockValue
+      updatedVendors: result.affectedRows
     });
   } catch (error) {
     console.error("UPDATE ALL VENDOR LOCKS ERROR:", error);
@@ -9414,7 +9410,6 @@ app.put("/api/admin/vendor-number-locks/all", async (req, res) => {
     });
   }
 });
-
 
 
 // ✅ BASIC HEALTH ENDPOINTS FOR DEPLOYMENT
