@@ -62,7 +62,7 @@ if (!DB_PASSWORD) {
 
 // Your short code extension (from Moolre)
 const ADMIN_EXTENSIONS = ["888", "444"];
-const USER_EXTENSION = "500";
+const USER_EXTENSION = "444";
 
 
 
