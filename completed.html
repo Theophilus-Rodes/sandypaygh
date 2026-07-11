@@ -87,7 +87,6 @@
   <button onclick="downloadOrders('mtn')">Download MTN Orders</button>
   <button onclick="downloadOrders('airteltigo')">Download AirtelTigo Orders</button>
   <button onclick="downloadOrders('telecel')">Download Telecel Orders</button>
-  <button onclick="downloadAllNumbers()">Download All Numbers</button>
   
 </div>
 
@@ -234,10 +233,6 @@ async function updateOrderBadges() {
   }
 }
 
-function downloadAllNumbers() {
-  window.open("https://sandipay.co/api/admin-download-all-numbers", "_blank");
-}
-
 // ✅ On Page Load
 document.addEventListener("DOMContentLoaded", () => {
   updateOrderBadges();
@@ -251,9 +246,6 @@ document.addEventListener("DOMContentLoaded", () => {
     fetchOrdersByCode(code);
   }
 });
-
-
-
 </script>
 
 </body>
