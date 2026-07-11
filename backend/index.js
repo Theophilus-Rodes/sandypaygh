@@ -3878,16 +3878,15 @@ app.get(
       }
 
       const [rows] = await db.promise().query(
-        `SELECT
-            id,
-            phone_number AS telephone,
-            status,
-            created_at
-         FROM vendor_telephone_numbers
-         WHERE vendor_id = ?
-         ORDER BY id DESC`,
-        [vendorId]
-      );
+  `SELECT
+      id,
+      telephone,
+      created_at
+   FROM vendor_telephone_numbers
+   WHERE vendor_id = ?
+   ORDER BY id DESC`,
+  [vendorId]
+);
 
       return res.json({
         success: true,
@@ -3988,23 +3987,20 @@ app.post(
           invalid_count: invalidCount
         });
       }
+const values = validNumbers.map(phone => [
+  vendorId,
+  phone
+]);
 
-      const values = validNumbers.map(phone => [
-        vendorId,
-        phone,
-        "allowed"
-      ]);
-
-      const [result] = await db.promise().query(
-        `INSERT IGNORE INTO vendor_telephone_numbers
-         (
-           vendor_id,
-           phone_number,
-           status
-         )
-         VALUES ?`,
-        [values]
-      );
+const [result] = await db.promise().query(
+  `INSERT IGNORE INTO vendor_telephone_numbers
+   (
+     vendor_id,
+     telephone
+   )
+   VALUES ?`,
+  [values]
+);
 
       const databaseDuplicateCount =
         validNumbers.length - result.affectedRows;
@@ -4335,22 +4331,20 @@ app.post(
           start + batchSize
         );
 
-        const values = batch.map(phone => [
-          vendorId,
-          phone,
-          "allowed"
-        ]);
+      const values = batch.map(phone => [
+  vendorId,
+  phone
+]);
 
-        const [result] = await db.promise().query(
-          `INSERT IGNORE INTO vendor_telephone_numbers
-           (
-             vendor_id,
-             phone_number,
-             status
-           )
-           VALUES ?`,
-          [values]
-        );
+const [result] = await db.promise().query(
+  `INSERT IGNORE INTO vendor_telephone_numbers
+   (
+     vendor_id,
+     telephone
+   )
+   VALUES ?`,
+  [values]
+);
 
         insertedCount += result.affectedRows;
 
