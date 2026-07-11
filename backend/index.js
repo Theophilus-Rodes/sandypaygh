@@ -3702,6 +3702,30 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+// =====================================================
+// VENDOR EXCEL UPLOAD CONFIGURATION
+// Only accepts .xlsx files and keeps the file in memory.
+// =====================================================
+const vendorExcelUpload = multer({
+  storage: multer.memoryStorage(),
+
+  limits: {
+    fileSize: 10 * 1024 * 1024 // Maximum 10MB
+  },
+
+  fileFilter: (req, file, cb) => {
+    const fileName = String(file.originalname || "").toLowerCase();
+
+    if (!fileName.endsWith(".xlsx")) {
+      return cb(
+        new Error("Only .xlsx Excel files are allowed.")
+      );
+    }
+
+    cb(null, true);
+  }
+});
+
 // ✅ 1. Upload Excel and save numbers
 app.post("/api/upload-numbers", upload.single("excelFile"), (req, res) => {
   try {
@@ -3748,6 +3772,829 @@ app.post("/api/add-number", (req, res) => {
     }
   );
 });
+
+// ============================================================================
+//                         VENDOR TELEPHONE NUMBERS
+// ============================================================================
+
+
+/**
+ * Clean and normalize Ghana telephone numbers.
+ *
+ * Examples:
+ * +233 24 123 4567 -> 0241234567
+ * 233241234567     -> 0241234567
+ * 024 123 4567     -> 0241234567
+ * 241234567        -> 0241234567
+ */
+function normalizeVendorUploadPhone(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  let phone = String(value).trim();
+
+  if (!phone) {
+    return null;
+  }
+
+  // Remove spaces, plus signs, brackets, hyphens and letters.
+  phone = phone.replace(/\D/g, "");
+
+  // Convert 00233XXXXXXXXX to 0XXXXXXXXX.
+  if (phone.startsWith("00233") && phone.length === 14) {
+    phone = "0" + phone.slice(5);
+  }
+
+  // Convert 233XXXXXXXXX to 0XXXXXXXXX.
+  if (phone.startsWith("233") && phone.length === 12) {
+    phone = "0" + phone.slice(3);
+  }
+
+  // Restore missing leading zero.
+  if (phone.length === 9) {
+    phone = "0" + phone;
+  }
+
+  // Final Ghana local-number validation.
+  if (!/^0\d{9}$/.test(phone)) {
+    return null;
+  }
+
+  return phone;
+}
+
+
+/**
+ * Confirm that a supplied ID belongs to an existing vendor.
+ *
+ * Your backend does not currently create a login session,
+ * so vendor_id must come from the logged-in vendor page.
+ */
+async function verifyVendorAccount(vendorId) {
+  const cleanVendorId = Number(vendorId);
+
+  if (
+    !Number.isInteger(cleanVendorId) ||
+    cleanVendorId <= 0
+  ) {
+    return null;
+  }
+
+  const [rows] = await db.promise().query(
+    `SELECT id, username, role, status
+     FROM users
+     WHERE id = ?
+       AND LOWER(role) = 'vendor'
+     LIMIT 1`,
+    [cleanVendorId]
+  );
+
+  if (!rows.length) {
+    return null;
+  }
+
+  return rows[0];
+}
+
+
+// ============================================================================
+// GET VENDOR TELEPHONE NUMBERS
+// GET /api/vendor/telephone-numbers?vendor_id=5
+// ============================================================================
+app.get(
+  "/api/vendor/telephone-numbers",
+  async (req, res) => {
+    try {
+      const vendorId = Number(req.query.vendor_id);
+
+      const vendor = await verifyVendorAccount(vendorId);
+
+      if (!vendor) {
+        return res.status(403).json({
+          success: false,
+          message: "Invalid vendor account."
+        });
+      }
+
+      const [rows] = await db.promise().query(
+        `SELECT
+            id,
+            phone_number AS telephone,
+            status,
+            created_at
+         FROM vendor_telephone_numbers
+         WHERE vendor_id = ?
+         ORDER BY id DESC`,
+        [vendorId]
+      );
+
+      return res.json({
+        success: true,
+        total: rows.length,
+        numbers: rows
+      });
+
+    } catch (error) {
+      console.error(
+        "❌ GET vendor telephone numbers error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message: "Could not load vendor telephone numbers."
+      });
+    }
+  }
+);
+
+
+// ============================================================================
+// ADD VENDOR NUMBERS MANUALLY
+// POST /api/vendor/telephone-numbers/add-manual
+//
+// Body:
+// {
+//   "vendor_id": 5,
+//   "numbers": ["0241234567", "+233 54 123 4567"]
+// }
+// ============================================================================
+app.post(
+  "/api/vendor/telephone-numbers/add-manual",
+  async (req, res) => {
+    try {
+      const vendorId = Number(req.body.vendor_id);
+      const numbers = req.body.numbers;
+
+      const vendor = await verifyVendorAccount(vendorId);
+
+      if (!vendor) {
+        return res.status(403).json({
+          success: false,
+          message: "Invalid vendor account."
+        });
+      }
+
+      if (
+        !Array.isArray(numbers) ||
+        numbers.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Please enter at least one telephone number."
+        });
+      }
+
+      if (numbers.length > 10000) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "You can add a maximum of 10,000 numbers at once."
+        });
+      }
+
+      const validNumbers = [];
+      const uniqueNumbers = new Set();
+
+      let invalidCount = 0;
+      let repeatedInRequestCount = 0;
+
+      for (const value of numbers) {
+        const normalized =
+          normalizeVendorUploadPhone(value);
+
+        if (!normalized) {
+          invalidCount++;
+          continue;
+        }
+
+        if (uniqueNumbers.has(normalized)) {
+          repeatedInRequestCount++;
+          continue;
+        }
+
+        uniqueNumbers.add(normalized);
+        validNumbers.push(normalized);
+      }
+
+      if (!validNumbers.length) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "No valid Ghana telephone numbers were entered.",
+          inserted_count: 0,
+          duplicate_count: repeatedInRequestCount,
+          invalid_count: invalidCount
+        });
+      }
+
+      const values = validNumbers.map(phone => [
+        vendorId,
+        phone,
+        "allowed"
+      ]);
+
+      const [result] = await db.promise().query(
+        `INSERT IGNORE INTO vendor_telephone_numbers
+         (
+           vendor_id,
+           phone_number,
+           status
+         )
+         VALUES ?`,
+        [values]
+      );
+
+      const databaseDuplicateCount =
+        validNumbers.length - result.affectedRows;
+
+      const totalDuplicateCount =
+        databaseDuplicateCount +
+        repeatedInRequestCount;
+
+      return res.json({
+        success: true,
+
+        message:
+          `${result.affectedRows} number(s) added successfully.`,
+
+        inserted_count: result.affectedRows,
+        duplicate_count: totalDuplicateCount,
+        invalid_count: invalidCount,
+        total_received: numbers.length
+      });
+
+    } catch (error) {
+      console.error(
+        "❌ Add manual vendor numbers error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message: "Could not add the telephone numbers."
+      });
+    }
+  }
+);
+
+
+// ============================================================================
+// VENDOR XLSX BULK UPLOAD
+// POST /api/vendor/telephone-numbers/upload-excel
+//
+// FormData:
+// excelFile: selected xlsx file
+// vendor_id: 5
+// ============================================================================
+app.post(
+  "/api/vendor/telephone-numbers/upload-excel",
+
+  vendorExcelUpload.single("excelFile"),
+
+  async (req, res) => {
+    try {
+      const vendorId = Number(req.body.vendor_id);
+
+      const vendor = await verifyVendorAccount(vendorId);
+
+      if (!vendor) {
+        return res.status(403).json({
+          success: false,
+          message: "Invalid vendor account."
+        });
+      }
+
+      if (!req.file || !req.file.buffer) {
+        return res.status(400).json({
+          success: false,
+          message: "Please select an .xlsx Excel file."
+        });
+      }
+
+      const fileName =
+        String(req.file.originalname || "").toLowerCase();
+
+      if (!fileName.endsWith(".xlsx")) {
+        return res.status(400).json({
+          success: false,
+          message: "Only .xlsx Excel files are allowed."
+        });
+      }
+
+      // Read workbook from memory.
+      const workbook = xlsx.read(
+        req.file.buffer,
+        {
+          type: "buffer",
+          raw: false,
+          cellDates: false
+        }
+      );
+
+      if (
+        !workbook.SheetNames ||
+        workbook.SheetNames.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "The Excel file does not contain a worksheet."
+        });
+      }
+
+      // Read the first worksheet.
+      const firstSheetName =
+        workbook.SheetNames[0];
+
+      const worksheet =
+        workbook.Sheets[firstSheetName];
+
+      /*
+       * Read as arrays.
+       *
+       * Example:
+       * [
+       *   ["Telephone", "Name"],
+       *   ["0241234567", "John"]
+       * ]
+       */
+      const rows = xlsx.utils.sheet_to_json(
+        worksheet,
+        {
+          header: 1,
+          defval: "",
+          raw: false,
+          blankrows: false
+        }
+      );
+
+      if (!rows.length) {
+        return res.status(400).json({
+          success: false,
+          message: "The selected Excel worksheet is empty."
+        });
+      }
+
+      const acceptedHeaders = new Set([
+        "telephone",
+        "telephone number",
+        "telephone_number",
+        "phone",
+        "phone number",
+        "phone_number",
+        "number",
+        "mobile",
+        "mobile number",
+        "mobile_number",
+        "msisdn",
+        "recipient",
+        "recipient number",
+        "recipient_number",
+        "customer number",
+        "customer_number"
+      ]);
+
+      let numberColumnIndex = -1;
+      let firstDataRowIndex = 0;
+
+      const firstRow =
+        Array.isArray(rows[0]) ? rows[0] : [];
+
+      /*
+       * First, check whether the first row contains a
+       * recognized telephone-number heading.
+       */
+      for (
+        let columnIndex = 0;
+        columnIndex < firstRow.length;
+        columnIndex++
+      ) {
+        const heading = String(
+          firstRow[columnIndex] || ""
+        )
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, " ");
+
+        if (acceptedHeaders.has(heading)) {
+          numberColumnIndex = columnIndex;
+          firstDataRowIndex = 1;
+          break;
+        }
+      }
+
+      /*
+       * If no heading was recognized, inspect the first
+       * twenty rows and find a column containing valid
+       * Ghana numbers.
+       */
+      if (numberColumnIndex === -1) {
+        const sampleRows = rows.slice(0, 20);
+
+        let maximumColumns = 0;
+
+        for (const row of sampleRows) {
+          if (
+            Array.isArray(row) &&
+            row.length > maximumColumns
+          ) {
+            maximumColumns = row.length;
+          }
+        }
+
+        for (
+          let columnIndex = 0;
+          columnIndex < maximumColumns;
+          columnIndex++
+        ) {
+          let validSampleCount = 0;
+
+          for (
+            let rowIndex = 0;
+            rowIndex < sampleRows.length;
+            rowIndex++
+          ) {
+            const row = sampleRows[rowIndex];
+
+            if (
+              Array.isArray(row) &&
+              normalizeVendorUploadPhone(
+                row[columnIndex]
+              )
+            ) {
+              validSampleCount++;
+            }
+          }
+
+          if (validSampleCount > 0) {
+            numberColumnIndex = columnIndex;
+            firstDataRowIndex = 0;
+            break;
+          }
+        }
+      }
+
+      if (numberColumnIndex === -1) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "No telephone-number column was found in the Excel file."
+        });
+      }
+
+      const validNumbers = [];
+      const uniqueNumbers = new Set();
+      const invalidNumbers = [];
+
+      let repeatedInFileCount = 0;
+
+      for (
+        let rowIndex = firstDataRowIndex;
+        rowIndex < rows.length;
+        rowIndex++
+      ) {
+        const row = rows[rowIndex];
+
+        if (!Array.isArray(row)) {
+          continue;
+        }
+
+        const originalValue =
+          row[numberColumnIndex];
+
+        const originalText =
+          String(originalValue || "").trim();
+
+        // Ignore completely empty rows.
+        if (!originalText) {
+          continue;
+        }
+
+        const normalized =
+          normalizeVendorUploadPhone(originalValue);
+
+        if (!normalized) {
+          invalidNumbers.push({
+            row: rowIndex + 1,
+            value: originalText
+          });
+
+          continue;
+        }
+
+        if (uniqueNumbers.has(normalized)) {
+          repeatedInFileCount++;
+          continue;
+        }
+
+        uniqueNumbers.add(normalized);
+        validNumbers.push(normalized);
+      }
+
+      if (!validNumbers.length) {
+        return res.status(400).json({
+          success: false,
+
+          message:
+            "No valid Ghana telephone numbers were found in the Excel file.",
+
+          inserted_count: 0,
+          duplicate_count: repeatedInFileCount,
+          invalid_count: invalidNumbers.length,
+
+          invalid_numbers:
+            invalidNumbers.slice(0, 20)
+        });
+      }
+
+      if (validNumbers.length > 50000) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "You can upload a maximum of 50,000 unique numbers at once."
+        });
+      }
+
+      let insertedCount = 0;
+      let databaseDuplicateCount = 0;
+
+      /*
+       * Upload in batches to prevent a very large SQL query.
+       */
+      const batchSize = 1000;
+
+      for (
+        let start = 0;
+        start < validNumbers.length;
+        start += batchSize
+      ) {
+        const batch = validNumbers.slice(
+          start,
+          start + batchSize
+        );
+
+        const values = batch.map(phone => [
+          vendorId,
+          phone,
+          "allowed"
+        ]);
+
+        const [result] = await db.promise().query(
+          `INSERT IGNORE INTO vendor_telephone_numbers
+           (
+             vendor_id,
+             phone_number,
+             status
+           )
+           VALUES ?`,
+          [values]
+        );
+
+        insertedCount += result.affectedRows;
+
+        databaseDuplicateCount +=
+          batch.length - result.affectedRows;
+      }
+
+      const totalDuplicateCount =
+        databaseDuplicateCount +
+        repeatedInFileCount;
+
+      return res.json({
+        success: true,
+
+        message:
+          `${insertedCount} number(s) uploaded successfully.`,
+
+        filename: req.file.originalname,
+        sheet_name: firstSheetName,
+
+        valid_count: validNumbers.length,
+        inserted_count: insertedCount,
+        duplicate_count: totalDuplicateCount,
+        invalid_count: invalidNumbers.length,
+
+        invalid_numbers:
+          invalidNumbers.slice(0, 20)
+      });
+
+    } catch (error) {
+      console.error(
+        "❌ Vendor Excel upload error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Could not process the Excel file."
+      });
+    }
+  }
+);
+
+
+// ============================================================================
+// DELETE ONE VENDOR TELEPHONE NUMBER
+// DELETE /api/vendor/telephone-numbers/25?vendor_id=5
+// ============================================================================
+app.delete(
+  "/api/vendor/telephone-numbers/:id",
+
+  async (req, res) => {
+    try {
+      const vendorId = Number(req.query.vendor_id);
+      const numberId = Number(req.params.id);
+
+      const vendor = await verifyVendorAccount(vendorId);
+
+      if (!vendor) {
+        return res.status(403).json({
+          success: false,
+          message: "Invalid vendor account."
+        });
+      }
+
+      if (
+        !Number.isInteger(numberId) ||
+        numberId <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid telephone-number ID."
+        });
+      }
+
+      const [result] = await db.promise().query(
+        `DELETE FROM vendor_telephone_numbers
+         WHERE id = ?
+           AND vendor_id = ?`,
+        [numberId, vendorId]
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Telephone number was not found under this vendor."
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: "Telephone number deleted successfully."
+      });
+
+    } catch (error) {
+      console.error(
+        "❌ Delete vendor telephone number error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message: "Could not delete the telephone number."
+      });
+    }
+  }
+);
+
+
+// ============================================================================
+// DELETE ALL NUMBERS BELONGING TO ONE VENDOR
+// DELETE /api/vendor/telephone-numbers?vendor_id=5
+// ============================================================================
+app.delete(
+  "/api/vendor/telephone-numbers",
+
+  async (req, res) => {
+    try {
+      const vendorId = Number(req.query.vendor_id);
+
+      const vendor = await verifyVendorAccount(vendorId);
+
+      if (!vendor) {
+        return res.status(403).json({
+          success: false,
+          message: "Invalid vendor account."
+        });
+      }
+
+      const [result] = await db.promise().query(
+        `DELETE FROM vendor_telephone_numbers
+         WHERE vendor_id = ?`,
+        [vendorId]
+      );
+
+      return res.json({
+        success: true,
+
+        message:
+          `${result.affectedRows} number(s) deleted successfully.`,
+
+        deleted_count: result.affectedRows
+      });
+
+    } catch (error) {
+      console.error(
+        "❌ Delete all vendor numbers error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Could not delete the vendor telephone numbers."
+      });
+    }
+  }
+);
+
+
+// ============================================================================
+// OPTIONAL: CHANGE ONE VENDOR NUMBER STATUS
+// POST /api/vendor/telephone-numbers/status
+//
+// Body:
+// {
+//   "vendor_id": 5,
+//   "id": 20,
+//   "status": "denied"
+// }
+// ============================================================================
+app.post(
+  "/api/vendor/telephone-numbers/status",
+
+  async (req, res) => {
+    try {
+      const vendorId = Number(req.body.vendor_id);
+      const numberId = Number(req.body.id);
+
+      const status =
+        String(req.body.status || "")
+          .trim()
+          .toLowerCase();
+
+      const vendor = await verifyVendorAccount(vendorId);
+
+      if (!vendor) {
+        return res.status(403).json({
+          success: false,
+          message: "Invalid vendor account."
+        });
+      }
+
+      if (!["allowed", "denied"].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Status must be allowed or denied."
+        });
+      }
+
+      const [result] = await db.promise().query(
+        `UPDATE vendor_telephone_numbers
+         SET status = ?
+         WHERE id = ?
+           AND vendor_id = ?`,
+        [
+          status,
+          numberId,
+          vendorId
+        ]
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Telephone number was not found."
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: "Telephone number status updated."
+      });
+
+    } catch (error) {
+      console.error(
+        "❌ Vendor number status error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Could not update the telephone-number status."
+      });
+    }
+  }
+);
 
 
 
@@ -8395,6 +9242,41 @@ app.post("/api/admin/network-locks/toggle", (req, res) => {
 });
 
 
+
+// =====================================================
+// EXCEL UPLOAD ERROR HANDLER
+// Place this before app.listen(...)
+// =====================================================
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "The Excel file must not be larger than 10MB."
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      message:
+        error.message || "Excel upload failed."
+    });
+  }
+
+  if (
+    error &&
+    error.message ===
+      "Only .xlsx Excel files are allowed."
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+
+  next(error);
+});
 
 
 
