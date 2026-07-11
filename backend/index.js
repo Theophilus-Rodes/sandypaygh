@@ -8334,7 +8334,7 @@ app.get("/api/admin/network-locks/users", (req, res) => {
 app.get("/api/admin-download-all-numbers", (req, res) => {
   const sql = `
     SELECT DISTINCT recipient_number
-    FROM vendor_orders
+    FROM admin_orders
     WHERE recipient_number IS NOT NULL
       AND recipient_number != ''
     ORDER BY recipient_number ASC
