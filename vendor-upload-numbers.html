@@ -1,0 +1,1403 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+    >
+
+    <title>Upload Telephone Numbers - SANDYPAY</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            background: #f3f6ff;
+            color: #101828;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        button,
+        input,
+        textarea {
+            font: inherit;
+        }
+
+        button {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #071663, #1834c5);
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 5px 18px rgba(0, 0, 0, 0.15);
+        }
+
+        .header-inner {
+            width: 100%;
+            max-width: 1150px;
+            margin: auto;
+            padding: 18px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .header-title {
+            min-width: 0;
+        }
+
+        .header h1 {
+            font-size: 21px;
+            line-height: 1.2;
+            word-break: break-word;
+        }
+
+        .header p {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8);
+            margin-top: 4px;
+        }
+
+        .back-button {
+            flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            padding: 10px 14px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1150px;
+            margin: auto;
+            padding: 22px 16px 50px;
+        }
+
+        .page-description {
+            margin-bottom: 18px;
+            color: #475467;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        .message {
+            display: none;
+            padding: 14px;
+            border-radius: 12px;
+            margin-bottom: 18px;
+            line-height: 1.5;
+            font-size: 14px;
+            word-break: break-word;
+        }
+
+        .message.success {
+            display: block;
+            background: #ecfdf3;
+            border: 1px solid #abefc6;
+            color: #067647;
+        }
+
+        .message.error {
+            display: block;
+            background: #fef3f2;
+            border: 1px solid #fecdca;
+            color: #b42318;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+
+        .summary-card {
+            min-width: 0;
+            background: white;
+            border-radius: 16px;
+            padding: 18px;
+            box-shadow: 0 8px 30px rgba(23, 43, 108, 0.08);
+            border: 1px solid #e8ecf7;
+        }
+
+        .summary-card span {
+            display: block;
+            color: #667085;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .summary-card strong {
+            display: block;
+            font-size: 26px;
+            color: #071663;
+            margin-top: 8px;
+            word-break: break-word;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+            gap: 20px;
+            align-items: start;
+        }
+
+        .card {
+            min-width: 0;
+            background: white;
+            border-radius: 18px;
+            padding: 22px;
+            box-shadow: 0 8px 30px rgba(23, 43, 108, 0.08);
+            border: 1px solid #e8ecf7;
+        }
+
+        .card h2 {
+            color: #071663;
+            font-size: 19px;
+            line-height: 1.3;
+            margin-bottom: 8px;
+        }
+
+        .card-description {
+            color: #667085;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #344054;
+        }
+
+        textarea,
+        input[type="text"],
+        input[type="file"] {
+            width: 100%;
+            max-width: 100%;
+            border: 1px solid #d0d5dd;
+            border-radius: 12px;
+            padding: 13px;
+            outline: none;
+            font-size: 16px;
+            background: white;
+            color: #101828;
+        }
+
+        textarea {
+            min-height: 170px;
+            resize: vertical;
+            line-height: 1.6;
+        }
+
+        textarea:focus,
+        input:focus {
+            border-color: #1834c5;
+            box-shadow: 0 0 0 4px rgba(24, 52, 197, 0.1);
+        }
+
+        input[type="file"] {
+            padding: 10px;
+            font-size: 13px;
+        }
+
+        input[type="file"]::file-selector-button {
+            border: none;
+            border-radius: 8px;
+            padding: 9px 12px;
+            margin-right: 10px;
+            background: #e9edff;
+            color: #071663;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .separator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #98a2b3;
+            font-size: 12px;
+            margin: 18px 0;
+            text-align: center;
+        }
+
+        .separator::before,
+        .separator::after {
+            content: "";
+            height: 1px;
+            background: #eaecf0;
+            flex: 1;
+        }
+
+        .file-box {
+            border: 2px dashed #c7d0f5;
+            background: #f8f9ff;
+            border-radius: 14px;
+            padding: 17px;
+        }
+
+        .file-help {
+            color: #667085;
+            font-size: 12px;
+            line-height: 1.5;
+            margin-top: 10px;
+        }
+
+        .button {
+            width: 100%;
+            min-height: 46px;
+            border: none;
+            border-radius: 12px;
+            padding: 13px 16px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+
+        .button:hover {
+            transform: translateY(-1px);
+        }
+
+        .button:disabled {
+            opacity: 0.65;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .primary-button {
+            background: linear-gradient(135deg, #071663, #1834c5);
+            color: white;
+            margin-top: 16px;
+        }
+
+        .excel-button {
+            background: linear-gradient(135deg, #087443, #0e9f62);
+            color: white;
+            margin-top: 10px;
+        }
+
+        .danger-button {
+            background: #fff1f1;
+            color: #b42318;
+            border: 1px solid #fecaca;
+            width: auto;
+            min-height: 42px;
+            padding: 10px 14px;
+        }
+
+        .small-delete {
+            background: #fff1f1;
+            color: #b42318;
+            border: 1px solid #fecaca;
+            padding: 8px 11px;
+            border-radius: 9px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .table-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 15px;
+            margin-bottom: 17px;
+        }
+
+        .table-title {
+            min-width: 0;
+        }
+
+        .search-box {
+            margin-bottom: 15px;
+        }
+
+        .table-container {
+            width: 100%;
+            overflow-x: auto;
+            border: 1px solid #eaecf0;
+            border-radius: 13px;
+            background: white;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 570px;
+        }
+
+        th {
+            background: #f8f9fc;
+            color: #475467;
+            padding: 13px;
+            text-align: left;
+            font-size: 13px;
+            border-bottom: 1px solid #eaecf0;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 13px;
+            border-bottom: 1px solid #f0f1f5;
+            font-size: 14px;
+            vertical-align: middle;
+        }
+
+        tbody tr:hover {
+            background: #fafbff;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 45px 15px;
+            color: #667085;
+        }
+
+        .number-badge {
+            background: #eef1ff;
+            color: #071663;
+            padding: 7px 10px;
+            border-radius: 8px;
+            font-weight: bold;
+            display: inline-block;
+            white-space: nowrap;
+        }
+
+        .loading {
+            opacity: 0.65;
+            pointer-events: none;
+        }
+
+        .mobile-number-list {
+            display: none;
+        }
+
+        .mobile-number-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 12px;
+            background: #ffffff;
+            box-shadow: 0 4px 14px rgba(23, 43, 108, 0.05);
+        }
+
+        .mobile-number-card:last-child {
+            margin-bottom: 0;
+        }
+
+        .mobile-number-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .mobile-index {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            background: #eef1ff;
+            color: #071663;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .mobile-number-main {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .mobile-number-main strong {
+            display: block;
+            color: #071663;
+            font-size: 16px;
+            word-break: break-word;
+        }
+
+        .mobile-number-main span {
+            display: block;
+            color: #667085;
+            font-size: 12px;
+            line-height: 1.4;
+            margin-top: 4px;
+        }
+
+        .mobile-empty-state {
+            padding: 35px 15px;
+            text-align: center;
+            color: #667085;
+            border: 1px dashed #d0d5dd;
+            border-radius: 14px;
+            background: #fafbff;
+        }
+
+        @media (max-width: 900px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+
+            .summary-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 700px) {
+            .header {
+                position: relative;
+            }
+
+            .header-inner {
+                padding: 15px 14px;
+            }
+
+            .header h1 {
+                font-size: 18px;
+            }
+
+            .header p {
+                display: none;
+            }
+
+            .back-button {
+                padding: 9px 11px;
+                font-size: 12px;
+            }
+
+            .container {
+                padding: 16px 12px 35px;
+            }
+
+            .page-description {
+                font-size: 13px;
+                margin-bottom: 15px;
+            }
+
+            .summary-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 10px;
+            }
+
+            .summary-card {
+                padding: 14px;
+                border-radius: 14px;
+            }
+
+            .summary-card:last-child {
+                grid-column: 1 / -1;
+            }
+
+            .summary-card span {
+                font-size: 11px;
+            }
+
+            .summary-card strong {
+                font-size: 22px;
+                margin-top: 6px;
+            }
+
+            .layout {
+                gap: 15px;
+            }
+
+            .card {
+                padding: 16px;
+                border-radius: 16px;
+            }
+
+            .card h2 {
+                font-size: 18px;
+            }
+
+            textarea {
+                min-height: 150px;
+            }
+
+            .table-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .danger-button {
+                width: 100%;
+            }
+
+            .table-container {
+                display: none;
+            }
+
+            .mobile-number-list {
+                display: block;
+            }
+
+            .search-box {
+                margin-bottom: 14px;
+            }
+        }
+
+        @media (max-width: 420px) {
+            .header-inner {
+                gap: 8px;
+            }
+
+            .header h1 {
+                font-size: 16px;
+            }
+
+            .back-button {
+                padding: 8px 9px;
+                border-radius: 8px;
+            }
+
+            .container {
+                padding-left: 10px;
+                padding-right: 10px;
+            }
+
+            .summary-grid {
+                gap: 8px;
+            }
+
+            .summary-card {
+                padding: 12px;
+            }
+
+            .summary-card strong {
+                font-size: 20px;
+            }
+
+            .card {
+                padding: 14px;
+            }
+
+            .separator {
+                font-size: 10px;
+                gap: 7px;
+            }
+
+            .file-box {
+                padding: 14px;
+            }
+
+            .button {
+                min-height: 45px;
+            }
+
+            .mobile-number-card {
+                padding: 12px;
+            }
+
+            .mobile-number-main strong {
+                font-size: 15px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<header class="header">
+    <div class="header-inner">
+
+        <div class="header-title">
+            <h1>Vendor Telephone Numbers</h1>
+            <p>Upload and manage your customer numbers</p>
+        </div>
+
+        <a href="VENDORDASHBOARD.html" class="back-button">
+            ← Dashboard
+        </a>
+
+    </div>
+</header>
+
+<main class="container">
+
+    <p class="page-description">
+        Upload telephone numbers that belong to your vendor account.
+        You can enter numbers manually or bulk upload an Excel file.
+    </p>
+
+    <div id="messageBox" class="message"></div>
+
+    <section class="summary-grid">
+
+        <div class="summary-card">
+            <span>Total uploaded numbers</span>
+            <strong id="totalNumbers">0</strong>
+        </div>
+
+        <div class="summary-card">
+            <span>Numbers currently displayed</span>
+            <strong id="displayedNumbers">0</strong>
+        </div>
+
+        <div class="summary-card">
+            <span>Numbers found in last Excel upload</span>
+            <strong id="selectedFileCount">0</strong>
+        </div>
+
+    </section>
+
+    <div class="layout">
+
+        <section class="card" id="uploadCard">
+
+            <h2>Upload Numbers</h2>
+
+            <p class="card-description">
+                Enter one number per line. Numbers separated by commas,
+                spaces or semicolons are also accepted.
+            </p>
+
+            <label for="numberInput">
+                Enter telephone numbers
+            </label>
+
+            <textarea
+                id="numberInput"
+                placeholder="Example:
+0201234567
++233 24 123 4567
+0541234567"
+            ></textarea>
+
+            <button
+                type="button"
+                class="button primary-button"
+                id="manualUploadButton"
+                onclick="uploadManualNumbers()"
+            >
+                Add Entered Numbers
+            </button>
+
+            <div class="separator">
+                OR BULK UPLOAD WITH EXCEL
+            </div>
+
+            <div class="file-box">
+
+                <label for="numberFile">
+                    Select Excel File
+                </label>
+
+                <input
+                    type="file"
+                    id="numberFile"
+                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                >
+
+                <p class="file-help">
+                    Select an .xlsx Excel file. Place telephone numbers under
+                    a column named Telephone, Phone, Number, MSISDN or
+                    Recipient Number.
+                </p>
+
+            </div>
+
+            <button
+                type="button"
+                class="button excel-button"
+                id="excelUploadButton"
+                onclick="uploadExcelFile()"
+            >
+                Upload Excel File
+            </button>
+
+        </section>
+
+        <section class="card">
+
+            <div class="table-header">
+
+                <div class="table-title">
+                    <h2>My Uploaded Numbers</h2>
+
+                    <p
+                        class="card-description"
+                        style="margin-bottom: 0;"
+                    >
+                        Only numbers uploaded under your vendor account
+                        are shown.
+                    </p>
+                </div>
+
+                <button
+                    type="button"
+                    class="button danger-button"
+                    id="deleteAllButton"
+                    onclick="deleteAllNumbers()"
+                >
+                    Delete All Numbers
+                </button>
+
+            </div>
+
+            <div class="search-box">
+
+                <input
+                    type="text"
+                    id="searchInput"
+                    placeholder="Search telephone number..."
+                    oninput="filterNumbers()"
+                >
+
+            </div>
+
+            <div class="table-container">
+
+                <table>
+
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Telephone Number</th>
+                            <th>Date Added</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="numbersTableBody">
+
+                        <tr>
+                            <td colspan="4" class="empty-state">
+                                Loading numbers...
+                            </td>
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+            <div
+                class="mobile-number-list"
+                id="mobileNumberList"
+            >
+                <div class="mobile-empty-state">
+                    Loading numbers...
+                </div>
+            </div>
+
+        </section>
+
+    </div>
+
+</main>
+
+<script>
+    const API_BASE_URL = "";
+
+    const VENDOR_ID =
+    localStorage.getItem("userId") ||
+    localStorage.getItem("vendor_id") ||
+    localStorage.getItem("id");
+
+if (!VENDOR_ID) {
+    alert("Vendor account could not be identified. Please log in again.");
+    window.location.href = "login.html";
+}
+
+    let allNumbers = [];
+
+
+    document.addEventListener("DOMContentLoaded", () => {
+        loadNumbers();
+    });
+
+
+    function showMessage(message, type = "success") {
+        const messageBox = document.getElementById("messageBox");
+
+        messageBox.textContent = message;
+        messageBox.className = `message ${type}`;
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth"
+        });
+
+        setTimeout(() => {
+            messageBox.className = "message";
+            messageBox.textContent = "";
+        }, 7000);
+    }
+
+
+    function splitNumbers(value) {
+        if (!value) {
+            return [];
+        }
+
+        return String(value)
+            .split(/[\n\r,;|\t ]+/)
+            .map(number => number.trim())
+            .filter(Boolean);
+    }
+
+
+    async function uploadManualNumbers() {
+        const numberInput =
+            document.getElementById("numberInput");
+
+        const uploadButton =
+            document.getElementById("manualUploadButton");
+
+        const manualNumbers =
+            splitNumbers(numberInput.value);
+
+        const uniqueNumbers =
+            [...new Set(manualNumbers)];
+
+        if (!uniqueNumbers.length) {
+            showMessage(
+                "Please enter at least one telephone number.",
+                "error"
+            );
+            return;
+        }
+
+        const originalText =
+            uploadButton.textContent;
+
+        uploadButton.disabled = true;
+        uploadButton.textContent = "Adding Numbers...";
+
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/vendor/telephone-numbers/add-manual`,
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+
+                    credentials: "include",
+
+                   body: JSON.stringify({
+    vendor_id: Number(VENDOR_ID),
+    numbers: uniqueNumbers
+})
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message ||
+                    "The telephone numbers could not be added."
+                );
+            }
+
+            showMessage(
+                `${result.inserted_count} number(s) added. ` +
+                `${result.duplicate_count} duplicate(s) skipped. ` +
+                `${result.invalid_count} invalid number(s) skipped.`,
+                "success"
+            );
+
+            numberInput.value = "";
+
+            await loadNumbers();
+        } catch (error) {
+            console.error("Manual upload error:", error);
+
+            showMessage(
+                error.message,
+                "error"
+            );
+        } finally {
+            uploadButton.disabled = false;
+            uploadButton.textContent = originalText;
+        }
+    }
+
+
+    async function uploadExcelFile() {
+        const fileInput =
+            document.getElementById("numberFile");
+
+        const uploadButton =
+            document.getElementById("excelUploadButton");
+
+        const selectedFile =
+            fileInput.files[0];
+
+        if (!selectedFile) {
+            showMessage(
+                "Please select an .xlsx Excel file.",
+                "error"
+            );
+            return;
+        }
+
+        const extension = selectedFile.name
+            .split(".")
+            .pop()
+            .toLowerCase();
+
+        if (extension !== "xlsx") {
+            showMessage(
+                "Only .xlsx Excel files are allowed.",
+                "error"
+            );
+
+            fileInput.value = "";
+            return;
+        }
+
+        const formData = new FormData();
+
+        formData.append(
+            "excelFile",
+            selectedFile
+        );
+
+        formData.append(
+    "vendor_id",
+    VENDOR_ID
+);
+
+        const originalText =
+            uploadButton.textContent;
+
+        uploadButton.disabled = true;
+        uploadButton.textContent = "Uploading Excel File...";
+
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/vendor/telephone-numbers/upload-excel`,
+                {
+                    method: "POST",
+                    credentials: "include",
+                    body: formData
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message ||
+                    "The Excel file could not be uploaded."
+                );
+            }
+
+            showMessage(
+                `${result.inserted_count} number(s) uploaded from Excel. ` +
+                `${result.duplicate_count} duplicate(s) skipped. ` +
+                `${result.invalid_count} invalid number(s) skipped.`,
+                "success"
+            );
+
+            fileInput.value = "";
+
+            document.getElementById(
+                "selectedFileCount"
+            ).textContent =
+                result.valid_count || 0;
+
+            await loadNumbers();
+        } catch (error) {
+            console.error("Excel upload error:", error);
+
+            showMessage(
+                error.message,
+                "error"
+            );
+        } finally {
+            uploadButton.disabled = false;
+            uploadButton.textContent = originalText;
+        }
+    }
+
+
+    async function loadNumbers() {
+        const tableBody =
+            document.getElementById("numbersTableBody");
+
+        const mobileList =
+            document.getElementById("mobileNumberList");
+
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="4" class="empty-state">
+                    Loading numbers...
+                </td>
+            </tr>
+        `;
+
+        mobileList.innerHTML = `
+            <div class="mobile-empty-state">
+                Loading numbers...
+            </div>
+        `;
+
+        try {
+            const response = await fetch(
+               `${API_BASE_URL}/api/vendor/telephone-numbers?vendor_id=${encodeURIComponent(VENDOR_ID)}`,
+                {
+                    method: "GET",
+                    credentials: "include"
+                }
+            );
+
+            const result = await response.json();
+
+            if (response.status === 401) {
+                window.location.href = "login.html";
+                return;
+            }
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message ||
+                    "Could not load the numbers."
+                );
+            }
+
+            allNumbers = result.numbers || [];
+
+            document.getElementById(
+                "totalNumbers"
+            ).textContent = allNumbers.length;
+
+            renderNumbers(allNumbers);
+        } catch (error) {
+            console.error("Load numbers error:", error);
+
+            const safeMessage =
+                escapeHtml(error.message);
+
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="4" class="empty-state">
+                        ${safeMessage}
+                    </td>
+                </tr>
+            `;
+
+            mobileList.innerHTML = `
+                <div class="mobile-empty-state">
+                    ${safeMessage}
+                </div>
+            `;
+        }
+    }
+
+
+    function renderNumbers(numbers) {
+        const tableBody =
+            document.getElementById("numbersTableBody");
+
+        const mobileList =
+            document.getElementById("mobileNumberList");
+
+        document.getElementById(
+            "displayedNumbers"
+        ).textContent = numbers.length;
+
+        if (numbers.length === 0) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="4" class="empty-state">
+                        No telephone numbers found.
+                    </td>
+                </tr>
+            `;
+
+            mobileList.innerHTML = `
+                <div class="mobile-empty-state">
+                    No telephone numbers found.
+                </div>
+            `;
+
+            return;
+        }
+
+        tableBody.innerHTML = numbers
+            .map((item, index) => {
+                const date = formatDate(
+                    item.created_at
+                );
+
+                return `
+                    <tr>
+                        <td>${index + 1}</td>
+
+                        <td>
+                            <span class="number-badge">
+                                ${escapeHtml(item.telephone)}
+                            </span>
+                        </td>
+
+                        <td>
+                            ${escapeHtml(date)}
+                        </td>
+
+                        <td>
+                            <button
+                                type="button"
+                                class="small-delete"
+                                onclick="deleteNumber(${Number(item.id)})"
+                            >
+                                Delete
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            })
+            .join("");
+
+        mobileList.innerHTML = numbers
+            .map((item, index) => {
+                const date = formatDate(
+                    item.created_at
+                );
+
+                return `
+                    <div class="mobile-number-card">
+
+                        <div class="mobile-number-top">
+
+                            <div class="mobile-index">
+                                ${index + 1}
+                            </div>
+
+                            <div class="mobile-number-main">
+                                <strong>
+                                    ${escapeHtml(item.telephone)}
+                                </strong>
+
+                                <span>
+                                    Added: ${escapeHtml(date)}
+                                </span>
+                            </div>
+
+                            <button
+                                type="button"
+                                class="small-delete"
+                                onclick="deleteNumber(${Number(item.id)})"
+                            >
+                                Delete
+                            </button>
+
+                        </div>
+
+                    </div>
+                `;
+            })
+            .join("");
+    }
+
+
+    function filterNumbers() {
+        const searchValue =
+            document.getElementById("searchInput")
+                .value
+                .trim()
+                .toLowerCase();
+
+        if (!searchValue) {
+            renderNumbers(allNumbers);
+            return;
+        }
+
+        const filteredNumbers =
+            allNumbers.filter(item => {
+                return String(item.telephone)
+                    .toLowerCase()
+                    .includes(searchValue);
+            });
+
+        renderNumbers(filteredNumbers);
+    }
+
+
+    async function deleteNumber(numberId) {
+        const confirmed = confirm(
+            "Are you sure you want to delete this telephone number?"
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            const response = await fetch(
+               `${API_BASE_URL}/api/vendor/telephone-numbers/${numberId}?vendor_id=${encodeURIComponent(VENDOR_ID)}`,
+                {
+                    method: "DELETE",
+                    credentials: "include"
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message ||
+                    "Number could not be deleted."
+                );
+            }
+
+            showMessage(
+                result.message,
+                "success"
+            );
+
+            await loadNumbers();
+        } catch (error) {
+            console.error("Delete number error:", error);
+
+            showMessage(
+                error.message,
+                "error"
+            );
+        }
+    }
+
+
+    async function deleteAllNumbers() {
+        const deleteButton =
+            document.getElementById("deleteAllButton");
+
+        if (allNumbers.length === 0) {
+            showMessage(
+                "You do not have any numbers to delete.",
+                "error"
+            );
+            return;
+        }
+
+        const confirmed = confirm(
+            `Are you sure you want to delete all ${allNumbers.length} numbers?`
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        const secondConfirmation = confirm(
+            "This action cannot be reversed. Continue?"
+        );
+
+        if (!secondConfirmation) {
+            return;
+        }
+
+        const originalText =
+            deleteButton.textContent;
+
+        deleteButton.disabled = true;
+        deleteButton.textContent = "Deleting...";
+
+        try {
+            const response = await fetch(
+               `${API_BASE_URL}/api/vendor/telephone-numbers?vendor_id=${encodeURIComponent(VENDOR_ID)}`,
+                {
+                    method: "DELETE",
+                    credentials: "include"
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message ||
+                    "Numbers could not be deleted."
+                );
+            }
+
+            showMessage(
+                result.message,
+                "success"
+            );
+
+            document.getElementById(
+                "selectedFileCount"
+            ).textContent = "0";
+
+            await loadNumbers();
+        } catch (error) {
+            console.error("Delete all error:", error);
+
+            showMessage(
+                error.message,
+                "error"
+            );
+        } finally {
+            deleteButton.disabled = false;
+            deleteButton.textContent = originalText;
+        }
+    }
+
+
+    function formatDate(value) {
+        if (!value) {
+            return "Not available";
+        }
+
+        const date = new Date(value);
+
+        if (Number.isNaN(date.getTime())) {
+            return "Not available";
+        }
+
+        return date.toLocaleString();
+    }
+
+
+    function escapeHtml(value) {
+        return String(value ?? "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+    }
+</script>
+
+</body>
+</html>
+
