@@ -8336,6 +8336,8 @@ app.get(
 );
 
 
+
+
 app.get(
   "/api/vendor/my-uzo-code/:vendor_id",
   (req, res) => {
@@ -9270,6 +9272,147 @@ app.use((error, req, res, next) => {
   }
 
   next(error);
+});
+
+
+
+app.get("/api/admin/vendor-number-locks", async (req, res) => {
+  try {
+    const sql = `
+      SELECT
+        u.id,
+        u.account_name,
+        u.sender_id,
+        u.role,
+        u.status,
+        u.ussd_code,
+        u.vendor_number_lock,
+        COUNT(vtn.id) AS uploaded_numbers
+      FROM users u
+      LEFT JOIN vendor_telephone_numbers vtn
+        ON vtn.vendor_id = u.id
+      WHERE u.role = 'vendor'
+      GROUP BY
+        u.id,
+        u.account_name,
+        u.sender_id,
+        u.role,
+        u.status,
+        u.ussd_code,
+        u.vendor_number_lock
+      ORDER BY u.id DESC
+    `;
+
+    const [vendors] = await db.query(sql);
+
+    return res.status(200).json({
+      success: true,
+      vendors
+    });
+  } catch (error) {
+    console.error("GET VENDOR NUMBER LOCKS ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load vendors."
+    });
+  }
+});
+
+
+app.put("/api/admin/vendor-number-lock/:vendorId", async (req, res) => {
+  try {
+    const vendorId = Number(req.params.vendorId);
+    const { locked } = req.body;
+
+    if (!Number.isInteger(vendorId) || vendorId <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid vendor ID."
+      });
+    }
+
+    const lockValue =
+      locked === true ||
+      locked === 1 ||
+      locked === "1"
+        ? 1
+        : 0;
+
+    const [result] = await db.query(
+      `
+      UPDATE users
+      SET vendor_number_lock = ?
+      WHERE id = ?
+        AND role = 'vendor'
+      `,
+      [lockValue, vendorId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor not found."
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message:
+        lockValue === 1
+          ? "Vendor customer numbers locked successfully."
+          : "Vendor customer numbers unlocked successfully.",
+      vendorId,
+      vendor_number_lock: lockValue
+    });
+  } catch (error) {
+    console.error("UPDATE SINGLE VENDOR LOCK ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update vendor lock."
+    });
+  }
+});
+
+
+app.put("/api/admin/vendor-number-locks/all", async (req, res) => {
+  try {
+    const { locked } = req.body;
+
+    const lockValue =
+      locked === true ||
+      locked === 1 ||
+      locked === "1"
+        ? 1
+        : 0;
+
+    const [result] = await db.query(
+      `
+      UPDATE users
+      SET vendor_number_lock = ?
+      WHERE role = 'vendor'
+      `,
+      [lockValue]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message:
+        lockValue === 1
+          ? "All vendors have been locked successfully."
+          : "All vendors have been unlocked successfully.",
+      updatedVendors: result.affectedRows,
+      vendor_number_lock: lockValue
+    });
+  } catch (error) {
+    console.error("UPDATE ALL VENDOR LOCKS ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update all vendor locks."
+    });
+  }
 });
 
 
