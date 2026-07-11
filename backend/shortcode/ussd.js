@@ -216,6 +216,55 @@ function toLocalMsisdn(msisdn) {
   return "0" + intl.slice(3);
 }
 
+
+// Check whether a caller is allowed to use a locked vendor code
+async function checkVendorTelephoneAccess(
+  vendorId,
+  vendorNumberLock,
+  msisdn
+) {
+  // Lock is OFF: allow every number without checking the table
+  if (Number(vendorNumberLock) !== 1) {
+    console.log("🔓 Vendor number lock is OFF:", {
+      vendorId,
+      msisdn,
+    });
+
+    return true;
+  }
+
+  // Lock is ON: check this caller under this particular vendor
+  const [intl, local, plusIntl] = msisdnVariants(msisdn);
+
+  console.log("🔒 Checking locked vendor telephone access:", {
+    vendorId,
+    receivedMsisdn: msisdn,
+    intl,
+    local,
+    plusIntl,
+  });
+
+  const [rows] = await dbp.query(
+    `SELECT id
+     FROM vendor_telephone_numbers
+     WHERE vendor_id = ?
+       AND telephone IN (?, ?, ?)
+     LIMIT 1`,
+    [vendorId, intl, local, plusIntl]
+  );
+
+  const allowed = Boolean(rows && rows.length);
+
+  console.log("🔍 Vendor telephone access result:", {
+    vendorId,
+    msisdn,
+    allowed,
+  });
+
+  return allowed;
+}
+
+
 // Access control
 function checkAccess(msisdn, cb) {
   db.query(
@@ -799,16 +848,17 @@ if (isNewSessionInner) {
       extensionMode = "default";
 
       const [vendorRows] = await dbp.query(
-        `SELECT
-           id,
-           username,
-           ussd_locked
-         FROM users
-         WHERE id = ?
-           AND role = 'vendor'
-         LIMIT 1`,
-        [vendorId]
-      );
+  `SELECT
+     id,
+     username,
+     ussd_locked,
+     vendor_number_lock
+   FROM users
+   WHERE id = ?
+     AND role = 'vendor'
+   LIMIT 1`,
+  [vendorId]
+);
 
       if (!vendorRows || !vendorRows.length) {
         console.log(
@@ -871,29 +921,30 @@ if (isNewSessionInner) {
       extensionMode = "custom";
       assignedCode = ext;
 
-      const [codeRows] = await dbp.query(
-        `SELECT
-           uvc.vendor_id,
-           uvc.code,
-           uvc.code_type,
-           uvc.status,
-           uvc.expiry_date,
-           u.username,
-           u.ussd_locked
-         FROM uzo_vendor_codes uvc
-         JOIN users u
-           ON u.id = uvc.vendor_id
-         WHERE uvc.code = ?
-           AND LOWER(TRIM(uvc.code_type)) = 'moolre'
-           AND LOWER(TRIM(uvc.status)) = 'active'
-           AND (
-             uvc.expiry_date IS NULL
-             OR DATE(uvc.expiry_date) >= CURDATE()
-           )
-           AND u.role = 'vendor'
-         LIMIT 1`,
-        [ext]
-      );
+     const [codeRows] = await dbp.query(
+  `SELECT
+     uvc.vendor_id,
+     uvc.code,
+     uvc.code_type,
+     uvc.status,
+     uvc.expiry_date,
+     u.username,
+     u.ussd_locked,
+     u.vendor_number_lock
+   FROM uzo_vendor_codes uvc
+   JOIN users u
+     ON u.id = uvc.vendor_id
+   WHERE uvc.code = ?
+     AND LOWER(TRIM(uvc.code_type)) = 'moolre'
+     AND LOWER(TRIM(uvc.status)) = 'active'
+     AND (
+       uvc.expiry_date IS NULL
+       OR DATE(uvc.expiry_date) >= CURDATE()
+     )
+     AND u.role = 'vendor'
+   LIMIT 1`,
+  [ext]
+);
 
       if (!codeRows || !codeRows.length) {
         console.log(
@@ -929,6 +980,37 @@ if (isNewSessionInner) {
         reply: false,
       });
     }
+
+
+
+    // ==================================================
+// VENDOR TELEPHONE NUMBER LOCK CHECK
+// Applies only to Moolre vendor codes:
+// 1. *203*444*VENDOR_ID#
+// 2. *203*CUSTOM_EXTENSION#
+// ==================================================
+const telephoneAllowed = await checkVendorTelephoneAccess(
+  vendorId,
+  vendorRow.vendor_number_lock,
+  msisdn
+);
+
+if (!telephoneAllowed) {
+  console.log(
+    "❌ Caller not found in vendor_telephone_numbers:",
+    {
+      vendorId,
+      msisdn,
+      extensionMode,
+      extension: ext,
+    }
+  );
+
+  return res.json({
+    message: "APPLICATION UNKNOWN",
+    reply: false,
+  });
+}
 
     // ==================================================
     // HIT CHECK
