@@ -639,14 +639,16 @@ router.post("/", (req, res) => {
   const { sessionId, msisdn, data, message, extension, new: isNew } = payload;
 
   // Wrong extension
- const ext = String(extension || "").trim();
+const ext = String(extension || "").trim();
 
-// Only allow admin(888) or user/vendor(500)
-if (!ADMIN_EXTENSIONS.includes(ext) && ext !== USER_EXTENSION) {
-  console.log("❌ Invalid extension:", extension);
-  return res.json({ message: "END Invalid USSD entry point", reply: false });
+if (!ext) {
+  console.log("❌ Missing Moolre extension:", extension);
+
+  return res.json({
+    message: "END Invalid USSD entry point",
+    reply: false,
+  });
 }
-
   const inputFromUser = (data || message || "").trim();
   const isNewSession = isNew === true || !sessions[sessionId];
 
@@ -724,107 +726,281 @@ if (isNewSession && !inputFromUser && ADMIN_EXTENSIONS.includes(ext)) {
     const isNewSessionInner = isNew === true || !sessions[sessionId];
     const inputInner = inputFromUser;
 
-    // New vendor session *203*717*ID#
- if (isNewSessionInner) {
-  if (ext !== USER_EXTENSION) {
+// ======================================================
+// NEW MOOLRE VENDOR SESSION
+//
+// DEFAULT VENDOR CODE:
+// *203*500*VENDOR_ID#
+//
+// CUSTOM MOOLRE CODE:
+// *203*CUSTOM_EXTENSION#
+// Example: *203*222#
+//
+// UZO is handled separately inside router.post("/uzo")
+// ======================================================
+if (isNewSessionInner) {
+  if (ADMIN_EXTENSIONS.includes(ext)) {
     return res.json({
-      message: "END Invalid user entry point",
+      message: "END Invalid vendor entry point",
       reply: false,
     });
   }
 
-  console.log(
-    "🟨 NEW VENDOR SESSION (ID MODE). Raw first data:",
-    inputInner
-  );
-
-      (async () => {
-        const raw = String(inputInner || "").trim();
-        const vendorIdFromDial = parseInt(raw.replace(/\D/g, ""), 10);
-        const vendorId =
-          Number.isInteger(vendorIdFromDial) && vendorIdFromDial > 0
-            ? vendorIdFromDial
-            : 1;
-
-
-          const [vendorRows] = await dbp.query(
-  `SELECT id, username, ussd_locked 
-   FROM users 
-   WHERE id = ? AND role = 'vendor' 
-   LIMIT 1`,
-  [vendorId]
-);
-
-if (!vendorRows || !vendorRows.length) {
-  return res.json({
-    message: "APPLICATION UNKNOWN.",
-    reply: false,
+  console.log("🟨 NEW MOOLRE VENDOR SESSION:", {
+    extension: ext,
+    firstInput: inputInner,
+    msisdn,
+    sessionId,
   });
-}
 
-if (Number(vendorRows[0].ussd_locked) === 1) {
-  return res.json({
-    message: "This vendor account has been locked. Please contact admin for support.",
-    reply: false,
-  });
-}
+  (async () => {
+    let vendorId = null;
+    let brandName = "SandyPay";
+    let vendorRow = null;
+    let extensionMode = "";
+    let assignedCode = null;
 
-        const remaining = await getRemainingHits(vendorId);
-        console.log("📊 Remaining hits for vendor", vendorId, "=", remaining);
-        if (remaining <= 0) {
-          return res.json({
-            message: "APPLICATION UNKNOWN.",
-            reply: false,
-          });
-        }
+    // ==================================================
+    // METHOD 1: DEFAULT EXTENSION 500
+    // Dial format: *203*500*VENDOR_ID#
+    // ==================================================
+    if (ext === USER_EXTENSION) {
+      const rawVendorId = String(inputInner || "").trim();
 
-        const ok = await consumeOneHit(vendorId);
-        if (!ok) {
-          return res.json({
-            message: "END Sorry, your session has finished.",
-            reply: false,
-          });
-        }
+      const vendorIdFromDial = parseInt(
+        rawVendorId.replace(/\D/g, ""),
+        10
+      );
 
-        await incrementUssdCounter(vendorId);
-        await saveVendorCustomer(vendorId, msisdn, "moolre");
-
-        db.query(
-          "SELECT username FROM users WHERE id = ? LIMIT 1",
-          [vendorId],
-          (err, rows) => {
-            let brandName = "SandyPay";
-            if (!err && rows && rows.length && rows[0].username) {
-              brandName = rows[0].username;
-            }
-
-            sessions[sessionId] = {
-              step: "start",
-              vendorId,
-              brandName,
-              isPlain: false,
-              network: "",
-              selectedPkg: "",
-              recipient: "",
-              packageList: [],
-              packagePage: 0,
-              moolreSessionId: sessionId,
-            };
-
-            console.log("🟩 CREATED VENDOR SESSION:", sessions[sessionId]);
-            return handleSession(sessionId, "", String(msisdn || ""), res);
-          }
+      if (
+        !Number.isInteger(vendorIdFromDial) ||
+        vendorIdFromDial <= 0
+      ) {
+        console.log(
+          "❌ Default extension 500 received without valid vendor ID:",
+          inputInner
         );
-      })().catch((e) => {
-        console.error("❌ Vendor session error:", e.message);
+
         return res.json({
-          message: "END Service temporarily unavailable. Please try again later.",
+          message: "APPLICATION UNKNOWN.",
           reply: false,
         });
-      });
+      }
 
-      return;
+      vendorId = vendorIdFromDial;
+      extensionMode = "default";
+
+      const [vendorRows] = await dbp.query(
+        `SELECT
+           id,
+           username,
+           ussd_locked
+         FROM users
+         WHERE id = ?
+           AND role = 'vendor'
+         LIMIT 1`,
+        [vendorId]
+      );
+
+      if (!vendorRows || !vendorRows.length) {
+        console.log(
+          "❌ Default Moolre vendor ID not found:",
+          vendorId
+        );
+
+        return res.json({
+          message: "APPLICATION UNKNOWN.",
+          reply: false,
+        });
+      }
+
+      vendorRow = vendorRows[0];
+      brandName = vendorRow.username || "SandyPay";
+
+      // Check whether admin has already assigned this vendor
+      // a custom Moolre code.
+      const [customRows] = await dbp.query(
+        `SELECT code
+         FROM uzo_vendor_codes
+         WHERE vendor_id = ?
+           AND LOWER(TRIM(code_type)) = 'moolre'
+           AND LOWER(TRIM(status)) = 'active'
+           AND (
+             expiry_date IS NULL
+             OR DATE(expiry_date) >= CURDATE()
+           )
+         LIMIT 1`,
+        [vendorId]
+      );
+
+      if (customRows && customRows.length) {
+        console.log(
+          "❌ Vendor already has a custom Moolre extension:",
+          {
+            vendorId,
+            customCode: customRows[0].code,
+          }
+        );
+
+        return res.json({
+          message: "APPLICATION UNKNOWN.",
+          reply: false,
+        });
+      }
+
+      console.log("✅ Default Moolre vendor resolved:", {
+        vendorId,
+        extension: USER_EXTENSION,
+      });
     }
+
+    // ==================================================
+    // METHOD 2: CUSTOM MOOLRE EXTENSION
+    // Dial format: *203*CUSTOM_EXTENSION#
+    // Example: *203*222#
+    // ==================================================
+    else {
+      extensionMode = "custom";
+      assignedCode = ext;
+
+      const [codeRows] = await dbp.query(
+        `SELECT
+           uvc.vendor_id,
+           uvc.code,
+           uvc.code_type,
+           uvc.status,
+           uvc.expiry_date,
+           u.username,
+           u.ussd_locked
+         FROM uzo_vendor_codes uvc
+         JOIN users u
+           ON u.id = uvc.vendor_id
+         WHERE uvc.code = ?
+           AND LOWER(TRIM(uvc.code_type)) = 'moolre'
+           AND LOWER(TRIM(uvc.status)) = 'active'
+           AND (
+             uvc.expiry_date IS NULL
+             OR DATE(uvc.expiry_date) >= CURDATE()
+           )
+           AND u.role = 'vendor'
+         LIMIT 1`,
+        [ext]
+      );
+
+      if (!codeRows || !codeRows.length) {
+        console.log(
+          "❌ Custom Moolre extension not found:",
+          ext
+        );
+
+        return res.json({
+          message: "APPLICATION UNKNOWN.",
+          reply: false,
+        });
+      }
+
+      vendorRow = codeRows[0];
+      vendorId = Number(vendorRow.vendor_id);
+      brandName = vendorRow.username || "SandyPay";
+
+      console.log("✅ Custom Moolre vendor resolved:", {
+        extension: ext,
+        vendorId,
+      });
+    }
+
+    // ==================================================
+    // VENDOR LOCK CHECK
+    // ==================================================
+    if (Number(vendorRow.ussd_locked) === 1) {
+      console.log("❌ Vendor account is locked:", vendorId);
+
+      return res.json({
+        message:
+          "This vendor account has been locked. Please contact admin for support.",
+        reply: false,
+      });
+    }
+
+    // ==================================================
+    // HIT CHECK
+    // ==================================================
+    const remaining = await getRemainingHits(vendorId);
+
+    console.log(
+      "📊 Remaining hits for Moolre vendor",
+      vendorId,
+      "=",
+      remaining
+    );
+
+    if (remaining <= 0) {
+      return res.json({
+        message: "APPLICATION UNKNOWN.",
+        reply: false,
+      });
+    }
+
+    const ok = await consumeOneHit(vendorId);
+
+    if (!ok) {
+      return res.json({
+        message: "END Sorry, your session has finished.",
+        reply: false,
+      });
+    }
+
+    await incrementUssdCounter(vendorId);
+    await saveVendorCustomer(vendorId, msisdn, "moolre");
+
+    // ==================================================
+    // CREATE MOOLRE VENDOR SESSION
+    // ==================================================
+    sessions[sessionId] = {
+      step: "start",
+      vendorId,
+      brandName,
+      isPlain: false,
+
+      ussdProvider: "moolre",
+      extensionMode,
+
+      vendorCode:
+        extensionMode === "default"
+          ? USER_EXTENSION
+          : assignedCode,
+
+      network: "",
+      selectedPkg: "",
+      recipient: "",
+      packageList: [],
+      packagePage: 0,
+      moolreSessionId: sessionId,
+    };
+
+    console.log(
+      "🟩 CREATED MOOLRE VENDOR SESSION:",
+      sessions[sessionId]
+    );
+
+    return handleSession(
+      sessionId,
+      "",
+      String(msisdn || ""),
+      res
+    );
+  })().catch((e) => {
+    console.error("❌ Moolre vendor session error:", e);
+
+    return res.json({
+      message:
+        "END Service temporarily unavailable. Please try again later.",
+      reply: false,
+    });
+  });
+
+  return;
+}
 
     // Existing session – continue
     return handleSession(sessionId, inputInner, String(msisdn || ""), res);
@@ -998,19 +1174,29 @@ if (mainCode !== "426" || !uzoCode) {
     });
 
     (async () => {
-      const [codeRows] = await dbp.query(
-      `SELECT 
-   uvc.vendor_id,
-   u.username,
-   u.ussd_locked
- FROM uzo_vendor_codes uvc
- JOIN users u ON u.id = uvc.vendor_id
- WHERE uvc.code = ?
-   AND uvc.status = 'active'
-   AND u.role = 'vendor'
- LIMIT 1`,
-        [uzoCode]
-      );
+    const [codeRows] = await dbp.query(
+  `SELECT
+     uvc.vendor_id,
+     uvc.code,
+     uvc.code_type,
+     uvc.status,
+     uvc.expiry_date,
+     u.username,
+     u.ussd_locked
+   FROM uzo_vendor_codes uvc
+   JOIN users u
+     ON u.id = uvc.vendor_id
+   WHERE uvc.code = ?
+     AND LOWER(TRIM(uvc.code_type)) = 'uzo'
+     AND LOWER(TRIM(uvc.status)) = 'active'
+     AND (
+       uvc.expiry_date IS NULL
+       OR DATE(uvc.expiry_date) >= CURDATE()
+     )
+     AND u.role = 'vendor'
+   LIMIT 1`,
+  [uzoCode]
+);
 
       if (!codeRows || !codeRows.length) {
         console.log("❌ Uzo code not mapped to any active vendor:", uzoCode);
