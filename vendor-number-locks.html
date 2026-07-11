@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>Vendor Number Locks - Sandypay</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    body {
+      background: #f4f6fb;
+      color: #111827;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #071a69, #183bbd);
+      color: white;
+      padding: 20px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.12);
+    }
+
+    .header-content {
+      max-width: 1200px;
+      margin: auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .header h1 {
+      font-size: 22px;
+    }
+
+    .back-button {
+      text-decoration: none;
+      color: white;
+      background: rgba(255, 255, 255, 0.16);
+      padding: 10px 15px;
+      border-radius: 10px;
+      font-weight: bold;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1200px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    .summary-card {
+      background: white;
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: 0 8px 25px rgba(15, 23, 42, 0.08);
+      margin-bottom: 20px;
+    }
+
+    .summary-card h2 {
+      color: #071a69;
+      font-size: 20px;
+      margin-bottom: 8px;
+    }
+
+    .summary-card p {
+      color: #64748b;
+      line-height: 1.6;
+      margin-bottom: 18px;
+    }
+
+    .global-buttons {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+      transition: 0.2s;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      opacity: 0.92;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .lock-all-button {
+      background: #dc2626;
+      color: white;
+      padding: 12px 18px;
+      border-radius: 10px;
+    }
+
+    .unlock-all-button {
+      background: #16a34a;
+      color: white;
+      padding: 12px 18px;
+      border-radius: 10px;
+    }
+
+    .refresh-button {
+      background: #e2e8f0;
+      color: #0f172a;
+      padding: 12px 18px;
+      border-radius: 10px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: white;
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 6px 20px rgba(15, 23, 42, 0.07);
+    }
+
+    .stat-card span {
+      display: block;
+      color: #64748b;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .stat-card strong {
+      font-size: 28px;
+      color: #071a69;
+    }
+
+    .search-box {
+      background: white;
+      padding: 15px;
+      border-radius: 15px;
+      margin-bottom: 18px;
+      box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+    }
+
+    .search-box input {
+      width: 100%;
+      border: 1px solid #cbd5e1;
+      padding: 13px 15px;
+      border-radius: 10px;
+      font-size: 15px;
+      outline: none;
+    }
+
+    .search-box input:focus {
+      border-color: #183bbd;
+      box-shadow: 0 0 0 3px rgba(24, 59, 189, 0.1);
+    }
+
+    .table-card {
+      background: white;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 8px 25px rgba(15, 23, 42, 0.08);
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 750px;
+    }
+
+    th {
+      background: #071a69;
+      color: white;
+      text-align: left;
+      padding: 15px;
+      font-size: 14px;
+    }
+
+    td {
+      padding: 15px;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 14px;
+      vertical-align: middle;
+    }
+
+    tr:hover td {
+      background: #f8fafc;
+    }
+
+    .vendor-name {
+      font-weight: bold;
+      color: #111827;
+    }
+
+    .vendor-email {
+      color: #64748b;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      padding: 7px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .status-locked {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+
+    .status-unlocked {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    .action-button {
+      padding: 9px 13px;
+      border-radius: 9px;
+      color: white;
+      min-width: 115px;
+    }
+
+    .lock-button {
+      background: #dc2626;
+    }
+
+    .unlock-button {
+      background: #16a34a;
+    }
+
+    .message {
+      display: none;
+      padding: 13px 15px;
+      border-radius: 10px;
+      margin-bottom: 15px;
+      font-weight: bold;
+    }
+
+    .message-success {
+      display: block;
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #86efac;
+    }
+
+    .message-error {
+      display: block;
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fca5a5;
+    }
+
+    .loading,
+    .empty {
+      text-align: center;
+      padding: 35px;
+      color: #64748b;
+    }
+
+    @media (max-width: 700px) {
+      .header-content {
+        align-items: flex-start;
+      }
+
+      .header h1 {
+        font-size: 18px;
+      }
+
+      .container {
+        padding: 13px;
+      }
+
+      .stats {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      .stat-card {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .stat-card span {
+        margin-bottom: 0;
+      }
+
+      .stat-card strong {
+        font-size: 23px;
+      }
+
+      .global-buttons {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+
+      .global-buttons button {
+        width: 100%;
+      }
+
+      .summary-card {
+        padding: 17px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <header class="header">
+    <div class="header-content">
+      <h1>Vendor Customer Number Locks</h1>
+
+      <a href="admindashboard.html" class="back-button">
+        Back
+      </a>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <div id="messageBox" class="message"></div>
+
+    <section class="summary-card">
+      <h2>Control Vendor Number Access</h2>
+
+      <p>
+        Lock all vendors together or control each vendor separately.
+        When a vendor is locked, only customer numbers uploaded by that
+        vendor will be allowed to use the vendor USSD service.
+      </p>
+
+      <div class="global-buttons">
+        <button
+          type="button"
+          class="lock-all-button"
+          onclick="updateAllVendors(1)"
+        >
+          Lock All Vendors
+        </button>
+
+        <button
+          type="button"
+          class="unlock-all-button"
+          onclick="updateAllVendors(0)"
+        >
+          Unlock All Vendors
+        </button>
+
+        <button
+          type="button"
+          class="refresh-button"
+          onclick="loadVendors()"
+        >
+          Refresh
+        </button>
+      </div>
+    </section>
+
+    <section class="stats">
+      <div class="stat-card">
+        <span>Total Vendors</span>
+        <strong id="totalVendors">0</strong>
+      </div>
+
+      <div class="stat-card">
+        <span>Locked Vendors</span>
+        <strong id="lockedVendors">0</strong>
+      </div>
+
+      <div class="stat-card">
+        <span>Unlocked Vendors</span>
+        <strong id="unlockedVendors">0</strong>
+      </div>
+    </section>
+
+    <section class="search-box">
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="Search by vendor name, username, email or ID..."
+        oninput="filterVendors()"
+      >
+    </section>
+
+    <section class="table-card">
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Vendor</th>
+              <th>Vendor ID</th>
+              <th>USSD Code</th>
+              <th>Uploaded Numbers</th>
+              <th>Lock Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+
+          <tbody id="vendorTableBody">
+            <tr>
+              <td colspan="6" class="loading">
+                Loading vendors...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    /*
+      Replace this with your live backend URL when necessary.
+
+      Example:
+      const API_BASE_URL = "https://your-backend.ondigitalocean.app";
+
+      Leave it empty when frontend and backend use the same domain.
+    */
+    const API_BASE_URL = "";
+
+    let vendors = [];
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function showMessage(message, type = "success") {
+      const messageBox = document.getElementById("messageBox");
+
+      messageBox.textContent = message;
+      messageBox.className =
+        type === "success"
+          ? "message message-success"
+          : "message message-error";
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth"
+      });
+
+      setTimeout(() => {
+        messageBox.className = "message";
+        messageBox.textContent = "";
+      }, 4000);
+    }
+
+    async function loadVendors() {
+      const tableBody = document.getElementById("vendorTableBody");
+
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="6" class="loading">
+            Loading vendors...
+          </td>
+        </tr>
+      `;
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/admin/vendor-number-locks`,
+          {
+            method: "GET",
+            credentials: "include"
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(
+            data.message || "Unable to load vendors."
+          );
+        }
+
+        vendors = Array.isArray(data.vendors)
+          ? data.vendors
+          : [];
+
+        updateStatistics();
+        displayVendors(vendors);
+      } catch (error) {
+        console.error("LOAD VENDORS ERROR:", error);
+
+        tableBody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty">
+              ${escapeHtml(error.message)}
+            </td>
+          </tr>
+        `;
+      }
+    }
+
+    function displayVendors(vendorList) {
+      const tableBody = document.getElementById("vendorTableBody");
+
+      if (!vendorList.length) {
+        tableBody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty">
+              No vendors found.
+            </td>
+          </tr>
+        `;
+
+        return;
+      }
+
+      tableBody.innerHTML = vendorList.map(vendor => {
+        const locked =
+          Number(vendor.vendor_number_lock) === 1;
+
+       const displayName =
+  vendor.account_name ||
+  `Vendor ${vendor.id}`;
+
+        return `
+          <tr>
+            <td>
+              <div class="vendor-name">
+                ${escapeHtml(displayName)}
+              </div>
+
+              <div class="vendor-email">
+              ${escapeHtml(vendor.sender_id || vendor.ussd_code || "")}
+              </div>
+            </td>
+
+            <td>
+              ${escapeHtml(vendor.id)}
+            </td>
+
+            <td>
+           ${escapeHtml(vendor.ussd_code || "Not available")}
+            </td>
+
+            <td>
+              ${Number(vendor.uploaded_numbers || 0)}
+            </td>
+
+            <td>
+              <span class="status ${
+                locked
+                  ? "status-locked"
+                  : "status-unlocked"
+              }">
+                ${locked ? "Locked" : "Unlocked"}
+              </span>
+            </td>
+
+            <td>
+              <button
+                type="button"
+                class="action-button ${
+                  locked
+                    ? "unlock-button"
+                    : "lock-button"
+                }"
+                onclick="updateSingleVendor(
+                  ${Number(vendor.id)},
+                  ${locked ? 0 : 1}
+                )"
+              >
+                ${locked ? "Unlock Vendor" : "Lock Vendor"}
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function updateStatistics() {
+      const total = vendors.length;
+
+      const locked = vendors.filter(
+        vendor =>
+          Number(vendor.vendor_number_lock) === 1
+      ).length;
+
+      const unlocked = total - locked;
+
+      document.getElementById("totalVendors").textContent =
+        total;
+
+      document.getElementById("lockedVendors").textContent =
+        locked;
+
+      document.getElementById("unlockedVendors").textContent =
+        unlocked;
+    }
+
+    function filterVendors() {
+      const searchValue = document
+        .getElementById("searchInput")
+        .value
+        .trim()
+        .toLowerCase();
+
+      if (!searchValue) {
+        displayVendors(vendors);
+        return;
+      }
+
+      const filtered = vendors.filter(vendor => {
+        const searchText = [
+          vendor.id,
+          vendor.firstname,
+          vendor.lastname,
+          vendor.username,
+          vendor.email,
+          vendor.telephone
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return searchText.includes(searchValue);
+      });
+
+      displayVendors(filtered);
+    }
+
+    async function updateSingleVendor(vendorId, locked) {
+      const action = locked === 1 ? "lock" : "unlock";
+
+      const confirmed = confirm(
+        `Are you sure you want to ${action} this vendor?`
+      );
+
+      if (!confirmed) return;
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/admin/vendor-number-lock/${vendorId}`,
+          {
+            method: "PUT",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              locked
+            })
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(
+            data.message || "Unable to update vendor."
+          );
+        }
+
+        showMessage(data.message || "Vendor updated.");
+        await loadVendors();
+      } catch (error) {
+        console.error("UPDATE VENDOR ERROR:", error);
+        showMessage(error.message, "error");
+      }
+    }
+
+    async function updateAllVendors(locked) {
+      const action =
+        locked === 1
+          ? "lock all vendors"
+          : "unlock all vendors";
+
+      const confirmed = confirm(
+        `Are you sure you want to ${action}?`
+      );
+
+      if (!confirmed) return;
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/admin/vendor-number-locks/all`,
+          {
+            method: "PUT",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              locked
+            })
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(
+            data.message || "Unable to update all vendors."
+          );
+        }
+
+        showMessage(data.message || "All vendors updated.");
+        await loadVendors();
+      } catch (error) {
+        console.error("UPDATE ALL VENDORS ERROR:", error);
+        showMessage(error.message, "error");
+      }
+    }
+
+    loadVendors();
+  </script>
+
+</body>
+</html>
