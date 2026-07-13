@@ -365,7 +365,7 @@ function handleSession(sessionId, input, msisdn, res) {
 
         if (choice === "2") {
           if (!state.vendorId || state.isPlain) {
-            return end("Contact us:\n0502888235");
+            return end("Contact us:\n0501403971");
           }
 
           db.query(
