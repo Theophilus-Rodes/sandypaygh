@@ -60,60 +60,49 @@ if (!DB_PASSWORD) {
   throw new Error("DB_PASSWORD is empty — set DB_PASSWORD (or DB_PASS).");
 }
 
-// Your short code extension (from Moolre)
+// Admin codes:
+// *203*888# = admin
+// *203*444# = admin
+//
+// Default vendor code:
+// *203*444*VENDOR_ID#
 const ADMIN_EXTENSIONS = ["888", "444"];
-
-// 444 works in two ways:
-// *203*444#       = admin
-// *203*444*ID#    = default vendor
 const USER_EXTENSION = "444";
 
 
-
-
-// ✅ BulkClix payment accounts
-const BULKCLIX_BASE_URL = "https://api.bulkclix.com/api/v1/payment-api";
-
-const ADMIN_BULKCLIX = {
-  url: `${BULKCLIX_BASE_URL}/momopay`,
-  apiKey: process.env.ADMIN_BULKCLIX_API_KEY || "fTQMwISNm8wyFn6Xg5eY6xj8IU6tdqEdIwRLJk3K",
+// ✅ Moolre payment accounts
+const ADMIN_MOOLRE = {
+  url: "https://api.moolre.com/open/transact/payment",
+  user: process.env.ADMIN_MOOLRE_USER || "acheamp",
+  pubkey: process.env.ADMIN_MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjU0OSwiZXhwIjoxOTI1MDA5OTk5fQ.YNoLN19xWWZRyr2Gdy_2DexpGLZv4V9yATnyYSFef2M",
+  wallet: process.env.ADMIN_MOOLRE_WALLET || "10654906056819",
 };
 
-const VENDOR_BULKCLIX = {
-  url: `${BULKCLIX_BASE_URL}/momopay`,
-  apiKey:
-    process.env.VENDOR_BULKCLIX_API_KEY ||
-    "atsrf36Y37tVpSvzwI2nS2N451G9NwYpJLxzEPht",
+const UZO_ADMIN_87_MOOLRE = {
+  url: "https://api.moolre.com/open/transact/payment",
+  user: process.env.UZO_ADMIN_87_MOOLRE_USER || "dataguygh",
+  pubkey: process.env.UZO_ADMIN_87_MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTU2NTQ1OTk5fQ.hpJg5emG0kyO40d7XIaZ12iUAspshzKvNoJPkiorkq8",
+  wallet: process.env.UZO_ADMIN_87_MOOLRE_WALLET || "10691706058501",
 };
 
-const UZO_ADMIN_87_BULKCLIX = {
-  url: `${BULKCLIX_BASE_URL}/momopay`,
-  apiKey: process.env.UZO_ADMIN_87_BULKCLIX_API_KEY || "fTQMwISNm8wyFn6Xg5eY6xj8IU6tdqEdIwRLJk3K",
+const VENDOR_MOOLRE = {
+  url: "https://api.moolre.com/open/transact/payment",
+  user: process.env.VENDOR_MOOLRE_USER || "dataguygh",
+  pubkey: process.env.VENDOR_MOOLRE_PUBKEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTU2NTQ1OTk5fQ.hpJg5emG0kyO40d7XIaZ12iUAspshzKvNoJPkiorkq8",
+  wallet: process.env.VENDOR_MOOLRE_WALLET || "10691706070650",
 };
 
-function getBulkClixAccount(state) {
-  if (state && state.isUzoAdmin87 === true) return UZO_ADMIN_87_BULKCLIX;
-  if (state && state.isPlain === true) return ADMIN_BULKCLIX;
-  return VENDOR_BULKCLIX;
-}
-
-function getBulkClixNetwork(network) {
-  switch ((network || "").toLowerCase()) {
-    case "mtn":
-      return "MTN";
-    case "airteltigo":
-    case "airtel":
-    case "at":
-      return "AIRTELTIGO";
-    case "telecel":
-    case "vodafone":
-    case "voda":
-      return "TELECEL";
-    default:
-      return null;
+function getMoolreAccount(state) {
+  if (state && state.isUzoAdmin87 === true) {
+    return UZO_ADMIN_87_MOOLRE;
   }
-}
 
+  if (state && state.isPlain === true) {
+    return ADMIN_MOOLRE;
+  }
+
+  return VENDOR_MOOLRE;
+}
 
 // ====== MIDDLEWARE (scoped to this router) ======
 router.use(express.json({ type: "application/json" })); // for JSON
@@ -216,14 +205,13 @@ function toLocalMsisdn(msisdn) {
   return "0" + intl.slice(3);
 }
 
-
-// Check whether a caller is allowed to use a locked vendor code
+// Check whether the caller is allowed to use this vendor's USSD code
 async function checkVendorTelephoneAccess(
   vendorId,
   vendorNumberLock,
   msisdn
 ) {
-  // Lock is OFF: allow every number without checking the table
+  // Lock is OFF: allow every caller
   if (Number(vendorNumberLock) !== 1) {
     console.log("🔓 Vendor number lock is OFF:", {
       vendorId,
@@ -233,10 +221,10 @@ async function checkVendorTelephoneAccess(
     return true;
   }
 
-  // Lock is ON: check this caller under this particular vendor
+  // Lock is ON: check vendor_telephone_numbers
   const [intl, local, plusIntl] = msisdnVariants(msisdn);
 
-  console.log("🔒 Checking locked vendor telephone access:", {
+  console.log("🔒 Checking vendor telephone access:", {
     vendorId,
     receivedMsisdn: msisdn,
     intl,
@@ -263,7 +251,6 @@ async function checkVendorTelephoneAccess(
 
   return allowed;
 }
-
 
 // Access control
 function checkAccess(msisdn, cb) {
@@ -310,8 +297,75 @@ function checkAccess(msisdn, cb) {
   }
 }
 
+async function getLockedNetworks(userId) {
+  if (!userId) return [];
+
+  const [rows] = await dbp.query(
+    `SELECT network
+     FROM user_network_locks
+     WHERE user_id = ? AND status = 'locked'`,
+    [userId]
+  );
+
+  return rows.map(r => {
+    const n = String(r.network || "").toLowerCase();
+
+    if (n === "airteltigo" || n === "airtel" || n === "at") {
+      return "at";
+    }
+
+    return n;
+  });
+}
+
+async function getUserIdByMsisdn(msisdn) {
+  const [intl, local, plusIntl] = msisdnVariants(msisdn);
+
+  try {
+    const [rows] = await dbp.query(
+      `SELECT id
+       FROM users
+       WHERE phone IN (?, ?, ?)
+          OR telephone IN (?, ?, ?)
+       LIMIT 1`,
+      [intl, local, plusIntl, intl, local, plusIntl]
+    );
+
+    return rows && rows.length ? rows[0].id : null;
+
+  } catch (err) {
+    console.error("❌ getUserIdByMsisdn error:", err.message);
+    return null;
+  }
+}
+
+
+function renderNetworkMenu(state) {
+  const locked = state.lockedNetworks || [];
+
+  const networks = [
+    { key: "mtn", label: "MTN" },
+   { key: "at", label: "AirtelTigo" },
+    { key: "telecel", label: "Telecel" }
+  ].filter(n => !locked.includes(n.key.toLowerCase()));
+
+  state.availableNetworks = networks;
+
+  if (!networks.length) {
+    return "No network is available for you now.";
+  }
+
+  let msg = "Network\n";
+  networks.forEach((n, index) => {
+    msg += `${index + 1}) ${n.label}\n`;
+  });
+  msg += "0) Back";
+
+  return msg;
+}
+
 // ====== CORE SESSION HANDLER ======
-function handleSession(sessionId, input, msisdn, res) {
+async function handleSession(sessionId, input, msisdn, res) {
   const state = sessions[sessionId];
 
   if (!state) {
@@ -357,11 +411,38 @@ function handleSession(sessionId, input, msisdn, res) {
       // ================== MENU ==================
       case "menu": {
         const choice = (input || "").trim();
+if (choice === "1") {
+let lockUserId = state.vendorId;
 
-        if (choice === "1") {
-          state.step = "network";
-          return reply("Network\n1) MTN\n2) AirtelTigo\n3) Telecel\n0) Back");
-        }
+try {
+  // Admin/plain codes 888, 444 and 426*87 should use admin lock account ID 3
+  if (state.isPlain === true) {
+    lockUserId = 3;
+  }
+
+  state.lockedNetworks = await getLockedNetworks(lockUserId);
+
+  console.log("🔒 NETWORK LOCK CHECK:", {
+    isPlain: state.isPlain,
+    lockUserId,
+    lockedNetworks: state.lockedNetworks
+  });
+
+} catch (err) {
+  console.error("❌ Network lock check failed:", err.message);
+  state.lockedNetworks = [];
+}
+
+  state.step = "network";
+
+  const menu = renderNetworkMenu(state);
+
+  if (menu === "No network is available for you now.") {
+    return end(menu);
+  }
+
+  return reply(menu);
+}
 
         if (choice === "2") {
           if (!state.vendorId || state.isPlain) {
@@ -400,17 +481,23 @@ function handleSession(sessionId, input, msisdn, res) {
       case "network": {
         const choice = (input || "").trim();
 
-        if (choice === "1") state.network = "mtn";
-        else if (choice === "2") state.network = "airteltigo";
-        else if (choice === "3") state.network = "telecel";
-        else if (choice === "0") {
-          state.step = "menu";
-          return reply("Back to menu:\n1. Buy Data\n2. Contact Us");
-        } else {
-          return reply(
-            "Invalid network. Choose:\n1) MTN\n2) AirtelTigo\n3) Telecel"
-          );
-        }
+       if (choice === "0") {
+  state.step = "menu";
+  return reply("Back to menu:\n1. Buy Data\n2. Contact Us");
+}
+
+const availableNetworks = state.availableNetworks || [];
+const selectedIndex = parseInt(choice, 10) - 1;
+
+if (
+  !Number.isInteger(selectedIndex) ||
+  selectedIndex < 0 ||
+  selectedIndex >= availableNetworks.length
+) {
+  return reply("Invalid network. Choose:\n" + renderNetworkMenu(state));
+}
+
+state.network = availableNetworks[selectedIndex].key;
 
         // PLAIN MODE → AdminData
         if (state.isPlain) {
@@ -421,9 +508,13 @@ function handleSession(sessionId, input, msisdn, res) {
                price AS amount,
                network
              FROM AdminData
-             WHERE status = 'active' AND network = ?
+           WHERE status = 'active'
+  AND (
+    LOWER(network) = LOWER(?)
+    OR (? = 'at' AND LOWER(network) IN ('at', 'airteltigo', 'airtel'))
+  )
              ORDER BY price ASC`,
-            [net],
+            [net, net],
             (err, rows) => {
               try {
                 if (err) {
@@ -459,12 +550,17 @@ function handleSession(sessionId, input, msisdn, res) {
 
         // VENDOR MODE → data_packages
         const net = state.network.toLowerCase();
-        db.query(
-          `SELECT data_package, amount
-           FROM data_packages
-           WHERE vendor_id = ? AND network = ? AND status = 'available'
-           ORDER BY amount ASC`,
-          [state.vendorId, net],
+   db.query(
+  `SELECT data_package, amount
+   FROM data_packages
+   WHERE vendor_id = ?
+     AND (
+       LOWER(network) = LOWER(?)
+       OR (? = 'at' AND LOWER(network) IN ('at', 'airteltigo', 'airtel'))
+     )
+     AND status = 'available'
+   ORDER BY amount ASC`,
+  [state.vendorId, net, net],
           (err, rows) => {
             try {
               if (err) {
@@ -513,7 +609,7 @@ function handleSession(sessionId, input, msisdn, res) {
             // last page → back to network
             state.packagePage = 0;
             state.step = "network";
-            return reply("Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel");
+           return reply(renderNetworkMenu(state));
           }
         }
 
@@ -579,7 +675,7 @@ function handleSession(sessionId, input, msisdn, res) {
         const choice = (input || "").trim();
 
         if (choice === "1") {
-          // ====== INITIATE PAYMENT VIA BULKCLIX ======
+    // ====== INITIATE PAYMENT VIA MOOLRE ======
           const m = String(state.selectedPkg || "").match(
             /@ GHS\s*(\d+(\.\d+)?)/i
           );
@@ -624,42 +720,57 @@ end(
   "Please wait for payment prompt.\nEnter your MoMo PIN to approve.\nCheck My Approvals if delayed."
 );
 
+const channelId = getChannelId(network);
 
-// ✅ ADMIN PAYMENTS USE BULKCLIX
-const bulkNetwork = getBulkClixNetwork(network);
-
-if (!bulkNetwork) {
-  console.error("❌ Unsupported network for BulkClix:", network);
+if (!channelId) {
+  console.error("❌ Unsupported network for Moolre:", network);
   return;
 }
 
-const bulkClixAccount = getBulkClixAccount(state);
+const moolreAccount = getMoolreAccount(state);
 
 const payload = {
+  type: 1,
+  channel: channelId,
+  currency: "GHS",
+  payer: toLocalMsisdn(momo_number),
   amount: Number(amount.toFixed(2)),
-  phone_number: toLocalMsisdn(momo_number),
-  network: bulkNetwork,
-  transaction_id: transactionId,
-  callback_url: "https://sandipay.co/api/moolre/bulkclix-webhook",
-  reference: `SANDYPAY ${data_package}`,
+  externalref: transactionId,
+  reference: `Purchase of ${data_package}`,
+  accountnumber: moolreAccount.wallet,
+  sessionid: state.moolreSessionId,
+  thirdpartyref: JSON.stringify({
+    mode: state.isPlain ? "plain" : "vendor",
+    vendor_id,
+    data_package,
+    network,
+    recipient_number,
+    momo_number,
+  }),
 };
 
-console.log("📤 Sending payment to BULKCLIX:", payload);
+console.log("📤 Sending payment to MOOLRE:", {
+  accountUser: moolreAccount.user,
+  wallet: moolreAccount.wallet,
+  payload,
+});
 
 axios
-  .post(bulkClixAccount.url, payload, {
+  .post(moolreAccount.url, payload, {
     headers: {
-      Accept: "application/json",
       "Content-Type": "application/json",
-      "x-api-key": bulkClixAccount.apiKey,
+      "X-API-USER": moolreAccount.user,
+      "X-API-PUBKEY": moolreAccount.pubkey,
     },
   })
   .then((response) => {
-    console.log("✅ BULKCLIX admin payment INIT response:", response.data);
+    console.log("✅ MOOLRE payment INIT response:", response.data);
   })
   .catch((err) => {
-    console.error("❌ BULKCLIX admin error:", err.response?.data || err.message);
-  });          return;
+    console.error("❌ MOOLRE payment error:", err.response?.data || err.message);
+  });
+
+return;
         }
 
         if (choice === "2") return end("Transaction cancelled.");
@@ -691,8 +802,7 @@ router.post("/", (req, res) => {
 
   const { sessionId, msisdn, data, message, extension, new: isNew } = payload;
 
-  // Wrong extension
-const ext = String(extension || "").trim();
+ const ext = String(extension || "").trim();
 
 if (!ext) {
   console.log("❌ Missing Moolre extension:", extension);
@@ -702,6 +812,7 @@ if (!ext) {
     reply: false,
   });
 }
+
   const inputFromUser = (data || message || "").trim();
   const isNewSession = isNew === true || !sessions[sessionId];
 
@@ -779,6 +890,7 @@ if (isNewSession && !inputFromUser && ADMIN_EXTENSIONS.includes(ext)) {
     const isNewSessionInner = isNew === true || !sessions[sessionId];
     const inputInner = inputFromUser;
 
+    // New vendor session *203*717*ID#
 // ======================================================
 // NEW MOOLRE VENDOR SESSION
 //
@@ -792,10 +904,10 @@ if (isNewSession && !inputFromUser && ADMIN_EXTENSIONS.includes(ext)) {
 // UZO is handled separately inside router.post("/uzo")
 // ======================================================
 if (isNewSessionInner) {
-  // 888 is admin-only.
+  // 888 is strictly an admin extension.
   // 444 is shared:
-  //   *203*444#    = admin
-  //   *203*444*ID# = vendor
+  // *203*444# = admin
+  // *203*444*ID# = vendor
   if (ADMIN_EXTENSIONS.includes(ext) && ext !== USER_EXTENSION) {
     return res.json({
       message: "END Invalid vendor entry point",
@@ -818,8 +930,8 @@ if (isNewSessionInner) {
     let assignedCode = null;
 
     // ==================================================
-// METHOD 1: DEFAULT EXTENSION 444
-// Dial format: *203*444*VENDOR_ID#
+    // METHOD 1: DEFAULT EXTENSION 444
+    // Dial: *203*444*VENDOR_ID#
     // ==================================================
     if (ext === USER_EXTENSION) {
       const rawVendorId = String(inputInner || "").trim();
@@ -834,7 +946,7 @@ if (isNewSessionInner) {
         vendorIdFromDial <= 0
       ) {
         console.log(
-          "❌ Default extension 444 received without valid vendor ID:",
+          "❌ Extension 444 received without a valid vendor ID:",
           inputInner
         );
 
@@ -848,23 +960,20 @@ if (isNewSessionInner) {
       extensionMode = "default";
 
       const [vendorRows] = await dbp.query(
-  `SELECT
-     id,
-     username,
-     ussd_locked,
-     vendor_number_lock
-   FROM users
-   WHERE id = ?
-     AND role = 'vendor'
-   LIMIT 1`,
-  [vendorId]
-);
+        `SELECT
+           id,
+           username,
+           ussd_locked,
+           vendor_number_lock
+         FROM users
+         WHERE id = ?
+           AND role = 'vendor'
+         LIMIT 1`,
+        [vendorId]
+      );
 
       if (!vendorRows || !vendorRows.length) {
-        console.log(
-          "❌ Default Moolre vendor ID not found:",
-          vendorId
-        );
+        console.log("❌ Moolre vendor ID not found:", vendorId);
 
         return res.json({
           message: "APPLICATION UNKNOWN.",
@@ -875,8 +984,8 @@ if (isNewSessionInner) {
       vendorRow = vendorRows[0];
       brandName = vendorRow.username || "SandyPay";
 
-      // Check whether admin has already assigned this vendor
-      // a custom Moolre code.
+      // If this vendor already has a custom Moolre extension,
+      // block the old 444*ID code.
       const [customRows] = await dbp.query(
         `SELECT code
          FROM uzo_vendor_codes
@@ -914,43 +1023,40 @@ if (isNewSessionInner) {
 
     // ==================================================
     // METHOD 2: CUSTOM MOOLRE EXTENSION
-    // Dial format: *203*CUSTOM_EXTENSION#
+    // Dial: *203*CUSTOM_EXTENSION#
     // Example: *203*222#
     // ==================================================
     else {
       extensionMode = "custom";
       assignedCode = ext;
 
-     const [codeRows] = await dbp.query(
-  `SELECT
-     uvc.vendor_id,
-     uvc.code,
-     uvc.code_type,
-     uvc.status,
-     uvc.expiry_date,
-     u.username,
-     u.ussd_locked,
-     u.vendor_number_lock
-   FROM uzo_vendor_codes uvc
-   JOIN users u
-     ON u.id = uvc.vendor_id
-   WHERE uvc.code = ?
-     AND LOWER(TRIM(uvc.code_type)) = 'moolre'
-     AND LOWER(TRIM(uvc.status)) = 'active'
-     AND (
-       uvc.expiry_date IS NULL
-       OR DATE(uvc.expiry_date) >= CURDATE()
-     )
-     AND u.role = 'vendor'
-   LIMIT 1`,
-  [ext]
-);
+      const [codeRows] = await dbp.query(
+        `SELECT
+           uvc.vendor_id,
+           uvc.code,
+           uvc.code_type,
+           uvc.status,
+           uvc.expiry_date,
+           u.username,
+           u.ussd_locked,
+           u.vendor_number_lock
+         FROM uzo_vendor_codes uvc
+         JOIN users u
+           ON u.id = uvc.vendor_id
+         WHERE uvc.code = ?
+           AND LOWER(TRIM(uvc.code_type)) = 'moolre'
+           AND LOWER(TRIM(uvc.status)) = 'active'
+           AND (
+             uvc.expiry_date IS NULL
+             OR DATE(uvc.expiry_date) >= CURDATE()
+           )
+           AND u.role = 'vendor'
+         LIMIT 1`,
+        [ext]
+      );
 
       if (!codeRows || !codeRows.length) {
-        console.log(
-          "❌ Custom Moolre extension not found:",
-          ext
-        );
+        console.log("❌ Custom Moolre extension not found:", ext);
 
         return res.json({
           message: "APPLICATION UNKNOWN.",
@@ -969,7 +1075,7 @@ if (isNewSessionInner) {
     }
 
     // ==================================================
-    // VENDOR LOCK CHECK
+    // VENDOR ACCOUNT LOCK
     // ==================================================
     if (Number(vendorRow.ussd_locked) === 1) {
       console.log("❌ Vendor account is locked:", vendorId);
@@ -981,39 +1087,34 @@ if (isNewSessionInner) {
       });
     }
 
-
-
     // ==================================================
-// VENDOR TELEPHONE NUMBER LOCK CHECK
-// Applies only to Moolre vendor codes:
-// 1. *203*444*VENDOR_ID#
-// 2. *203*CUSTOM_EXTENSION#
-// ==================================================
-const telephoneAllowed = await checkVendorTelephoneAccess(
-  vendorId,
-  vendorRow.vendor_number_lock,
-  msisdn
-);
-
-if (!telephoneAllowed) {
-  console.log(
-    "❌ Caller not found in vendor_telephone_numbers:",
-    {
+    // VENDOR CALLER-NUMBER LOCK
+    // ==================================================
+    const telephoneAllowed = await checkVendorTelephoneAccess(
       vendorId,
-      msisdn,
-      extensionMode,
-      extension: ext,
-    }
-  );
+      vendorRow.vendor_number_lock,
+      msisdn
+    );
 
-  return res.json({
-    message: "APPLICATION UNKNOWN",
-    reply: false,
-  });
-}
+    if (!telephoneAllowed) {
+      console.log(
+        "❌ Caller not found in vendor_telephone_numbers:",
+        {
+          vendorId,
+          msisdn,
+          extensionMode,
+          extension: ext,
+        }
+      );
+
+      return res.json({
+        message: "APPLICATION UNKNOWN",
+        reply: false,
+      });
+    }
 
     // ==================================================
-    // HIT CHECK
+    // VENDOR HIT CHECK
     // ==================================================
     const remaining = await getRemainingHits(vendorId);
 
@@ -1044,7 +1145,7 @@ if (!telephoneAllowed) {
     await saveVendorCustomer(vendorId, msisdn, "moolre");
 
     // ==================================================
-    // CREATE MOOLRE VENDOR SESSION
+    // CREATE VENDOR SESSION
     // ==================================================
     sessions[sessionId] = {
       step: "start",
@@ -1264,7 +1365,7 @@ if (mainCode !== "426" || !uzoCode) {
     });
 
     (async () => {
-    const [codeRows] = await dbp.query(
+     const [codeRows] = await dbp.query(
   `SELECT
      uvc.vendor_id,
      uvc.code,
@@ -1287,7 +1388,6 @@ if (mainCode !== "426" || !uzoCode) {
    LIMIT 1`,
   [uzoCode]
 );
-
       if (!codeRows || !codeRows.length) {
         console.log("❌ Uzo code not mapped to any active vendor:", uzoCode);
         return res.json({
@@ -1421,134 +1521,5 @@ async function incrementUssdCounter(vendorId) {
 }
 
 
-
-// ✅ BulkClix payment webhook
-router.post("/bulkclix-webhook", async (req, res) => {
-  try {
-    console.log("📩 BULKCLIX WEBHOOK:", req.body);
-
-    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-
-    const transactionId = body.transaction_id;
-    const status = String(body.status || "").toLowerCase();
-
-    if (!transactionId) {
-      return res.status(400).send("Missing transaction_id");
-    }
-
-    if (status !== "success") {
-      console.log("⚠️ BulkClix not successful:", status);
-      return res.status(200).send("OK");
-    }
-
-    const [orders] = await dbp.query(
-      `SELECT * FROM moolre_temp_orders WHERE externalref = ? LIMIT 1`,
-      [transactionId]
-    );
-
-    if (!orders || !orders.length) {
-      return res.status(200).send("No matching temp order");
-    }
-
-    const meta = orders[0];
-
-    const mode = meta.mode;
-    const vendor_id = Number(meta.vendor_id);
-    const data_package = meta.data_package;
-    const network = String(meta.network || "").toLowerCase();
-    const recipient_number = meta.recipient_number || body.phone_number;
-    const momo_number = meta.momo_number || body.phone_number;
-    const amountPaid = Number(meta.amount);
-
-    const package_id =
-      body.ext_transaction_id || new Date().toISOString().slice(0, 16).replace("T", " ");
-
-    if (mode === "plain") {
-      await dbp.query(
-        `INSERT INTO admin_orders
-         (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-         VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-        [1, recipient_number, data_package, amountPaid, network, package_id]
-      );
-
-      await dbp.query(
-        `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-         VALUES (?, ?, ?, NOW())`,
-        [1, "AdminData USSD sale", amountPaid]
-      );
-
-      await dbp.query(
-        `DELETE FROM moolre_temp_orders WHERE externalref = ?`,
-        [transactionId]
-      );
-
-      return res.status(200).send("OK");
-    }
-
-    const [baseRows] = await dbp.query(
-      `SELECT amount FROM admin_data_packages WHERE data_package = ? LIMIT 1`,
-      [data_package]
-    );
-
-    if (!baseRows || !baseRows.length) {
-      console.error("❌ admin_data_packages lookup failed:", data_package);
-      return res.status(500).send("Package lookup error");
-    }
-
-    const baseAmount = parseFloat(baseRows[0].amount);
-    let revenueAmount = baseAmount;
-    let vendorAmount = parseFloat((amountPaid - baseAmount).toFixed(2));
-
-    const [destRows] = await dbp.query(
-      `SELECT order_destination
-       FROM vendor_order_settings
-       WHERE vendor_id = ?
-       LIMIT 1`,
-      [vendor_id]
-    );
-
-    const destination =
-      destRows && destRows.length ? destRows[0].order_destination : "admin_orders";
-
-    const targetTable =
-      destination === "vendor_orders" ? "vendor_orders" : "admin_orders";
-
-    if (targetTable === "vendor_orders") {
-      revenueAmount = parseFloat((amountPaid * 0.01).toFixed(2));
-      vendorAmount = parseFloat((amountPaid - revenueAmount).toFixed(2));
-    }
-
-    await dbp.query(
-      `INSERT INTO ${targetTable}
-       (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id)
-       VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?)`,
-      [vendor_id, recipient_number, data_package, amountPaid, network, package_id]
-    );
-
-    await dbp.query(
-      `INSERT INTO wallet_loads (vendor_id, momo, amount, date_loaded)
-       VALUES (?, ?, ?, NOW())`,
-      [vendor_id, momo_number, vendorAmount]
-    );
-
-    await dbp.query(
-      `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
-       VALUES (?, ?, ?, NOW())`,
-      [vendor_id, `Admin base for ${network} ${data_package}`, revenueAmount]
-    );
-
-    await dbp.query(
-      `DELETE FROM moolre_temp_orders WHERE externalref = ?`,
-      [transactionId]
-    );
-
-    console.log("✅ BulkClix order saved successfully:", transactionId);
-    return res.status(200).send("OK");
-
-  } catch (err) {
-    console.error("❌ BulkClix webhook error:", err);
-    return res.status(500).send("Server error");
-  }
-});
 
 module.exports = router;
