@@ -8829,7 +8829,8 @@ app.post("/api/send-withdrawal-whatsapp", async (req, res) => {
 
       console.log("STEP 4 PASSED: Wallet balance is enough");
 
-      const adminPhone = "233559126985";
+      // const adminPhone = "233559126985";
+       const adminPhone = "233532687733";
 
       const message = `New Sandypay Withdrawal Request
 Name: ${username}
@@ -8847,7 +8848,7 @@ Please process this withdrawal.`;
       });
 
       const GIANTSMS_TOKEN = "cEFkTFNYRGE6bkVNcWFzZUNBWQ==";
-      const GIANTSMS_SENDER_ID = "SANDYPAY";
+      const GIANTSMS_SENDER_ID = "Didwapa App";
       const GIANTSMS_URL = "https://api.giantsms.com/api/v1/send";
 
       const formData = new URLSearchParams();
