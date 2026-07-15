@@ -811,6 +811,75 @@ app.get("/api/admin-data", (req, res) => {
 
 
 
+const BULKCLIX_BASE_URL =
+  "https://api.bulkclix.com/api/v1/payment-api";
+
+const ADMIN_BULKCLIX = {
+  url: `${BULKCLIX_BASE_URL}/momopay`,
+
+  apiKey:
+    process.env.ADMIN_BULKCLIX_API_KEY ||
+    "fTQMwISNm8wyFn6Xg5eY6xj8IU6tdqEdIwRLJk3K",
+};
+
+function formatBulkClixPhone(number) {
+  let phone = String(number || "").replace(/\D/g, "");
+
+  if (phone.startsWith("233")) {
+    phone = "0" + phone.substring(3);
+  }
+
+  if (phone.length === 9) {
+    phone = "0" + phone;
+  }
+
+  return phone;
+}
+
+function getBulkClixNetwork(network) {
+  switch (String(network || "").toLowerCase()) {
+    case "mtn":
+      return "MTN";
+
+    case "airteltigo":
+    case "airtel":
+    case "at":
+      return "AIRTELTIGO";
+
+    case "telecel":
+    case "vodafone":
+    case "voda":
+      return "TELECEL";
+
+    default:
+      return null;
+  }
+}
+
+function isBulkClixInitAccepted(data) {
+  const status = String(
+    data?.status ||
+    data?.data?.status ||
+    ""
+  ).toLowerCase();
+
+  const successValue =
+    data?.success ??
+    data?.ok ??
+    data?.data?.success;
+
+  return (
+    successValue === true ||
+    status === "success" ||
+    status === "successful" ||
+    status === "pending" ||
+    status === "processing" ||
+    status === "initiated" ||
+    status === "queued"
+  );
+}
+
+
 // =======================
 // THETELLER CONFIG
 // =======================
@@ -1433,7 +1502,264 @@ async function reconcilePaymentNow({ client_ref = "", transaction_id = "", sourc
 // =====================================================
 // POST /api/buy-data-theteller
 // =====================================================
-app.post("/api/buy-data-theteller", async (req, res) => {
+// app.post("/api/buy-data-theteller", async (req, res) => {
+//   const {
+//     client_ref,
+//     package_id,
+//     momo_number,
+//     recipient_number,
+//     vendor_id,
+//     source_page
+//   } = req.body;
+
+//   const vid = Number(vendor_id || 1);
+
+//   console.log("🔥 HIT /api/buy-data-theteller");
+//   console.log("📥 BODY:", req.body);
+
+//   if (!client_ref || !package_id || !momo_number || !recipient_number) {
+//     console.log("➡️ INIT RESPONSE TO FRONTEND:", {
+//       ok: false,
+//       message: "Missing required fields."
+//     });
+
+//     return res.json({
+//       ok: false,
+//       message: "Missing required fields."
+//     });
+//   }
+
+//   try {
+//     // 1) if session already exists, return it
+//     const existingSession = await getPaymentSessionByClientRef(client_ref);
+//     if (existingSession) {
+//       console.log("ℹ️ Existing payment session found:", existingSession.client_ref);
+
+//       const alreadyApproved =
+//         Number(existingSession.finalized) === 1 ||
+//         String(existingSession.payment_status || "").toLowerCase() === "approved";
+
+//       const payload = {
+//         ok: true,
+//         resumed: true,
+//         client_ref: existingSession.client_ref,
+//         transaction_id: existingSession.transaction_id || null,
+//         status: alreadyApproved
+//           ? "approved"
+//           : (existingSession.payment_status || existingSession.init_status || "created"),
+//         finalized: alreadyApproved,
+//         message: alreadyApproved
+//           ? "Payment already confirmed."
+//           : "Existing payment session found."
+//       };
+
+//       console.log("➡️ INIT RESPONSE TO FRONTEND:", payload);
+//       return res.json(payload);
+//     }
+
+//     // 2) Fetch package
+//     const [rows] = await db.promise().query(
+//       "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
+//       [package_id]
+//     );
+
+//     if (!rows.length) {
+//       console.log("➡️ INIT RESPONSE TO FRONTEND:", {
+//         ok: false,
+//         message: "Package not found or inactive."
+//       });
+
+//       return res.json({
+//         ok: false,
+//         message: "Package not found or inactive."
+//       });
+//     }
+
+//     const pkg = rows[0];
+
+//     // 3) Detect payer network from momo_number
+//     const payerNet = detectMomoNetwork(momo_number); // 'mtn' | 'airteltigo' | 'telecel'
+//     const rSwitch = getSwitchCode(payerNet);
+
+//     if (!rSwitch) {
+//       console.log("➡️ INIT RESPONSE TO FRONTEND:", {
+//         ok: false,
+//         message: "Unsupported payer network."
+//       });
+
+//       return res.json({
+//         ok: false,
+//         message: "Unsupported payer network."
+//       });
+//     }
+
+//     // 4) Build ids
+//     const transactionId = makeTransactionId();
+//     const packageBatchId = makePackageId();
+
+//     // 5) INSERT payment session FIRST
+//     await db.promise().query(
+//       `INSERT INTO payment_sessions
+//       (
+//         client_ref,
+//         transaction_id,
+//         vendor_id,
+//         package_id,
+//         package_name,
+//         amount,
+//         network,
+//         payer_network,
+//         momo_number,
+//         recipient_number,
+//         package_batch_id,
+//         source_page,
+//         init_status,
+//         payment_status
+//       )
+//       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'starting', 'starting')`,
+//       [
+//         client_ref,
+//         transactionId,
+//         vid,
+//         Number(package_id),
+//         pkg.package_name,
+//         Number(pkg.price),
+//         String(pkg.network || "").toLowerCase(),
+//         payerNet,
+//         momo_number,
+//         recipient_number,
+//         packageBatchId,
+//         source_page || "mtn.html"
+//       ]
+//     );
+
+//     console.log("✅ payment_sessions row inserted:", {
+//       client_ref,
+//       transactionId,
+//       vendor_id: vid
+//     });
+
+//     // 6) Build TheTeller payload
+//     const payload = {
+//       amount: thetellerAmount12(pkg.price),
+//       processing_code: "000200",
+//       transaction_id: transactionId,
+//       desc: `Sandypay Data - ${pkg.package_name}`,
+//       merchant_id: THETELLER.merchantId,
+//       subscriber_number: formatMsisdnForTheTeller(momo_number),
+//       "r-switch": rSwitch,
+//       redirect_url: "https://sandipay.co/payment-callback",
+//     };
+
+//     console.log("🧾 Bundle network:", pkg.network);
+//     console.log("💳 MoMo number raw:", momo_number);
+//     console.log("💳 Detected payerNet:", payerNet);
+//     console.log("💳 Using r-switch:", rSwitch);
+//     console.log("💳 subscriber_number:", formatMsisdnForTheTeller(momo_number));
+//     console.log("📤 TheTeller INIT payload:", payload);
+//     console.log("🔐 Using merchant:", THETELLER.merchantId);
+
+//     // 7) Call TheTeller INIT
+//     const tt = await axios.post(THETELLER.endpoint, payload, {
+//       headers: {
+//         "Content-Type": "application/json",
+//         Authorization: `Basic ${THETELLER.basicToken}`,
+//         "Cache-Control": "no-cache",
+//       },
+//       timeout: 30000,
+//     });
+
+//     console.log("📥 TheTeller INIT response:", tt.data);
+
+//     const accepted = isInitAccepted(tt.data);
+
+//     if (!accepted) {
+//       console.log("❌ INIT not accepted raw:", tt.data);
+
+//       await db.promise().query(
+//         `UPDATE payment_sessions
+//          SET init_status='failed',
+//              payment_status='failed'
+//          WHERE client_ref=?`,
+//         [client_ref]
+//       );
+
+//       const out = {
+//         ok: false,
+//         message: `Payment prompt not accepted (status=${tt.data?.status}, code=${tt.data?.code}) ${tt.data?.message || tt.data?.reason || ""}`.trim(),
+//         theteller: tt.data,
+//       };
+
+//       console.log("➡️ INIT RESPONSE TO FRONTEND:", out);
+//       return res.json(out);
+//     }
+
+//     // 8) Update session after successful init
+//     await db.promise().query(
+//       `UPDATE payment_sessions
+//        SET init_status='prompt_sent',
+//            payment_status='pending'
+//        WHERE client_ref=?`,
+//       [client_ref]
+//     );
+
+//     // 9) optional memory cache too
+//     pendingOrders.set(transactionId, {
+//       vendor_id: vid,
+//       recipient_number,
+//       package_name: pkg.package_name,
+//       amount: Number(pkg.price),
+//       network: String(pkg.network || "").toLowerCase(),
+//       payer_network: payerNet,
+//       package_id: packageBatchId,
+//     });
+
+//     // 10) server-side watcher
+//     startServerSideWatcher(transactionId, { intervalMs: 5000, maxMinutes: 6 });
+
+//     const out = {
+//       ok: true,
+//       message: "✅ Prompt sent. Please approve on your phone.",
+//       client_ref,
+//       transaction_id: transactionId,
+//       vendor_id: vid,
+//     };
+
+//     console.log("➡️ INIT RESPONSE TO FRONTEND:", out);
+//     return res.json(out);
+
+//   } catch (err) {
+//     console.error("❌ TheTeller INIT error:", err.response?.data || err.message);
+
+//     if (client_ref) {
+//       try {
+//         await db.promise().query(
+//           `UPDATE payment_sessions
+//            SET init_status='network_error'
+//            WHERE client_ref=?`,
+//           [client_ref]
+//         );
+//       } catch (e) {
+//         console.error("❌ Could not update session to network_error:", e.message);
+//       }
+//     }
+
+//     const out = {
+//       ok: false,
+//       message: "Payment could not be initiated. Try again.",
+//       error: err.response?.data || err.message,
+//     };
+
+//     console.log("➡️ INIT RESPONSE TO FRONTEND:", out);
+//     return res.status(500).json(out);
+//   }
+// });
+
+
+// =====================================================
+// POST /api/buy-data-bulkclix
+// =====================================================
+app.post("/api/buy-data-bulkclix", async (req, res) => {
   const {
     client_ref,
     package_id,
@@ -1445,62 +1771,73 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
   const vid = Number(vendor_id || 1);
 
-  console.log("🔥 HIT /api/buy-data-theteller");
+  console.log("🔥 HIT /api/buy-data-bulkclix");
   console.log("📥 BODY:", req.body);
 
-  if (!client_ref || !package_id || !momo_number || !recipient_number) {
-    console.log("➡️ INIT RESPONSE TO FRONTEND:", {
-      ok: false,
-      message: "Missing required fields."
-    });
-
-    return res.json({
+  if (
+    !client_ref ||
+    !package_id ||
+    !momo_number ||
+    !recipient_number
+  ) {
+    return res.status(400).json({
       ok: false,
       message: "Missing required fields."
     });
   }
 
   try {
-    // 1) if session already exists, return it
-    const existingSession = await getPaymentSessionByClientRef(client_ref);
-    if (existingSession) {
-      console.log("ℹ️ Existing payment session found:", existingSession.client_ref);
+    // Prevent duplicate payment requests
+    const existingSession =
+      await getPaymentSessionByClientRef(client_ref);
 
+    if (existingSession) {
       const alreadyApproved =
         Number(existingSession.finalized) === 1 ||
-        String(existingSession.payment_status || "").toLowerCase() === "approved";
+        String(
+          existingSession.payment_status || ""
+        ).toLowerCase() === "approved";
 
-      const payload = {
+      return res.json({
         ok: true,
         resumed: true,
         client_ref: existingSession.client_ref,
-        transaction_id: existingSession.transaction_id || null,
+
+        transaction_id:
+          existingSession.transaction_id || null,
+
         status: alreadyApproved
           ? "approved"
-          : (existingSession.payment_status || existingSession.init_status || "created"),
+          : (
+              existingSession.payment_status ||
+              existingSession.init_status ||
+              "pending"
+            ),
+
         finalized: alreadyApproved,
+
         message: alreadyApproved
           ? "Payment already confirmed."
           : "Existing payment session found."
-      };
-
-      console.log("➡️ INIT RESPONSE TO FRONTEND:", payload);
-      return res.json(payload);
+      });
     }
 
-    // 2) Fetch package
+    // Fetch selected package
     const [rows] = await db.promise().query(
-      "SELECT id, package_name, price, network FROM AdminData WHERE id=? AND status='active' LIMIT 1",
+      `SELECT
+         id,
+         package_name,
+         price,
+         network
+       FROM AdminData
+       WHERE id=?
+         AND status='active'
+       LIMIT 1`,
       [package_id]
     );
 
     if (!rows.length) {
-      console.log("➡️ INIT RESPONSE TO FRONTEND:", {
-        ok: false,
-        message: "Package not found or inactive."
-      });
-
-      return res.json({
+      return res.status(404).json({
         ok: false,
         message: "Package not found or inactive."
       });
@@ -1508,27 +1845,23 @@ app.post("/api/buy-data-theteller", async (req, res) => {
 
     const pkg = rows[0];
 
-    // 3) Detect payer network from momo_number
-    const payerNet = detectMomoNetwork(momo_number); // 'mtn' | 'airteltigo' | 'telecel'
-    const rSwitch = getSwitchCode(payerNet);
+    // Detect the payer's MoMo network
+    const payerNet = detectMomoNetwork(momo_number);
 
-    if (!rSwitch) {
-      console.log("➡️ INIT RESPONSE TO FRONTEND:", {
-        ok: false,
-        message: "Unsupported payer network."
-      });
+    const bulkNetwork =
+      getBulkClixNetwork(payerNet);
 
-      return res.json({
+    if (!bulkNetwork) {
+      return res.status(400).json({
         ok: false,
         message: "Unsupported payer network."
       });
     }
 
-    // 4) Build ids
     const transactionId = makeTransactionId();
     const packageBatchId = makePackageId();
 
-    // 5) INSERT payment session FIRST
+    // Save session before contacting provider
     await db.promise().query(
       `INSERT INTO payment_sessions
       (
@@ -1547,7 +1880,12 @@ app.post("/api/buy-data-theteller", async (req, res) => {
         init_status,
         payment_status
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'starting', 'starting')`,
+      VALUES
+      (
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        'starting',
+        'starting'
+      )`,
       [
         client_ref,
         transactionId,
@@ -1557,56 +1895,62 @@ app.post("/api/buy-data-theteller", async (req, res) => {
         Number(pkg.price),
         String(pkg.network || "").toLowerCase(),
         payerNet,
-        momo_number,
+        formatBulkClixPhone(momo_number),
         recipient_number,
         packageBatchId,
         source_page || "mtn.html"
       ]
     );
 
-    console.log("✅ payment_sessions row inserted:", {
-      client_ref,
-      transactionId,
-      vendor_id: vid
-    });
+    const bulkPayload = {
+      amount: Number(
+        Number(pkg.price).toFixed(2)
+      ),
 
-    // 6) Build TheTeller payload
-    const payload = {
-      amount: thetellerAmount12(pkg.price),
-      processing_code: "000200",
+      phone_number:
+        formatBulkClixPhone(momo_number),
+
+      network: bulkNetwork,
+
       transaction_id: transactionId,
-      desc: `Sandypay Data - ${pkg.package_name}`,
-      merchant_id: THETELLER.merchantId,
-      subscriber_number: formatMsisdnForTheTeller(momo_number),
-      "r-switch": rSwitch,
-      redirect_url: "https://sandipay.co/payment-callback",
+
+      callback_url:
+        "https://sandipay.co/api/bulkclix-payment-callback",
+
+      reference:
+        `SANDYPAY ${pkg.package_name}`
     };
 
-    console.log("🧾 Bundle network:", pkg.network);
-    console.log("💳 MoMo number raw:", momo_number);
-    console.log("💳 Detected payerNet:", payerNet);
-    console.log("💳 Using r-switch:", rSwitch);
-    console.log("💳 subscriber_number:", formatMsisdnForTheTeller(momo_number));
-    console.log("📤 TheTeller INIT payload:", payload);
-    console.log("🔐 Using merchant:", THETELLER.merchantId);
+    console.log(
+      "📤 BULKCLIX INIT payload:",
+      bulkPayload
+    );
 
-    // 7) Call TheTeller INIT
-    const tt = await axios.post(THETELLER.endpoint, payload, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Basic ${THETELLER.basicToken}`,
-        "Cache-Control": "no-cache",
-      },
-      timeout: 30000,
-    });
+    const bulkResponse = await axios.post(
+      ADMIN_BULKCLIX.url,
+      bulkPayload,
+      {
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "x-api-key": ADMIN_BULKCLIX.apiKey
+        },
 
-    console.log("📥 TheTeller INIT response:", tt.data);
+        timeout: 30000
+      }
+    );
 
-    const accepted = isInitAccepted(tt.data);
+    const raw = bulkResponse.data || {};
+
+    console.log(
+      "📥 BULKCLIX INIT response:",
+      raw
+    );
+
+    const accepted =
+      isBulkClixInitAccepted(raw);
 
     if (!accepted) {
-      console.log("❌ INIT not accepted raw:", tt.data);
-
       await db.promise().query(
         `UPDATE payment_sessions
          SET init_status='failed',
@@ -1615,17 +1959,17 @@ app.post("/api/buy-data-theteller", async (req, res) => {
         [client_ref]
       );
 
-      const out = {
+      return res.json({
         ok: false,
-        message: `Payment prompt not accepted (status=${tt.data?.status}, code=${tt.data?.code}) ${tt.data?.message || tt.data?.reason || ""}`.trim(),
-        theteller: tt.data,
-      };
+        message:
+          raw.message ||
+          raw.reason ||
+          "BulkClix did not accept the payment request.",
 
-      console.log("➡️ INIT RESPONSE TO FRONTEND:", out);
-      return res.json(out);
+        bulkclix: raw
+      });
     }
 
-    // 8) Update session after successful init
     await db.promise().query(
       `UPDATE payment_sessions
        SET init_status='prompt_sent',
@@ -1634,33 +1978,38 @@ app.post("/api/buy-data-theteller", async (req, res) => {
       [client_ref]
     );
 
-    // 9) optional memory cache too
     pendingOrders.set(transactionId, {
       vendor_id: vid,
       recipient_number,
       package_name: pkg.package_name,
       amount: Number(pkg.price),
-      network: String(pkg.network || "").toLowerCase(),
+
+      network:
+        String(pkg.network || "").toLowerCase(),
+
       payer_network: payerNet,
-      package_id: packageBatchId,
+      package_id: packageBatchId
     });
 
-    // 10) server-side watcher
-    startServerSideWatcher(transactionId, { intervalMs: 5000, maxMinutes: 6 });
-
-    const out = {
+    return res.json({
       ok: true,
-      message: "✅ Prompt sent. Please approve on your phone.",
+      status: "pending",
+      finalized: false,
+
+      message:
+        "Payment prompt sent. Approve it with your MoMo PIN.",
+
       client_ref,
       transaction_id: transactionId,
       vendor_id: vid,
-    };
 
-    console.log("➡️ INIT RESPONSE TO FRONTEND:", out);
-    return res.json(out);
-
+      bulkclix: raw
+    });
   } catch (err) {
-    console.error("❌ TheTeller INIT error:", err.response?.data || err.message);
+    console.error(
+      "❌ BULKCLIX INIT error:",
+      err.response?.data || err.message
+    );
 
     if (client_ref) {
       try {
@@ -1670,394 +2019,695 @@ app.post("/api/buy-data-theteller", async (req, res) => {
            WHERE client_ref=?`,
           [client_ref]
         );
-      } catch (e) {
-        console.error("❌ Could not update session to network_error:", e.message);
+      } catch (updateError) {
+        console.error(
+          "Could not update payment session:",
+          updateError.message
+        );
       }
     }
 
-    const out = {
+    return res.status(
+      err.response?.status || 500
+    ).json({
       ok: false,
-      message: "Payment could not be initiated. Try again.",
-      error: err.response?.data || err.message,
-    };
 
-    console.log("➡️ INIT RESPONSE TO FRONTEND:", out);
-    return res.status(500).json(out);
+      message:
+        err.response?.data?.message ||
+        err.response?.data?.reason ||
+        "Payment could not be initiated.",
+
+      error:
+        err.response?.data || err.message
+    });
   }
 });
 
 
 // =====================================================
-// GET /api/theteller-status?transaction_id=...&client_ref=...
+// POST /api/bulkclix-payment-callback
 // =====================================================
-app.get("/api/theteller-status", async (req, res) => {
-  let transaction_id = String(req.query.transaction_id || "").trim();
-  const client_ref = String(req.query.client_ref || "").trim();
+app.post(
+  "/api/bulkclix-payment-callback",
+  async (req, res) => {
+    console.log(
+      "📩 BULKCLIX PAYMENT CALLBACK:",
+      req.body
+    );
 
-  if (!transaction_id && !client_ref) {
-    const out = {
-      ok: false,
-      status: "unknown",
-      finalized: false,
-      message: "transaction_id or client_ref is required"
-    };
+    try {
+      const body =
+        typeof req.body === "string"
+          ? JSON.parse(req.body)
+          : req.body || {};
 
-    console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
-    return res.json(out);
-  }
+      const transactionId = String(
+        body.transaction_id ||
+        body.transactionId ||
+        body.reference_id ||
+        body.data?.transaction_id ||
+        ""
+      ).trim();
 
-  try {
-    // 1) Load payment session first
-    let session = null;
-
-    if (transaction_id) {
-      session = await getPaymentSessionByTransactionId(transaction_id);
-    }
-
-    if (!session && client_ref) {
-      session = await getPaymentSessionByClientRef(client_ref);
-      if (session?.transaction_id) {
-        transaction_id = String(session.transaction_id).trim();
-      }
-    }
-
-    if (!transaction_id) {
-      const out = {
-        ok: true,
-        status: "pending",
-        finalized: false,
-        message: "Payment session found but transaction is still being prepared."
-      };
-
-      console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
-      return res.json(out);
-    }
-
-    // 2) If already finalized in DB, trust DB first
-    if (
-      session &&
-      (
-        Number(session.finalized) === 1 ||
-        String(session.payment_status || "").toLowerCase() === "approved"
+      const status = String(
+        body.status ||
+        body.payment_status ||
+        body.data?.status ||
+        ""
       )
-    ) {
-      const out = {
-        ok: true,
-        status: "approved",
-        finalized: true,
-        message: "✅ Payment already confirmed. Order saved.",
-        transaction_id
-      };
+        .trim()
+        .toLowerCase();
 
-      console.log("🟢 Session already finalized in DB:", {
-        transaction_id,
-        payment_status: session.payment_status,
-        finalized: session.finalized
-      });
-      console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
-      return res.json(out);
-    }
-
-    const url = `${THETELLER.statusBase}/${encodeURIComponent(transaction_id)}/status`;
-
-    const resp = await axios.get(url, {
-      headers: {
-        Authorization: `Basic ${THETELLER.basicToken}`,
-        "Merchant-Id": THETELLER.merchantId,
-        "Cache-Control": "no-cache",
-      },
-      timeout: 30000,
-    });
-
-    const raw = resp.data || {};
-
-    const statusRaw =
-      raw.status ??
-      raw.Status ??
-      raw.transaction_status ??
-      raw.transactionStatus ??
-      raw.response_status ??
-      raw.state ??
-      "";
-
-    const codeRaw =
-      raw.code ??
-      raw.Code ??
-      raw.response_code ??
-      raw.responseCode ??
-      raw.status_code ??
-      raw.statusCode ??
-      "";
-
-    const reasonRaw =
-      raw.reason ??
-      raw.message ??
-      raw.ResponseMessage ??
-      raw.response_message ??
-      "";
-
-    const status = String(statusRaw).toLowerCase().trim();
-    const code = String(codeRaw).trim();
-    const reason = String(reasonRaw).trim();
-
-    console.log("📥 TheTeller STATUS raw:", raw);
-    console.log("✅ Parsed STATUS:", { status, code, reason, transaction_id });
-
-    const approved =
-      code === "000" ||
-      code === "00" ||
-      code === "0" ||
-      ["approved", "successful", "success", "completed", "paid", "done"].includes(status) ||
-      status.includes("success") ||
-      status.includes("approved") ||
-      status.includes("complete") ||
-      status.includes("paid");
-
-    const pending =
-      ["pending", "processing", "in progress", "in_progress", "initiated", "inprogress", "queued"].includes(status) ||
-      status.includes("pending") ||
-      status.includes("processing") ||
-      status.includes("progress") ||
-      status.includes("initiated") ||
-      status.includes("queued") ||
-      code === "099";
-
-    // IMPORTANT:
-    // do NOT make declined/cancelled/etc permanently fail immediately
-    // because in your flow the user may approve later in MoMo approvals
-    const failedLike =
-      ["failed", "declined", "cancelled", "canceled", "reversed", "terminated", "expired"].includes(status) ||
-      status.includes("fail") ||
-      status.includes("decline") ||
-      status.includes("cancel") ||
-      status.includes("terminate") ||
-      code === "100";
-
-    // 3) Approved: finalize once
-    if (approved) {
-      if (!session && transaction_id) {
-        session = await getPaymentSessionByTransactionId(transaction_id);
+      if (!transactionId) {
+        return res
+          .status(400)
+          .send("Missing transaction_id");
       }
 
-      if (session) {
-        const [exists] = await db.promise().query(
-          "SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1",
-          [transaction_id]
+      const session =
+        await getPaymentSessionByTransactionId(
+          transactionId
         );
 
-        if (!exists.length) {
-          await db.promise().query(
-            `INSERT INTO admin_orders
-            (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
-            VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
-            [
-              session.vendor_id,
-              session.recipient_number,
-              session.package_name,
-              Number(session.amount),
-              String(session.network || "").toLowerCase(),
-              session.package_batch_id,
-              transaction_id
-            ]
-          );
+      if (!session) {
+        console.error(
+          "BulkClix session not found:",
+          transactionId
+        );
 
-          console.log("✅ admin_orders inserted:", {
-            transaction_id,
-            vendor_id: session.vendor_id,
-            recipient_number: session.recipient_number,
-            package_name: session.package_name
-          });
-        } else {
-          console.log("ℹ️ admin_orders already exists for:", transaction_id);
-        }
+        return res
+          .status(200)
+          .send("Session not found");
+      }
+
+      const successful =
+        status === "success" ||
+        status === "successful" ||
+        status === "approved" ||
+        status === "completed" ||
+        status === "paid";
+
+      if (!successful) {
+        console.log(
+          "BulkClix callback not yet successful:",
+          {
+            transactionId,
+            status
+          }
+        );
 
         await db.promise().query(
           `UPDATE payment_sessions
-           SET payment_status='approved',
-               finalized=1,
-               updated_reference=?,
-               init_status='approved'
-           WHERE transaction_id=?`,
-          [transaction_id, transaction_id]
+           SET payment_status=?
+           WHERE transaction_id=?
+             AND finalized=0`,
+          [
+            status || "pending",
+            transactionId
+          ]
         );
 
-        const out = {
-          ok: true,
-          status: "approved",
-          finalized: true,
-          message: "✅ Payment successful. Order saved.",
-          transaction_id,
-          code,
-          raw
-        };
-
-        console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
-        return res.json(out);
+        return res.status(200).send("OK");
       }
 
-      const out = {
-        ok: true,
-        status: "approved",
-        finalized: false,
-        message: "✅ Payment successful, but payment session not found.",
-        transaction_id,
-        code,
-        raw
-      };
+      // Prevent duplicate orders
+      const [existingOrder] =
+        await db.promise().query(
+          `SELECT 1
+           FROM admin_orders
+           WHERE updated_reference=?
+           LIMIT 1`,
+          [transactionId]
+        );
 
-      console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
-      return res.json(out);
-    }
+      if (!existingOrder.length) {
+        await db.promise().query(
+          `INSERT INTO admin_orders
+          (
+            vendor_id,
+            recipient_number,
+            data_package,
+            amount,
+            network,
+            status,
+            sent_at,
+            package_id,
+            updated_reference
+          )
+          VALUES
+          (
+            ?, ?, ?, ?, ?,
+            'pending',
+            NOW(),
+            ?, ?
+          )`,
+          [
+            session.vendor_id,
+            session.recipient_number,
+            session.package_name,
+            Number(session.amount),
 
-    // 4) Normal pending
-    if (pending) {
-      await db.promise().query(
-        `UPDATE payment_sessions
-         SET payment_status='pending'
-         WHERE transaction_id=?`,
-        [transaction_id]
-      );
+            String(
+              session.network || ""
+            ).toLowerCase(),
 
-      const out = {
-        ok: true,
-        status: "pending",
-        finalized: false,
-        message: "⏳ Awaiting approval...",
-        transaction_id,
-        code,
-        raw
-      };
+            session.package_batch_id,
+            transactionId
+          ]
+        );
 
-      console.log("➡️ STATUS RESPONSE TO FRONTEND:", {
-        transaction_id,
-        returned_status: "pending",
-        finalized: false,
-        provider_status: status,
-        provider_code: code
-      });
-
-      return res.json(out);
-    }
-
-    // 5) Failed-like from TheTeller:
-    // KEEP IT RETRYABLE, and trust our DB if already finalized elsewhere
-    if (failedLike) {
-      const [sessionRows] = await db.promise().query(
-        `SELECT finalized, payment_status, updated_reference
-         FROM payment_sessions
-         WHERE transaction_id=?
-         LIMIT 1`,
-        [transaction_id]
-      );
-
-      const localSession = sessionRows[0];
-
-      if (
-        localSession &&
-        (
-          Number(localSession.finalized) === 1 ||
-          String(localSession.payment_status || "").toLowerCase() === "approved"
-        )
-      ) {
-        const out = {
-          ok: true,
-          status: "approved",
-          finalized: true,
-          message: "✅ Payment successful. Order saved.",
-          transaction_id,
-          code,
-          raw
-        };
-
-        console.log("🟢 Local DB says payment is already approved despite provider failed-like response:", {
-          transaction_id,
-          payment_status: localSession.payment_status,
-          finalized: localSession.finalized,
-          updated_reference: localSession.updated_reference
-        });
-        console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
-        return res.json(out);
+        console.log(
+          "✅ BulkClix admin order inserted:",
+          transactionId
+        );
       }
 
       await db.promise().query(
         `UPDATE payment_sessions
-         SET payment_status='pending'
+         SET payment_status='approved',
+             finalized=1,
+             updated_reference=?,
+             init_status='approved'
          WHERE transaction_id=?`,
-        [transaction_id]
+        [
+          transactionId,
+          transactionId
+        ]
       );
 
-      console.log("⚠️ TheTeller returned failed-like status, but keeping session retryable:", {
-        transaction_id,
-        status,
-        code,
-        reason
-      });
+      console.log(
+        "✅ BulkClix payment finalized:",
+        transactionId
+      );
 
-  const out = {
-  ok: true,
-  status: "pending",
-  hard_failed: false,
-  finalized: false,
-  message: reason
-    ? `${reason} If you have already approved on your phone, tap 'I've completed the payment' shortly.`
-    : "Payment is not yet confirmed. If you have already approved on your phone, tap 'I've completed the payment' shortly.",
-  transaction_id,
-  code,
-  raw
-};
+      return res.status(200).send("OK");
+    } catch (err) {
+      console.error(
+        "❌ BulkClix callback error:",
+        err
+      );
 
-      console.log("➡️ STATUS RESPONSE TO FRONTEND:", {
-        transaction_id,
-        returned_status: "pending",
-        finalized: false,
-        provider_status: status,
-        provider_code: code,
-        provider_reason: reason
-      });
-
-      return res.json(out);
+      return res
+        .status(500)
+        .send("Server error");
     }
+  }
+);
 
-    // 6) Anything unknown -> still retryable
-    await db.promise().query(
-      `UPDATE payment_sessions
-       SET payment_status='pending'
-       WHERE transaction_id=?`,
-      [transaction_id]
-    );
 
-    const out = {
-      ok: true,
-      status: "pending",
-      finalized: false,
-      message: "⏳ Checking payment status...",
-      transaction_id,
-      code,
-      raw
-    };
+// =====================================================
+// GET /api/theteller-status?transaction_id=...&client_ref=...
+// =====================================================
+// app.get("/api/theteller-status", async (req, res) => {
+//   let transaction_id = String(req.query.transaction_id || "").trim();
+//   const client_ref = String(req.query.client_ref || "").trim();
 
-    console.log("➡️ STATUS RESPONSE TO FRONTEND:", {
-      transaction_id,
-      returned_status: "pending",
-      finalized: false,
-      provider_status: status,
-      provider_code: code
-    });
+//   if (!transaction_id && !client_ref) {
+//     const out = {
+//       ok: false,
+//       status: "unknown",
+//       finalized: false,
+//       message: "transaction_id or client_ref is required"
+//     };
 
-    return res.json(out);
+//     console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
+//     return res.json(out);
+//   }
 
-  } catch (e) {
-    console.error("❌ TheTeller status error:", e.response?.data || e.message);
+//   try {
+//     // 1) Load payment session first
+//     let session = null;
 
-    const out = {
+//     if (transaction_id) {
+//       session = await getPaymentSessionByTransactionId(transaction_id);
+//     }
+
+//     if (!session && client_ref) {
+//       session = await getPaymentSessionByClientRef(client_ref);
+//       if (session?.transaction_id) {
+//         transaction_id = String(session.transaction_id).trim();
+//       }
+//     }
+
+//     if (!transaction_id) {
+//       const out = {
+//         ok: true,
+//         status: "pending",
+//         finalized: false,
+//         message: "Payment session found but transaction is still being prepared."
+//       };
+
+//       console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
+//       return res.json(out);
+//     }
+
+//     // 2) If already finalized in DB, trust DB first
+//     if (
+//       session &&
+//       (
+//         Number(session.finalized) === 1 ||
+//         String(session.payment_status || "").toLowerCase() === "approved"
+//       )
+//     ) {
+//       const out = {
+//         ok: true,
+//         status: "approved",
+//         finalized: true,
+//         message: "✅ Payment already confirmed. Order saved.",
+//         transaction_id
+//       };
+
+//       console.log("🟢 Session already finalized in DB:", {
+//         transaction_id,
+//         payment_status: session.payment_status,
+//         finalized: session.finalized
+//       });
+//       console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
+//       return res.json(out);
+//     }
+
+//     const url = `${THETELLER.statusBase}/${encodeURIComponent(transaction_id)}/status`;
+
+//     const resp = await axios.get(url, {
+//       headers: {
+//         Authorization: `Basic ${THETELLER.basicToken}`,
+//         "Merchant-Id": THETELLER.merchantId,
+//         "Cache-Control": "no-cache",
+//       },
+//       timeout: 30000,
+//     });
+
+//     const raw = resp.data || {};
+
+//     const statusRaw =
+//       raw.status ??
+//       raw.Status ??
+//       raw.transaction_status ??
+//       raw.transactionStatus ??
+//       raw.response_status ??
+//       raw.state ??
+//       "";
+
+//     const codeRaw =
+//       raw.code ??
+//       raw.Code ??
+//       raw.response_code ??
+//       raw.responseCode ??
+//       raw.status_code ??
+//       raw.statusCode ??
+//       "";
+
+//     const reasonRaw =
+//       raw.reason ??
+//       raw.message ??
+//       raw.ResponseMessage ??
+//       raw.response_message ??
+//       "";
+
+//     const status = String(statusRaw).toLowerCase().trim();
+//     const code = String(codeRaw).trim();
+//     const reason = String(reasonRaw).trim();
+
+//     console.log("📥 TheTeller STATUS raw:", raw);
+//     console.log("✅ Parsed STATUS:", { status, code, reason, transaction_id });
+
+//     const approved =
+//       code === "000" ||
+//       code === "00" ||
+//       code === "0" ||
+//       ["approved", "successful", "success", "completed", "paid", "done"].includes(status) ||
+//       status.includes("success") ||
+//       status.includes("approved") ||
+//       status.includes("complete") ||
+//       status.includes("paid");
+
+//     const pending =
+//       ["pending", "processing", "in progress", "in_progress", "initiated", "inprogress", "queued"].includes(status) ||
+//       status.includes("pending") ||
+//       status.includes("processing") ||
+//       status.includes("progress") ||
+//       status.includes("initiated") ||
+//       status.includes("queued") ||
+//       code === "099";
+
+//     // IMPORTANT:
+//     // do NOT make declined/cancelled/etc permanently fail immediately
+//     // because in your flow the user may approve later in MoMo approvals
+//     const failedLike =
+//       ["failed", "declined", "cancelled", "canceled", "reversed", "terminated", "expired"].includes(status) ||
+//       status.includes("fail") ||
+//       status.includes("decline") ||
+//       status.includes("cancel") ||
+//       status.includes("terminate") ||
+//       code === "100";
+
+//     // 3) Approved: finalize once
+//     if (approved) {
+//       if (!session && transaction_id) {
+//         session = await getPaymentSessionByTransactionId(transaction_id);
+//       }
+
+//       if (session) {
+//         const [exists] = await db.promise().query(
+//           "SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1",
+//           [transaction_id]
+//         );
+
+//         if (!exists.length) {
+//           await db.promise().query(
+//             `INSERT INTO admin_orders
+//             (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
+//             VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
+//             [
+//               session.vendor_id,
+//               session.recipient_number,
+//               session.package_name,
+//               Number(session.amount),
+//               String(session.network || "").toLowerCase(),
+//               session.package_batch_id,
+//               transaction_id
+//             ]
+//           );
+
+//           console.log("✅ admin_orders inserted:", {
+//             transaction_id,
+//             vendor_id: session.vendor_id,
+//             recipient_number: session.recipient_number,
+//             package_name: session.package_name
+//           });
+//         } else {
+//           console.log("ℹ️ admin_orders already exists for:", transaction_id);
+//         }
+
+//         await db.promise().query(
+//           `UPDATE payment_sessions
+//            SET payment_status='approved',
+//                finalized=1,
+//                updated_reference=?,
+//                init_status='approved'
+//            WHERE transaction_id=?`,
+//           [transaction_id, transaction_id]
+//         );
+
+//         const out = {
+//           ok: true,
+//           status: "approved",
+//           finalized: true,
+//           message: "✅ Payment successful. Order saved.",
+//           transaction_id,
+//           code,
+//           raw
+//         };
+
+//         console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
+//         return res.json(out);
+//       }
+
+//       const out = {
+//         ok: true,
+//         status: "approved",
+//         finalized: false,
+//         message: "✅ Payment successful, but payment session not found.",
+//         transaction_id,
+//         code,
+//         raw
+//       };
+
+//       console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
+//       return res.json(out);
+//     }
+
+//     // 4) Normal pending
+//     if (pending) {
+//       await db.promise().query(
+//         `UPDATE payment_sessions
+//          SET payment_status='pending'
+//          WHERE transaction_id=?`,
+//         [transaction_id]
+//       );
+
+//       const out = {
+//         ok: true,
+//         status: "pending",
+//         finalized: false,
+//         message: "⏳ Awaiting approval...",
+//         transaction_id,
+//         code,
+//         raw
+//       };
+
+//       console.log("➡️ STATUS RESPONSE TO FRONTEND:", {
+//         transaction_id,
+//         returned_status: "pending",
+//         finalized: false,
+//         provider_status: status,
+//         provider_code: code
+//       });
+
+//       return res.json(out);
+//     }
+
+//     // 5) Failed-like from TheTeller:
+//     // KEEP IT RETRYABLE, and trust our DB if already finalized elsewhere
+//     if (failedLike) {
+//       const [sessionRows] = await db.promise().query(
+//         `SELECT finalized, payment_status, updated_reference
+//          FROM payment_sessions
+//          WHERE transaction_id=?
+//          LIMIT 1`,
+//         [transaction_id]
+//       );
+
+//       const localSession = sessionRows[0];
+
+//       if (
+//         localSession &&
+//         (
+//           Number(localSession.finalized) === 1 ||
+//           String(localSession.payment_status || "").toLowerCase() === "approved"
+//         )
+//       ) {
+//         const out = {
+//           ok: true,
+//           status: "approved",
+//           finalized: true,
+//           message: "✅ Payment successful. Order saved.",
+//           transaction_id,
+//           code,
+//           raw
+//         };
+
+//         console.log("🟢 Local DB says payment is already approved despite provider failed-like response:", {
+//           transaction_id,
+//           payment_status: localSession.payment_status,
+//           finalized: localSession.finalized,
+//           updated_reference: localSession.updated_reference
+//         });
+//         console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
+//         return res.json(out);
+//       }
+
+//       await db.promise().query(
+//         `UPDATE payment_sessions
+//          SET payment_status='pending'
+//          WHERE transaction_id=?`,
+//         [transaction_id]
+//       );
+
+//       console.log("⚠️ TheTeller returned failed-like status, but keeping session retryable:", {
+//         transaction_id,
+//         status,
+//         code,
+//         reason
+//       });
+
+//   const out = {
+//   ok: true,
+//   status: "pending",
+//   hard_failed: false,
+//   finalized: false,
+//   message: reason
+//     ? `${reason} If you have already approved on your phone, tap 'I've completed the payment' shortly.`
+//     : "Payment is not yet confirmed. If you have already approved on your phone, tap 'I've completed the payment' shortly.",
+//   transaction_id,
+//   code,
+//   raw
+// };
+
+//       console.log("➡️ STATUS RESPONSE TO FRONTEND:", {
+//         transaction_id,
+//         returned_status: "pending",
+//         finalized: false,
+//         provider_status: status,
+//         provider_code: code,
+//         provider_reason: reason
+//       });
+
+//       return res.json(out);
+//     }
+
+//     // 6) Anything unknown -> still retryable
+//     await db.promise().query(
+//       `UPDATE payment_sessions
+//        SET payment_status='pending'
+//        WHERE transaction_id=?`,
+//       [transaction_id]
+//     );
+
+//     const out = {
+//       ok: true,
+//       status: "pending",
+//       finalized: false,
+//       message: "⏳ Checking payment status...",
+//       transaction_id,
+//       code,
+//       raw
+//     };
+
+//     console.log("➡️ STATUS RESPONSE TO FRONTEND:", {
+//       transaction_id,
+//       returned_status: "pending",
+//       finalized: false,
+//       provider_status: status,
+//       provider_code: code
+//     });
+
+//     return res.json(out);
+
+//   } catch (e) {
+//     console.error("❌ TheTeller status error:", e.response?.data || e.message);
+
+//     const out = {
+//       ok: false,
+//       status: "unknown",
+//       finalized: false,
+//       message: "Could not check payment status"
+//     };
+
+//     console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
+//     return res.json(out);
+//   }
+// });
+
+// =====================================================
+// GET /api/bulkclix-status
+//
+// BulkClix callback updates payment_sessions.
+// This route lets the frontend read that result.
+// =====================================================
+app.get("/api/bulkclix-status", async (req, res) => {
+  let transactionId = String(
+    req.query.transaction_id || ""
+  ).trim();
+
+  const clientRef = String(
+    req.query.client_ref || ""
+  ).trim();
+
+  if (!transactionId && !clientRef) {
+    return res.status(400).json({
       ok: false,
       status: "unknown",
       finalized: false,
-      message: "Could not check payment status"
-    };
 
-    console.log("➡️ STATUS RESPONSE TO FRONTEND:", out);
-    return res.json(out);
+      message:
+        "transaction_id or client_ref is required."
+    });
+  }
+
+  try {
+    let session = null;
+
+    if (transactionId) {
+      session =
+        await getPaymentSessionByTransactionId(
+          transactionId
+        );
+    }
+
+    if (!session && clientRef) {
+      session =
+        await getPaymentSessionByClientRef(
+          clientRef
+        );
+
+      if (session?.transaction_id) {
+        transactionId = String(
+          session.transaction_id
+        ).trim();
+      }
+    }
+
+    if (!session) {
+      return res.json({
+        ok: false,
+        status: "unknown",
+        finalized: false,
+        transaction_id: transactionId || null,
+
+        message:
+          "Payment session not found."
+      });
+    }
+
+    const status = String(
+      session.payment_status ||
+      session.init_status ||
+      "pending"
+    )
+      .trim()
+      .toLowerCase();
+
+    const approved =
+      Number(session.finalized) === 1 ||
+      status === "approved" ||
+      status === "success" ||
+      status === "successful" ||
+      status === "completed" ||
+      status === "paid";
+
+    if (approved) {
+      return res.json({
+        ok: true,
+        status: "approved",
+        code: "00",
+        finalized: true,
+
+        transaction_id:
+          session.transaction_id || transactionId,
+
+        message:
+          "Payment successful. Order saved."
+      });
+    }
+
+    return res.json({
+      ok: true,
+      status: "pending",
+      code: "",
+      hard_failed: false,
+      finalized: false,
+
+      transaction_id:
+        session.transaction_id || transactionId,
+
+      message:
+        "Waiting for BulkClix payment confirmation."
+    });
+  } catch (err) {
+    console.error(
+      "bulkclix-status error:",
+      err
+    );
+
+    return res.status(500).json({
+      ok: false,
+      status: "unknown",
+      finalized: false,
+
+      message:
+        "Could not check payment status."
+    });
   }
 });
 
@@ -2270,258 +2920,407 @@ app.get("/payment-callback", async (req, res) => {
 // POST /api/reconcile-payment
 // Strong manual re-check for delayed MoMo approvals
 // =====================================================
-app.post("/api/reconcile-payment", async (req, res) => {
-  const client_ref = String(req.body.client_ref || "").trim();
-  let transaction_id = String(req.body.transaction_id || "").trim();
+// app.post("/api/reconcile-payment", async (req, res) => {
+//   const client_ref = String(req.body.client_ref || "").trim();
+//   let transaction_id = String(req.body.transaction_id || "").trim();
 
-  if (!client_ref && !transaction_id) {
-    return res.json({
-      ok: false,
-      finalized: false,
-      status: "unknown",
-      message: "client_ref or transaction_id is required"
-    });
-  }
+//   if (!client_ref && !transaction_id) {
+//     return res.json({
+//       ok: false,
+//       finalized: false,
+//       status: "unknown",
+//       message: "client_ref or transaction_id is required"
+//     });
+//   }
 
-  try {
-    let session = null;
+//   try {
+//     let session = null;
 
-    if (transaction_id) {
-      session = await getPaymentSessionByTransactionId(transaction_id);
-    }
+//     if (transaction_id) {
+//       session = await getPaymentSessionByTransactionId(transaction_id);
+//     }
 
-    if (!session && client_ref) {
-      session = await getPaymentSessionByClientRef(client_ref);
-      if (session?.transaction_id) {
-        transaction_id = String(session.transaction_id).trim();
-      }
-    }
+//     if (!session && client_ref) {
+//       session = await getPaymentSessionByClientRef(client_ref);
+//       if (session?.transaction_id) {
+//         transaction_id = String(session.transaction_id).trim();
+//       }
+//     }
 
-    if (!session) {
-      return res.json({
+//     if (!session) {
+//       return res.json({
+//         ok: false,
+//         finalized: false,
+//         status: "unknown",
+//         message: "Payment session not found."
+//       });
+//     }
+
+//     // if already finalized locally, trust DB immediately
+//     if (
+//       Number(session.finalized) === 1 ||
+//       String(session.payment_status || "").toLowerCase() === "approved"
+//     ) {
+//       return res.json({
+//         ok: true,
+//         finalized: true,
+//         status: "approved",
+//         transaction_id: session.transaction_id || transaction_id || null,
+//         message: "Payment already confirmed locally."
+//       });
+//     }
+
+//     // try several times because provider may delay
+//     const attempts = 6;
+//     const delayMs = 3500;
+
+//     for (let i = 0; i < attempts; i++) {
+//       // reload latest session each round
+//       const latestSession = await getPaymentSessionByClientRef(session.client_ref);
+
+// if (
+//   latestSession &&
+//   (
+//     Number(latestSession.finalized) === 1 ||
+//     String(latestSession.payment_status || "").toLowerCase() === "approved"
+//   )
+// ) {
+//   try {
+//     await db.promise().query(
+//       `INSERT INTO payment_reconcile_logs
+//        (
+//          client_ref,
+//          transaction_id,
+//          check_source,
+//          provider_status,
+//          provider_code,
+//          local_payment_status,
+//          local_finalized,
+//          resolved,
+//          note
+//        )
+//        VALUES (?, ?, 'manual', ?, ?, ?, ?, 1, ?)`,
+//       [
+//         latestSession.client_ref,
+//         latestSession.transaction_id || null,
+//         "approved",
+//         "LOCAL_DB",
+//         latestSession.payment_status || "",
+//         Number(latestSession.finalized) === 1 ? 1 : 0,
+//         "Resolved from local DB during manual reconcile"
+//       ]
+//     );
+//   } catch (e) {
+//     console.error("Could not insert payment_reconcile_logs:", e.message);
+//   }
+
+//   return res.json({
+//     ok: true,
+//     finalized: true,
+//     status: "approved",
+//     transaction_id: latestSession.transaction_id || null,
+//     message: "Payment successful. Order saved."
+//   });
+// }
+
+//       const txIdToCheck = latestSession?.transaction_id || transaction_id;
+
+//       if (txIdToCheck) {
+//         // reuse your own existing endpoint logic internally by checking provider directly here
+//         const url = `${THETELLER.statusBase}/${encodeURIComponent(txIdToCheck)}/status`;
+
+//         try {
+//           const resp = await axios.get(url, {
+//             headers: {
+//               Authorization: `Basic ${THETELLER.basicToken}`,
+//               "Merchant-Id": THETELLER.merchantId,
+//               "Cache-Control": "no-cache",
+//             },
+//             timeout: 30000,
+//           });
+
+//           const raw = resp.data || {};
+
+//           const statusRaw =
+//             raw.status ??
+//             raw.Status ??
+//             raw.transaction_status ??
+//             raw.transactionStatus ??
+//             raw.response_status ??
+//             raw.state ??
+//             "";
+
+//           const codeRaw =
+//             raw.code ??
+//             raw.Code ??
+//             raw.response_code ??
+//             raw.responseCode ??
+//             raw.status_code ??
+//             raw.statusCode ??
+//             "";
+
+//           const reasonRaw =
+//             raw.reason ??
+//             raw.message ??
+//             raw.ResponseMessage ??
+//             raw.response_message ??
+//             "";
+
+//           const status = String(statusRaw).toLowerCase().trim();
+//           const code = String(codeRaw).trim();
+//           const reason = String(reasonRaw).trim();
+
+//           const approved =
+//             code === "000" ||
+//             code === "00" ||
+//             code === "0" ||
+//             ["approved", "successful", "success", "completed", "paid", "done"].includes(status) ||
+//             status.includes("success") ||
+//             status.includes("approved") ||
+//             status.includes("complete") ||
+//             status.includes("paid");
+
+//           await db.promise().query(
+//             `INSERT INTO payment_reconcile_logs
+//              (client_ref, transaction_id, check_source, provider_status, provider_code, local_payment_status, local_finalized, resolved, note, raw_response)
+//              VALUES (?, ?, 'manual', ?, ?, ?, ?, ?, ?, ?)`,
+//             [
+//               session.client_ref,
+//               txIdToCheck,
+//               status || null,
+//               code || null,
+//               latestSession?.payment_status || null,
+//               latestSession?.finalized ? 1 : 0,
+//               approved ? 1 : 0,
+//               reason || `Manual reconcile attempt ${i + 1}`,
+//               JSON.stringify(raw)
+//             ]
+//           ).catch(() => {});
+
+//           if (approved) {
+//             const freshSession = await getPaymentSessionByTransactionId(txIdToCheck);
+
+//             if (freshSession) {
+//               const [exists] = await db.promise().query(
+//                 "SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1",
+//                 [txIdToCheck]
+//               );
+
+//               if (!exists.length) {
+//                 await db.promise().query(
+//                   `INSERT INTO admin_orders
+//                   (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
+//                   VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
+//                   [
+//                     freshSession.vendor_id,
+//                     freshSession.recipient_number,
+//                     freshSession.package_name,
+//                     Number(freshSession.amount),
+//                     String(freshSession.network || "").toLowerCase(),
+//                     freshSession.package_batch_id,
+//                     txIdToCheck
+//                   ]
+//                 );
+//               }
+
+//               await db.promise().query(
+//                 `UPDATE payment_sessions
+//                  SET payment_status='approved',
+//                      finalized=1,
+//                      updated_reference=?,
+//                      init_status='approved'
+//                  WHERE transaction_id=?`,
+//                 [txIdToCheck, txIdToCheck]
+//               );
+//             }
+
+//             return res.json({
+//               ok: true,
+//               finalized: true,
+//               status: "approved",
+//               transaction_id: txIdToCheck,
+//               message: "Payment successful. Order saved."
+//             });
+//           }
+//         } catch (providerErr) {
+//           console.error("reconcile provider check error:", providerErr.response?.data || providerErr.message);
+//         }
+//       }
+
+//       if (i < attempts - 1) {
+//         await new Promise(resolve => setTimeout(resolve, delayMs));
+//       }
+//     }
+
+//     const lastSession = await getPaymentSessionByClientRef(session.client_ref);
+
+//     return res.json({
+//       ok: true,
+//       finalized: !!lastSession?.finalized,
+//       status: String(lastSession?.payment_status || "pending").toLowerCase(),
+//       transaction_id: lastSession?.transaction_id || transaction_id || null,
+//       message: "Payment is still being confirmed. If money was deducted, do not start again. Tap again shortly."
+//     });
+
+//   } catch (err) {
+//     console.error("reconcile-payment error:", err);
+//     return res.status(500).json({
+//       ok: false,
+//       finalized: false,
+//       status: "unknown",
+//       message: "Could not reconcile payment right now."
+//     });
+//   }
+// });
+
+// =====================================================
+// POST /api/reconcile-payment
+// =====================================================
+app.post(
+  "/api/reconcile-payment",
+  async (req, res) => {
+    const clientRef = String(
+      req.body.client_ref || ""
+    ).trim();
+
+    let transactionId = String(
+      req.body.transaction_id || ""
+    ).trim();
+
+    if (!clientRef && !transactionId) {
+      return res.status(400).json({
         ok: false,
-        finalized: false,
         status: "unknown",
-        message: "Payment session not found."
+        finalized: false,
+
+        message:
+          "client_ref or transaction_id is required."
       });
     }
 
-    // if already finalized locally, trust DB immediately
-    if (
-      Number(session.finalized) === 1 ||
-      String(session.payment_status || "").toLowerCase() === "approved"
-    ) {
-      return res.json({
-        ok: true,
-        finalized: true,
-        status: "approved",
-        transaction_id: session.transaction_id || transaction_id || null,
-        message: "Payment already confirmed locally."
-      });
-    }
+    try {
+      let session = null;
 
-    // try several times because provider may delay
-    const attempts = 6;
-    const delayMs = 3500;
+      if (transactionId) {
+        session =
+          await getPaymentSessionByTransactionId(
+            transactionId
+          );
+      }
 
-    for (let i = 0; i < attempts; i++) {
-      // reload latest session each round
-      const latestSession = await getPaymentSessionByClientRef(session.client_ref);
+      if (!session && clientRef) {
+        session =
+          await getPaymentSessionByClientRef(
+            clientRef
+          );
 
-if (
-  latestSession &&
-  (
-    Number(latestSession.finalized) === 1 ||
-    String(latestSession.payment_status || "").toLowerCase() === "approved"
-  )
-) {
-  try {
-    await db.promise().query(
-      `INSERT INTO payment_reconcile_logs
-       (
-         client_ref,
-         transaction_id,
-         check_source,
-         provider_status,
-         provider_code,
-         local_payment_status,
-         local_finalized,
-         resolved,
-         note
-       )
-       VALUES (?, ?, 'manual', ?, ?, ?, ?, 1, ?)`,
-      [
-        latestSession.client_ref,
-        latestSession.transaction_id || null,
-        "approved",
-        "LOCAL_DB",
-        latestSession.payment_status || "",
-        Number(latestSession.finalized) === 1 ? 1 : 0,
-        "Resolved from local DB during manual reconcile"
-      ]
-    );
-  } catch (e) {
-    console.error("Could not insert payment_reconcile_logs:", e.message);
-  }
-
-  return res.json({
-    ok: true,
-    finalized: true,
-    status: "approved",
-    transaction_id: latestSession.transaction_id || null,
-    message: "Payment successful. Order saved."
-  });
-}
-
-      const txIdToCheck = latestSession?.transaction_id || transaction_id;
-
-      if (txIdToCheck) {
-        // reuse your own existing endpoint logic internally by checking provider directly here
-        const url = `${THETELLER.statusBase}/${encodeURIComponent(txIdToCheck)}/status`;
-
-        try {
-          const resp = await axios.get(url, {
-            headers: {
-              Authorization: `Basic ${THETELLER.basicToken}`,
-              "Merchant-Id": THETELLER.merchantId,
-              "Cache-Control": "no-cache",
-            },
-            timeout: 30000,
-          });
-
-          const raw = resp.data || {};
-
-          const statusRaw =
-            raw.status ??
-            raw.Status ??
-            raw.transaction_status ??
-            raw.transactionStatus ??
-            raw.response_status ??
-            raw.state ??
-            "";
-
-          const codeRaw =
-            raw.code ??
-            raw.Code ??
-            raw.response_code ??
-            raw.responseCode ??
-            raw.status_code ??
-            raw.statusCode ??
-            "";
-
-          const reasonRaw =
-            raw.reason ??
-            raw.message ??
-            raw.ResponseMessage ??
-            raw.response_message ??
-            "";
-
-          const status = String(statusRaw).toLowerCase().trim();
-          const code = String(codeRaw).trim();
-          const reason = String(reasonRaw).trim();
-
-          const approved =
-            code === "000" ||
-            code === "00" ||
-            code === "0" ||
-            ["approved", "successful", "success", "completed", "paid", "done"].includes(status) ||
-            status.includes("success") ||
-            status.includes("approved") ||
-            status.includes("complete") ||
-            status.includes("paid");
-
-          await db.promise().query(
-            `INSERT INTO payment_reconcile_logs
-             (client_ref, transaction_id, check_source, provider_status, provider_code, local_payment_status, local_finalized, resolved, note, raw_response)
-             VALUES (?, ?, 'manual', ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              session.client_ref,
-              txIdToCheck,
-              status || null,
-              code || null,
-              latestSession?.payment_status || null,
-              latestSession?.finalized ? 1 : 0,
-              approved ? 1 : 0,
-              reason || `Manual reconcile attempt ${i + 1}`,
-              JSON.stringify(raw)
-            ]
-          ).catch(() => {});
-
-          if (approved) {
-            const freshSession = await getPaymentSessionByTransactionId(txIdToCheck);
-
-            if (freshSession) {
-              const [exists] = await db.promise().query(
-                "SELECT 1 FROM admin_orders WHERE updated_reference=? LIMIT 1",
-                [txIdToCheck]
-              );
-
-              if (!exists.length) {
-                await db.promise().query(
-                  `INSERT INTO admin_orders
-                  (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
-                  VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
-                  [
-                    freshSession.vendor_id,
-                    freshSession.recipient_number,
-                    freshSession.package_name,
-                    Number(freshSession.amount),
-                    String(freshSession.network || "").toLowerCase(),
-                    freshSession.package_batch_id,
-                    txIdToCheck
-                  ]
-                );
-              }
-
-              await db.promise().query(
-                `UPDATE payment_sessions
-                 SET payment_status='approved',
-                     finalized=1,
-                     updated_reference=?,
-                     init_status='approved'
-                 WHERE transaction_id=?`,
-                [txIdToCheck, txIdToCheck]
-              );
-            }
-
-            return res.json({
-              ok: true,
-              finalized: true,
-              status: "approved",
-              transaction_id: txIdToCheck,
-              message: "Payment successful. Order saved."
-            });
-          }
-        } catch (providerErr) {
-          console.error("reconcile provider check error:", providerErr.response?.data || providerErr.message);
+        if (session?.transaction_id) {
+          transactionId = String(
+            session.transaction_id
+          ).trim();
         }
       }
 
-      if (i < attempts - 1) {
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+      if (!session) {
+        return res.json({
+          ok: false,
+          status: "unknown",
+          finalized: false,
+
+          message:
+            "Payment session not found."
+        });
       }
+
+      // Wait briefly in case callback is arriving
+      const attempts = 4;
+      const delayMs = 2500;
+
+      for (
+        let attempt = 0;
+        attempt < attempts;
+        attempt++
+      ) {
+        const current =
+          await getPaymentSessionByClientRef(
+            session.client_ref
+          );
+
+        const status = String(
+          current?.payment_status ||
+          current?.init_status ||
+          "pending"
+        )
+          .trim()
+          .toLowerCase();
+
+        const approved =
+          Number(current?.finalized) === 1 ||
+          status === "approved" ||
+          status === "success" ||
+          status === "successful" ||
+          status === "completed" ||
+          status === "paid";
+
+        if (approved) {
+          return res.json({
+            ok: true,
+            status: "approved",
+            finalized: true,
+
+            transaction_id:
+              current.transaction_id ||
+              transactionId ||
+              null,
+
+            message:
+              "Payment successful. Order saved."
+          });
+        }
+
+        if (attempt < attempts - 1) {
+          await new Promise(resolve =>
+            setTimeout(resolve, delayMs)
+          );
+        }
+      }
+
+      const latest =
+        await getPaymentSessionByClientRef(
+          session.client_ref
+        );
+
+      return res.json({
+        ok: true,
+        status: "pending",
+        finalized: false,
+        hard_failed: false,
+
+        transaction_id:
+          latest?.transaction_id ||
+          transactionId ||
+          null,
+
+        message:
+          "Payment is still being confirmed. If money was deducted, do not start another payment. Tap again shortly."
+      });
+    } catch (err) {
+      console.error(
+        "reconcile-payment error:",
+        err
+      );
+
+      return res.status(500).json({
+        ok: false,
+        status: "unknown",
+        finalized: false,
+
+        message:
+          "Could not reconcile payment right now."
+      });
     }
-
-    const lastSession = await getPaymentSessionByClientRef(session.client_ref);
-
-    return res.json({
-      ok: true,
-      finalized: !!lastSession?.finalized,
-      status: String(lastSession?.payment_status || "pending").toLowerCase(),
-      transaction_id: lastSession?.transaction_id || transaction_id || null,
-      message: "Payment is still being confirmed. If money was deducted, do not start again. Tap again shortly."
-    });
-
-  } catch (err) {
-    console.error("reconcile-payment error:", err);
-    return res.status(500).json({
-      ok: false,
-      finalized: false,
-      status: "unknown",
-      message: "Could not reconcile payment right now."
-    });
   }
-});
+);
 
 
 // =====================================================
