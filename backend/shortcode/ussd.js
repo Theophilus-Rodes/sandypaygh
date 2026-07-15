@@ -92,19 +92,20 @@ const UZO_ADMIN_87_BULKCLIX = {
 };
 
 // ✅ MOOLRE ACCOUNT USED ONLY BY ARKESEL *928*145#
+// ✅ MOOLRE ACCOUNT USED ONLY BY ARKESEL *928*145#
 const ARKESEL_ADMIN_MOOLRE = {
   url: "https://api.moolre.com/open/transact/payment",
 
   user:
-    process.env.ARKSEL_ADMIN_MOOLRE_USER ||
+    process.env.ARKESEL_ADMIN_MOOLRE_USER ||
     "dataguygh",
 
   pubkey:
-    process.env.ARKSEL_ADMIN_MOOLRE_PUBKEY ||
+    process.env.ARKESEL_ADMIN_MOOLRE_PUBKEY ||
     "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTU2NTQ1OTk5fQ.hpJg5emG0kyO40d7XIaZ12iUAspshzKvNoJPkiorkq8",
 
   wallet:
-    process.env.ARKSEL_ADMIN_MOOLRE_WALLET ||
+    process.env.ARKESEL_ADMIN_MOOLRE_WALLET ||
     "10691706058501",
 };
 
@@ -178,6 +179,106 @@ function getChannelId(network) {
     default:
       return null;
   }
+}
+
+// ======================================================
+// SEND ARKESEL PAYMENT THROUGH MOOLRE
+// Used only by *928*145#
+// ======================================================
+async function sendArkeselMoolrePayment({
+  amount,
+  network,
+  momoNumber,
+  transactionId,
+  dataPackage,
+}) {
+  const channel = getChannelId(network);
+
+  if (!channel) {
+    throw new Error(`Unsupported Moolre network: ${network}`);
+  }
+
+  const payer = toLocalMsisdn(momoNumber);
+
+  if (!/^0\d{9}$/.test(payer)) {
+    throw new Error(`Invalid Moolre payer number: ${payer}`);
+  }
+
+  const requestPayload = {
+    type: 1,
+    channel,
+    currency: "GHS",
+    payer,
+    amount: Number(Number(amount).toFixed(2)),
+    externalref: transactionId,
+    otpcode: "",
+    reference: `DIDWAPA DATA ${dataPackage}`,
+    accountnumber: ARKESEL_ADMIN_MOOLRE.wallet,
+  };
+
+  console.log("📤 ARKESEL → MOOLRE PAYMENT REQUEST:", {
+    ...requestPayload,
+    apiUser: ARKESEL_ADMIN_MOOLRE.user,
+    pubkey: "[HIDDEN]",
+  });
+
+  const response = await axios.post(
+    ARKESEL_ADMIN_MOOLRE.url,
+    requestPayload,
+    {
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "X-API-USER": ARKESEL_ADMIN_MOOLRE.user,
+        "X-API-PUBKEY": ARKESEL_ADMIN_MOOLRE.pubkey,
+      },
+      timeout: 30000,
+      validateStatus: () => true,
+    }
+  );
+
+  const responseData = response.data || {};
+
+  console.log("📥 ARKESEL → MOOLRE RAW RESPONSE:", {
+    httpStatus: response.status,
+    data: responseData,
+  });
+
+  const status = Number(responseData.status);
+  const code = String(responseData.code || "").trim();
+  const message = String(
+    responseData.message ||
+    responseData.reason ||
+    ""
+  ).trim();
+
+  /*
+   * Moolre can return status=1 with codes such as TP14
+   * when the payment approval request has been initiated.
+   */
+  const accepted =
+    response.status >= 200 &&
+    response.status < 300 &&
+    (
+      status === 1 ||
+      code === "TP14" ||
+      code === "00" ||
+      code === "000"
+    );
+
+  if (!accepted) {
+    throw new Error(
+      `Moolre rejected payment. HTTP=${response.status}, status=${status}, code=${code}, message=${message}`
+    );
+  }
+
+  return {
+    accepted: true,
+    status,
+    code,
+    message,
+    raw: responseData,
+  };
 }
 
 // ✅ PACKAGES LIST WITH PAGINATION
@@ -738,70 +839,58 @@ end(
 // ======================================================
 // ARKESEL PAYMENT THROUGH MOOLRE ONLY
 // ======================================================
+// ======================================================
+// ARKESEL *928*145# USES MOOLRE ONLY
+// ======================================================
 if (state.isArkeselAdmin145 === true) {
-  const channelId = getChannelId(network);
+  console.log("🟪 ARKESEL PAYMENT ROUTE SELECTED:", {
+    transactionId,
+    network,
+    momo_number,
+    amount,
+    data_package,
+    wallet: ARKESEL_ADMIN_MOOLRE.wallet,
+  });
 
-  if (!channelId) {
-    console.error(
-      "❌ Unsupported network for Arkesel Moolre payment:",
-      network
-    );
-
-    return;
-  }
-
-  const moolrePayload = {
-    type: 1,
-    channel: channelId,
-    currency: "GHS",
-
-    // Moolre payer number in Ghana local format
-    payer: toLocalMsisdn(momo_number),
-
-    amount: Number(amount.toFixed(2)),
-    externalref: transactionId,
-    otpcode: "",
-
-    reference: `DIDWAPA DATA ${data_package}`,
-
-    accountnumber: ARKESEL_ADMIN_MOOLRE.wallet,
-  };
-
-  console.log(
-    "📤 Sending ARKESEL payment to MOOLRE:",
-    {
-      ...moolrePayload,
-      accountnumber: ARKESEL_ADMIN_MOOLRE.wallet,
-      pubkey: "[HIDDEN]",
-    }
-  );
-
-  axios
-    .post(
-      ARKESEL_ADMIN_MOOLRE.url,
-      moolrePayload,
-      {
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-API-USER": ARKESEL_ADMIN_MOOLRE.user,
-          "X-API-PUBKEY": ARKESEL_ADMIN_MOOLRE.pubkey,
-        },
-
-        timeout: 30000,
-      }
-    )
-    .then((response) => {
+  sendArkeselMoolrePayment({
+    amount,
+    network,
+    momoNumber: momo_number,
+    transactionId,
+    dataPackage: data_package,
+  })
+    .then((result) => {
       console.log(
-        "✅ ARKESEL MOOLRE payment INIT response:",
-        response.data
+        "✅ ARKESEL MOOLRE PAYMENT ACCEPTED:",
+        result
       );
     })
-    .catch((err) => {
+    .catch(async (error) => {
       console.error(
-        "❌ ARKESEL MOOLRE payment error:",
-        err.response?.data || err.message
+        "❌ ARKESEL MOOLRE PAYMENT FAILED:",
+        error.response?.data ||
+        error.message ||
+        error
       );
+
+      // Remove the unused temporary order when payment initiation fails
+      try {
+        await dbp.query(
+          `DELETE FROM moolre_temp_orders
+           WHERE externalref = ?`,
+          [transactionId]
+        );
+
+        console.log(
+          "🗑️ Failed Arkesel temp order removed:",
+          transactionId
+        );
+      } catch (deleteError) {
+        console.error(
+          "❌ Could not remove failed Arkesel temp order:",
+          deleteError.message
+        );
+      }
     });
 
   return;
