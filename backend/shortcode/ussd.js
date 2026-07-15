@@ -91,6 +91,23 @@ const UZO_ADMIN_87_BULKCLIX = {
   apiKey: process.env.UZO_ADMIN_87_BULKCLIX_API_KEY || "fTQMwISNm8wyFn6Xg5eY6xj8IU6tdqEdIwRLJk3K",
 };
 
+// ✅ MOOLRE ACCOUNT USED ONLY BY ARKESEL *928*145#
+const ARKESEL_ADMIN_MOOLRE = {
+  url: "https://api.moolre.com/open/transact/payment",
+
+  user:
+    process.env.ARKSEL_ADMIN_MOOLRE_USER ||
+    "dataguygh",
+
+  pubkey:
+    process.env.ARKSEL_ADMIN_MOOLRE_PUBKEY ||
+    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTU2NTQ1OTk5fQ.hpJg5emG0kyO40d7XIaZ12iUAspshzKvNoJPkiorkq8",
+
+  wallet:
+    process.env.ARKSEL_ADMIN_MOOLRE_WALLET ||
+    "10691706058501",
+};
+
 function getBulkClixAccount(state) {
   if (state && state.isUzoAdmin87 === true) return UZO_ADMIN_87_BULKCLIX;
   if (state && state.isPlain === true) return ADMIN_BULKCLIX;
@@ -710,46 +727,149 @@ end(
 );
 
 
-// ✅ ADMIN PAYMENTS USE BULKCLIX
+// ======================================================
+// PAYMENT PROVIDER ROUTING
+//
+// ARKESEL *928*145#     -> MOOLRE
+// ALL OTHER USSD CODES -> BULKCLIX
+// ======================================================
+
+
+// ======================================================
+// ARKESEL PAYMENT THROUGH MOOLRE ONLY
+// ======================================================
+if (state.isArkeselAdmin145 === true) {
+  const channelId = getChannelId(network);
+
+  if (!channelId) {
+    console.error(
+      "❌ Unsupported network for Arkesel Moolre payment:",
+      network
+    );
+
+    return;
+  }
+
+  const moolrePayload = {
+    type: 1,
+    channel: channelId,
+    currency: "GHS",
+
+    // Moolre payer number in Ghana local format
+    payer: toLocalMsisdn(momo_number),
+
+    amount: Number(amount.toFixed(2)),
+    externalref: transactionId,
+    otpcode: "",
+
+    reference: `DIDWAPA DATA ${data_package}`,
+
+    accountnumber: ARKESEL_ADMIN_MOOLRE.wallet,
+  };
+
+  console.log(
+    "📤 Sending ARKESEL payment to MOOLRE:",
+    {
+      ...moolrePayload,
+      accountnumber: ARKESEL_ADMIN_MOOLRE.wallet,
+      pubkey: "[HIDDEN]",
+    }
+  );
+
+  axios
+    .post(
+      ARKESEL_ADMIN_MOOLRE.url,
+      moolrePayload,
+      {
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-API-USER": ARKESEL_ADMIN_MOOLRE.user,
+          "X-API-PUBKEY": ARKESEL_ADMIN_MOOLRE.pubkey,
+        },
+
+        timeout: 30000,
+      }
+    )
+    .then((response) => {
+      console.log(
+        "✅ ARKESEL MOOLRE payment INIT response:",
+        response.data
+      );
+    })
+    .catch((err) => {
+      console.error(
+        "❌ ARKESEL MOOLRE payment error:",
+        err.response?.data || err.message
+      );
+    });
+
+  return;
+}
+
+
+// ======================================================
+// EVERY OTHER CODE CONTINUES TO USE BULKCLIX
+// ======================================================
 const bulkNetwork = getBulkClixNetwork(network);
 
 if (!bulkNetwork) {
-  console.error("❌ Unsupported network for BulkClix:", network);
+  console.error(
+    "❌ Unsupported network for BulkClix:",
+    network
+  );
+
   return;
 }
 
 const bulkClixAccount = getBulkClixAccount(state);
 
-const paymentBrand =
-  state.isArkeselAdmin145 === true
-    ? "DIDWAPA DATA"
-    : "SANDYPAY";
-
-const payload = {
+const bulkPayload = {
   amount: Number(amount.toFixed(2)),
   phone_number: toLocalMsisdn(momo_number),
   network: bulkNetwork,
   transaction_id: transactionId,
-  callback_url: "https://sandipay.co/api/moolre/bulkclix-webhook",
-  reference: `${paymentBrand} ${data_package}`,
+
+  callback_url:
+    "https://sandipay.co/api/moolre/bulkclix-webhook",
+
+  reference: `SANDYPAY ${data_package}`,
 };
 
-console.log("📤 Sending payment to BULKCLIX:", payload);
+console.log(
+  "📤 Sending non-Arkesel payment to BULKCLIX:",
+  bulkPayload
+);
 
 axios
-  .post(bulkClixAccount.url, payload, {
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "x-api-key": bulkClixAccount.apiKey,
-    },
-  })
+  .post(
+    bulkClixAccount.url,
+    bulkPayload,
+    {
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "x-api-key": bulkClixAccount.apiKey,
+      },
+
+      timeout: 30000,
+    }
+  )
   .then((response) => {
-    console.log("✅ BULKCLIX admin payment INIT response:", response.data);
+    console.log(
+      "✅ BULKCLIX payment INIT response:",
+      response.data
+    );
   })
   .catch((err) => {
-    console.error("❌ BULKCLIX admin error:", err.response?.data || err.message);
-  });          return;
+    console.error(
+      "❌ BULKCLIX payment error:",
+      err.response?.data || err.message
+    );
+  });
+
+return;
+
         }
 
         if (choice === "2") return end("Transaction cancelled.");
