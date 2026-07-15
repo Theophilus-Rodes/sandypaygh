@@ -333,22 +333,27 @@ function checkAccess(msisdn, cb) {
 // CON message  = continue session
 // END message  = close session
 // ======================================================
-function createArkeselResponseAdapter(res) {
+function createArkeselResponseAdapter(
+  res,
+  sessionID,
+  userID,
+  msisdn
+) {
   return {
     json(data) {
       const rawMessage = String(data?.message || "");
 
-      // Remove any prefix already supplied by the shared handler
       const cleanMessage = rawMessage
         .replace(/^CON\s*/i, "")
         .replace(/^END\s*/i, "");
 
-      const prefix = data?.reply === false ? "END" : "CON";
-
-      return res
-        .status(200)
-        .type("text/plain")
-        .send(`${prefix} ${cleanMessage}`);
+      return res.status(200).json({
+        sessionID: String(sessionID || ""),
+        userID: String(userID || ""),
+        msisdn: String(msisdn || ""),
+        message: cleanMessage,
+        continueSession: data?.reply !== false,
+      });
     },
   };
 }
@@ -360,17 +365,32 @@ function createArkeselResponseAdapter(res) {
 // 1*2*0241234567
 //
 // Our shared session handler only needs the newest input.
-function getArkeselLatestInput(text) {
-  const value = String(text || "").trim();
+function getArkeselLatestInput(userData, isNewSession) {
+  const value = String(userData || "").trim();
 
-  if (!value) return "";
+  // The initial request contains the dialled USSD string.
+  // It is not a menu answer.
+  if (isNewSession) {
+    return "";
+  }
 
-  const parts = value
+  if (!value) {
+    return "";
+  }
+
+  // Remove surrounding # and spaces
+  const cleaned = value
+    .replace(/^#+|#+$/g, "")
+    .trim();
+
+  // If Arkesel sends accumulated values separated by *,
+  // use only the newest handset response.
+  const parts = cleaned
     .split("*")
     .map((item) => item.trim())
-    .filter((item) => item !== "");
+    .filter(Boolean);
 
-  return parts.length ? parts[parts.length - 1] : "";
+  return parts.length ? parts[parts.length - 1] : cleaned;
 }
 
 
@@ -1168,173 +1188,145 @@ if (!telephoneAllowed) {
 });
 
 
-
 // ======================================================
 // ARKESEL ADMIN USSD ROUTE
 //
-// USSD CODE: *928*145#
-//
-// Full callback URL when this router is mounted at
-// /api/moolre:
-//
+// Callback URL:
 // https://sandipay.co/api/moolre/arkesel
 //
-// This route:
-// - Uses AdminData packages
-// - Uses the admin BulkClix payment account
-// - Displays "Didwapa Data"
-// - Does not consume vendor hits
-// - Does not interfere with Moolre or UZO sessions
+// Arkesel request fields:
+// sessionID
+// userID
+// newSession
+// msisdn
+// userData
+// network
 // ======================================================
 router.post("/arkesel", (req, res) => {
   console.log("📲 NEW ARKESEL USSD REQUEST:", req.body);
 
   let payload = req.body || {};
 
-  // Also support an Arkesel request arriving as raw JSON text
   if (typeof payload === "string") {
     try {
       payload = JSON.parse(payload);
-    } catch {
-      return res
-        .status(200)
-        .type("text/plain")
-        .send("END Invalid request format.");
+    } catch (error) {
+      console.error("❌ Invalid Arkesel JSON:", error.message);
+
+      return res.status(200).json({
+        sessionID: "",
+        userID: "",
+        msisdn: "",
+        message: "Invalid request format.",
+        continueSession: false,
+      });
     }
   }
 
-  // Main Arkesel field names, plus defensive aliases
-  const sessionId = String(
+  const sessionID = String(
+    payload.sessionID ||
     payload.sessionId ||
-      payload.sessionID ||
-      payload.session_id ||
-      ""
+    payload.session_id ||
+    ""
   ).trim();
 
-  const serviceCode = String(
-    payload.serviceCode ||
-      payload.service_code ||
-      payload.code ||
-      ""
+  const userID = String(
+    payload.userID ||
+    payload.userId ||
+    payload.user_id ||
+    ""
   ).trim();
 
   const msisdn = String(
+    payload.msisdn ||
     payload.phoneNumber ||
-      payload.phone_number ||
-      payload.msisdn ||
-      ""
+    payload.phone_number ||
+    ""
   ).trim();
 
-  const text = String(
+  const userData = String(
+    payload.userData ??
+    payload.user_data ??
     payload.text ??
-      payload.ussdString ??
-      payload.message ??
-      ""
+    ""
   ).trim();
 
-  const requestType = String(
-    payload.type ||
-      payload.requestType ||
-      payload.request_type ||
-      ""
-  )
-    .trim()
-    .toLowerCase();
+  const newSession =
+    payload.newSession === true ||
+    String(payload.newSession || "").toLowerCase() === "true";
 
-  if (!sessionId) {
-    console.log("❌ Arkesel request missing session ID:", payload);
+  const network = String(
+    payload.network || ""
+  ).trim();
 
-    return res
-      .status(200)
-      .type("text/plain")
-      .send("END Invalid session.");
+  console.log("🔍 PARSED ARKESEL REQUEST:", {
+    sessionID,
+    userID,
+    newSession,
+    msisdn,
+    userData,
+    network,
+  });
+
+  if (!sessionID) {
+    return res.status(200).json({
+      sessionID: "",
+      userID,
+      msisdn,
+      message: "Invalid session.",
+      continueSession: false,
+    });
   }
 
   if (!msisdn) {
-    console.log("❌ Arkesel request missing phone number:", payload);
-
-    return res
-      .status(200)
-      .type("text/plain")
-      .send("END Invalid phone number.");
-  }
-
-  // Keep Arkesel sessions separate from Moolre and UZO
-  const arkeselSessionKey = `ARKESEL_${sessionId}`;
-
-  const normalizedServiceCode = serviceCode.replace(/\s+/g, "");
-
-  // Only accept the assigned Arkesel code.
-  // The empty-code allowance is useful when the gateway does not
-  // resend serviceCode after the first request.
-  const validServiceCode =
-    normalizedServiceCode === "*928*145#" ||
-    normalizedServiceCode === "928*145" ||
-    normalizedServiceCode === "928*145#" ||
-    normalizedServiceCode === "*928*145" ||
-    (sessions[arkeselSessionKey] && !normalizedServiceCode);
-
-  if (!validServiceCode) {
-    console.log("❌ Invalid Arkesel service code:", {
-      receivedServiceCode: serviceCode,
-      normalizedServiceCode,
+    return res.status(200).json({
+      sessionID,
+      userID,
+      msisdn: "",
+      message: "Invalid phone number.",
+      continueSession: false,
     });
-
-    return res
-      .status(200)
-      .type("text/plain")
-      .send("END Invalid USSD entry point.");
   }
 
-  const arkeselRes = createArkeselResponseAdapter(res);
+  const arkeselSessionKey = `ARKESEL_${sessionID}`;
 
-  const hasExistingSession = Boolean(sessions[arkeselSessionKey]);
+  const arkeselRes = createArkeselResponseAdapter(
+    res,
+    sessionID,
+    userID,
+    msisdn
+  );
 
-  const isNewSession =
-    !hasExistingSession ||
-    requestType === "initiation" ||
-    requestType === "initial";
-
-  console.log("🔍 ARKESEL SESSION CHECK:", {
-    arkeselSessionKey,
-    serviceCode,
-    msisdn,
-    text,
-    requestType,
-    isNewSession,
-    hasExistingSession,
-  });
+  const hasExistingSession =
+    Boolean(sessions[arkeselSessionKey]);
 
   // ==================================================
-  // CREATE NEW DIDWAPA DATA ADMIN SESSION
+  // NEW ARKESEL SESSION
   // ==================================================
-  if (isNewSession && !hasExistingSession) {
+  if (newSession || !hasExistingSession) {
     sessions[arkeselSessionKey] = {
       step: "start",
 
-      // Admin/plain mode uses AdminData
       vendorId: 1,
       isPlain: true,
 
-      // This is what the customer sees
       brandName: "Didwapa Data",
 
-      // Provider identification
       ussdProvider: "arkesel",
       isArkeselAdmin145: true,
-      arkeselCode: "145",
+
+      arkeselUserID: userID,
+      arkeselNetwork: network,
 
       network: "",
       selectedPkg: "",
       recipient: "",
       packageList: [],
       packagePage: 0,
-
-      moolreSessionId: arkeselSessionKey,
     };
 
     console.log(
-      "🟪 CREATED ARKESEL DIDWAPA DATA ADMIN SESSION:",
+      "🟪 CREATED ARKESEL DIDWAPA DATA SESSION:",
       sessions[arkeselSessionKey]
     );
 
@@ -1349,20 +1341,17 @@ router.post("/arkesel", (req, res) => {
   // ==================================================
   // CONTINUE EXISTING SESSION
   // ==================================================
-  if (!sessions[arkeselSessionKey]) {
-    return res
-      .status(200)
-      .type("text/plain")
-      .send("END Session expired. Please dial again.");
-  }
-
-  const latestInput = getArkeselLatestInput(text);
+  const latestInput = getArkeselLatestInput(
+    userData,
+    false
+  );
 
   console.log("➡️ CONTINUING ARKESEL SESSION:", {
     arkeselSessionKey,
-    fullText: text,
+    userData,
     latestInput,
-    currentStep: sessions[arkeselSessionKey].step,
+    currentStep:
+      sessions[arkeselSessionKey]?.step,
   });
 
   return handleSession(
@@ -1372,7 +1361,6 @@ router.post("/arkesel", (req, res) => {
     arkeselRes
   );
 });
-
 
 
 ///// Uzo Code
