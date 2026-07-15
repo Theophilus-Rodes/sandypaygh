@@ -381,7 +381,8 @@
       setStatus("Sending payment prompt to your phone. Please approve it with your MoMo PIN.");
 
       try {
-        const res = await fetch(`${API_BASE}/api/buy-data-theteller`, {
+    const res = await fetch(
+  `${API_BASE}/api/buy-data-bulkclix`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -459,7 +460,8 @@
     };
   }
 
-  const res = await fetch(`${API_BASE}/api/theteller-status?transaction_id=${encodeURIComponent(transactionId)}&client_ref=${encodeURIComponent(paymentData.client_ref)}`, {
+  const res = await fetch(
+  `${API_BASE}/api/bulkclix-status?transaction_id=${encodeURIComponent(transactionId)}&client_ref=${encodeURIComponent(paymentData.client_ref)}`, {
     cache: "no-store"
   });
 
