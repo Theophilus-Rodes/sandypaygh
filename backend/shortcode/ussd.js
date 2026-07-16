@@ -93,21 +93,21 @@ const UZO_ADMIN_87_BULKCLIX = {
 
 // ✅ MOOLRE ACCOUNT USED ONLY BY ARKESEL *928*145#
 // ✅ MOOLRE ACCOUNT USED ONLY BY ARKESEL *928*145#
-const ARKESEL_ADMIN_MOOLRE = {
-  url: "https://api.moolre.com/open/transact/payment",
+// const ARKESEL_ADMIN_MOOLRE = {
+//   url: "https://api.moolre.com/open/transact/payment",
 
-  user:
-    process.env.ARKESEL_ADMIN_MOOLRE_USER ||
-    "dataguygh",
+//   user:
+//     process.env.ARKESEL_ADMIN_MOOLRE_USER ||
+//     "dataguygh",
 
-  pubkey:
-    process.env.ARKESEL_ADMIN_MOOLRE_PUBKEY ||
-    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTU2NTQ1OTk5fQ.hpJg5emG0kyO40d7XIaZ12iUAspshzKvNoJPkiorkq8",
+//   pubkey:
+//     process.env.ARKESEL_ADMIN_MOOLRE_PUBKEY ||
+//     "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTU2NTQ1OTk5fQ.hpJg5emG0kyO40d7XIaZ12iUAspshzKvNoJPkiorkq8",
 
-  wallet:
-    process.env.ARKESEL_ADMIN_MOOLRE_WALLET ||
-    "10691706058501",
-};
+//   wallet:
+//     process.env.ARKESEL_ADMIN_MOOLRE_WALLET ||
+//     "10691706058501",
+// };
 
 function getBulkClixAccount(state) {
   if (state && state.isUzoAdmin87 === true) return UZO_ADMIN_87_BULKCLIX;
@@ -185,101 +185,101 @@ function getChannelId(network) {
 // SEND ARKESEL PAYMENT THROUGH MOOLRE
 // Used only by *928*145#
 // ======================================================
-async function sendArkeselMoolrePayment({
-  amount,
-  network,
-  momoNumber,
-  transactionId,
-  dataPackage,
-}) {
-  const channel = getChannelId(network);
+// async function sendArkeselMoolrePayment({
+//   amount,
+//   network,
+//   momoNumber,
+//   transactionId,
+//   dataPackage,
+// }) {
+//   const channel = getChannelId(network);
 
-  if (!channel) {
-    throw new Error(`Unsupported Moolre network: ${network}`);
-  }
+//   if (!channel) {
+//     throw new Error(`Unsupported Moolre network: ${network}`);
+//   }
 
-  const payer = toLocalMsisdn(momoNumber);
+//   const payer = toLocalMsisdn(momoNumber);
 
-  if (!/^0\d{9}$/.test(payer)) {
-    throw new Error(`Invalid Moolre payer number: ${payer}`);
-  }
+//   if (!/^0\d{9}$/.test(payer)) {
+//     throw new Error(`Invalid Moolre payer number: ${payer}`);
+//   }
 
-  const requestPayload = {
-    type: 1,
-    channel,
-    currency: "GHS",
-    payer,
-    amount: Number(Number(amount).toFixed(2)),
-    externalref: transactionId,
-    otpcode: "",
-    reference: `DIDWAPA DATA ${dataPackage}`,
-    accountnumber: ARKESEL_ADMIN_MOOLRE.wallet,
-  };
+//   const requestPayload = {
+//     type: 1,
+//     channel,
+//     currency: "GHS",
+//     payer,
+//     amount: Number(Number(amount).toFixed(2)),
+//     externalref: transactionId,
+//     otpcode: "",
+//     reference: `DIDWAPA DATA ${dataPackage}`,
+//     accountnumber: ARKESEL_ADMIN_MOOLRE.wallet,
+//   };
 
-  console.log("📤 ARKESEL → MOOLRE PAYMENT REQUEST:", {
-    ...requestPayload,
-    apiUser: ARKESEL_ADMIN_MOOLRE.user,
-    pubkey: "[HIDDEN]",
-  });
+//   console.log("📤 ARKESEL → MOOLRE PAYMENT REQUEST:", {
+//     ...requestPayload,
+//     apiUser: ARKESEL_ADMIN_MOOLRE.user,
+//     pubkey: "[HIDDEN]",
+//   });
 
-  const response = await axios.post(
-    ARKESEL_ADMIN_MOOLRE.url,
-    requestPayload,
-    {
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "X-API-USER": ARKESEL_ADMIN_MOOLRE.user,
-        "X-API-PUBKEY": ARKESEL_ADMIN_MOOLRE.pubkey,
-      },
-      timeout: 30000,
-      validateStatus: () => true,
-    }
-  );
+//   const response = await axios.post(
+//     ARKESEL_ADMIN_MOOLRE.url,
+//     requestPayload,
+//     {
+//       headers: {
+//         Accept: "application/json",
+//         "Content-Type": "application/json",
+//         "X-API-USER": ARKESEL_ADMIN_MOOLRE.user,
+//         "X-API-PUBKEY": ARKESEL_ADMIN_MOOLRE.pubkey,
+//       },
+//       timeout: 30000,
+//       validateStatus: () => true,
+//     }
+//   );
 
-  const responseData = response.data || {};
+//   const responseData = response.data || {};
 
-  console.log("📥 ARKESEL → MOOLRE RAW RESPONSE:", {
-    httpStatus: response.status,
-    data: responseData,
-  });
+//   console.log("📥 ARKESEL → MOOLRE RAW RESPONSE:", {
+//     httpStatus: response.status,
+//     data: responseData,
+//   });
 
-  const status = Number(responseData.status);
-  const code = String(responseData.code || "").trim();
-  const message = String(
-    responseData.message ||
-    responseData.reason ||
-    ""
-  ).trim();
+//   const status = Number(responseData.status);
+//   const code = String(responseData.code || "").trim();
+//   const message = String(
+//     responseData.message ||
+//     responseData.reason ||
+//     ""
+//   ).trim();
 
-  /*
-   * Moolre can return status=1 with codes such as TP14
-   * when the payment approval request has been initiated.
-   */
-  const accepted =
-    response.status >= 200 &&
-    response.status < 300 &&
-    (
-      status === 1 ||
-      code === "TP14" ||
-      code === "00" ||
-      code === "000"
-    );
+//   /*
+//    * Moolre can return status=1 with codes such as TP14
+//    * when the payment approval request has been initiated.
+//    */
+//   const accepted =
+//     response.status >= 200 &&
+//     response.status < 300 &&
+//     (
+//       status === 1 ||
+//       code === "TP14" ||
+//       code === "00" ||
+//       code === "000"
+//     );
 
-  if (!accepted) {
-    throw new Error(
-      `Moolre rejected payment. HTTP=${response.status}, status=${status}, code=${code}, message=${message}`
-    );
-  }
+//   if (!accepted) {
+//     throw new Error(
+//       `Moolre rejected payment. HTTP=${response.status}, status=${status}, code=${code}, message=${message}`
+//     );
+//   }
 
-  return {
-    accepted: true,
-    status,
-    code,
-    message,
-    raw: responseData,
-  };
-}
+//   return {
+//     accepted: true,
+//     status,
+//     code,
+//     message,
+//     raw: responseData,
+//   };
+// }
 
 // ✅ PACKAGES LIST WITH PAGINATION
 function renderPackages(state) {
@@ -831,8 +831,10 @@ end(
 // ======================================================
 // PAYMENT PROVIDER ROUTING
 //
-// ARKESEL *928*145#     -> MOOLRE
-// ALL OTHER USSD CODES -> BULKCLIX
+// ALL USSD PAYMENTS USE BULKCLIX
+// Arkesel plain/admin sessions use ADMIN_BULKCLIX
+// Vendor sessions use VENDOR_BULKCLIX
+// UZO admin 87 uses UZO_ADMIN_87_BULKCLIX
 // ======================================================
 
 
@@ -842,59 +844,59 @@ end(
 // ======================================================
 // ARKESEL *928*145# USES MOOLRE ONLY
 // ======================================================
-if (state.isArkeselAdmin145 === true) {
-  console.log("🟪 ARKESEL PAYMENT ROUTE SELECTED:", {
-    transactionId,
-    network,
-    momo_number,
-    amount,
-    data_package,
-    wallet: ARKESEL_ADMIN_MOOLRE.wallet,
-  });
+// if (state.isArkeselAdmin145 === true) {
+//   console.log("🟪 ARKESEL PAYMENT ROUTE SELECTED:", {
+//     transactionId,
+//     network,
+//     momo_number,
+//     amount,
+//     data_package,
+//     wallet: ARKESEL_ADMIN_MOOLRE.wallet,
+//   });
 
-  sendArkeselMoolrePayment({
-    amount,
-    network,
-    momoNumber: momo_number,
-    transactionId,
-    dataPackage: data_package,
-  })
-    .then((result) => {
-      console.log(
-        "✅ ARKESEL MOOLRE PAYMENT ACCEPTED:",
-        result
-      );
-    })
-    .catch(async (error) => {
-      console.error(
-        "❌ ARKESEL MOOLRE PAYMENT FAILED:",
-        error.response?.data ||
-        error.message ||
-        error
-      );
+//   sendArkeselMoolrePayment({
+//     amount,
+//     network,
+//     momoNumber: momo_number,
+//     transactionId,
+//     dataPackage: data_package,
+//   })
+//     .then((result) => {
+//       console.log(
+//         "✅ ARKESEL MOOLRE PAYMENT ACCEPTED:",
+//         result
+//       );
+//     })
+//     .catch(async (error) => {
+//       console.error(
+//         "❌ ARKESEL MOOLRE PAYMENT FAILED:",
+//         error.response?.data ||
+//         error.message ||
+//         error
+//       );
 
-      // Remove the unused temporary order when payment initiation fails
-      try {
-        await dbp.query(
-          `DELETE FROM moolre_temp_orders
-           WHERE externalref = ?`,
-          [transactionId]
-        );
+//       // Remove the unused temporary order when payment initiation fails
+//       try {
+//         await dbp.query(
+//           `DELETE FROM moolre_temp_orders
+//            WHERE externalref = ?`,
+//           [transactionId]
+//         );
 
-        console.log(
-          "🗑️ Failed Arkesel temp order removed:",
-          transactionId
-        );
-      } catch (deleteError) {
-        console.error(
-          "❌ Could not remove failed Arkesel temp order:",
-          deleteError.message
-        );
-      }
-    });
+//         console.log(
+//           "🗑️ Failed Arkesel temp order removed:",
+//           transactionId
+//         );
+//       } catch (deleteError) {
+//         console.error(
+//           "❌ Could not remove failed Arkesel temp order:",
+//           deleteError.message
+//         );
+//       }
+//     });
 
-  return;
-}
+//   return;
+// }
 
 
 // ======================================================
@@ -913,6 +915,11 @@ if (!bulkNetwork) {
 
 const bulkClixAccount = getBulkClixAccount(state);
 
+const paymentBrand =
+  state.isArkeselAdmin145 === true
+    ? "DIDWAPA DATA"
+    : "SANDYPAY";
+
 const bulkPayload = {
   amount: Number(amount.toFixed(2)),
   phone_number: toLocalMsisdn(momo_number),
@@ -922,7 +929,7 @@ const bulkPayload = {
   callback_url:
     "https://sandipay.co/api/moolre/bulkclix-webhook",
 
-  reference: `SANDYPAY ${data_package}`,
+  reference: `${paymentBrand} ${data_package}`,
 };
 
 console.log(
