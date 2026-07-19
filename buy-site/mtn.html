@@ -113,6 +113,26 @@
       font-size:14px;
       box-shadow:0 8px 20px rgba(0,0,0,.04);
     }
+
+
+    .blocked-number-message{
+  display:none;
+  margin-top:10px;
+  padding:11px 12px;
+  border-radius:12px;
+  background:#fef2f2;
+  border:1px solid #fecaca;
+  color:#b91c1c;
+  font-size:13px;
+  font-weight:600;
+  text-align:center;
+}
+
+button:disabled,
+input:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
   </style>
 </head>
 
@@ -149,14 +169,23 @@
           <h3 id="modalTitle">Confirm Purchase</h3>
           <div class="modal-sub" id="modalSub"></div>
         </div>
-        <button class="x" onclick="closeModal()">×</button>
+        <button class="x" id="closeModalBtn" onclick="closeModal()">×</button>
       </div>
 
       <div class="row">
-        <div class="field">
-          <label>Recipient Number (to receive data)</label>
-          <input id="recipientNumber" inputmode="numeric" placeholder="e.g. 055XXXXXXX" />
-        </div>
+      <div class="field">
+  <label>Recipient Number (to receive data)</label>
+
+  <input
+    id="recipientNumber"
+    inputmode="numeric"
+    placeholder="e.g. 055XXXXXXX"
+  />
+
+  <div id="blockedNumberMessage" class="blocked-number-message">
+    This recipient number has been blocked and cannot purchase a bundle.
+  </div>
+</div>
 
         <div class="field">
           <label>MoMo Number (to deduct from)</label>
@@ -175,7 +204,7 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-ghost" id="cancelBtn" onclick="closeModal()">Cancel</button>
         <button class="btn" id="sendOtpBtn" onclick="sendOtp()">Send OTP</button>
         <button class="btn" id="verifyPayBtn" onclick="verifyOtpAndOpenPayment()" style="display:none;">Verify & Pay</button>
       </div>
@@ -194,6 +223,7 @@
   <script>
     const NETWORK = "mtn";
     const API_BASE = "https://sandipay.co";
+    const BLOCKED_RECIPIENT_NUMBER = "0532687733";
 
     let selectedPackage = null;
     let otpSent = false;
@@ -201,6 +231,57 @@
 
     function money(n){ return Number(n).toFixed(2); }
     function isPhone(v){ return /^[0-9]{9,15}$/.test((v || "").replace(/\s+/g, "")); }
+
+
+function cleanPhoneNumber(number){
+  return String(number || "").replace(/\D/g, "");
+}
+
+function isBlockedRecipient(number){
+  const cleaned = cleanPhoneNumber(number);
+
+  return (
+    cleaned === BLOCKED_RECIPIENT_NUMBER ||
+    cleaned === "233532687733"
+  );
+}
+
+function checkBlockedRecipient(){
+  const recipientInput = document.getElementById("recipientNumber");
+  const momoInput = document.getElementById("momoNumber");
+  const otpInput = document.getElementById("otpCode");
+
+  const sendOtpBtn = document.getElementById("sendOtpBtn");
+  const verifyPayBtn = document.getElementById("verifyPayBtn");
+  const cancelBtn = document.getElementById("cancelBtn");
+  const closeModalBtn = document.getElementById("closeModalBtn");
+
+  const message = document.getElementById("blockedNumberMessage");
+
+  const blocked = isBlockedRecipient(recipientInput.value);
+
+  momoInput.disabled = blocked;
+  otpInput.disabled = blocked;
+  sendOtpBtn.disabled = blocked;
+  verifyPayBtn.disabled = blocked;
+  cancelBtn.disabled = blocked;
+  closeModalBtn.disabled = blocked;
+
+  message.style.display = blocked ? "block" : "none";
+
+  if(blocked){
+    momoInput.value = "";
+    otpInput.value = "";
+
+    otpSent = false;
+    otpSessionId = null;
+
+    document.getElementById("otpFieldWrap").style.display = "none";
+    sendOtpBtn.style.display = "inline-block";
+    verifyPayBtn.style.display = "none";
+  }
+}
+
 
     function makeClientRef() {
       return "PAY-" + Date.now() + "-" + Math.random().toString(36).slice(2, 10).toUpperCase();
@@ -302,7 +383,16 @@
       document.getElementById("sendOtpBtn").style.display = "inline-block";
       document.getElementById("verifyPayBtn").style.display = "none";
 
+      document.getElementById("momoNumber").disabled = false;
+document.getElementById("otpCode").disabled = false;
+document.getElementById("sendOtpBtn").disabled = false;
+document.getElementById("verifyPayBtn").disabled = false;
+document.getElementById("cancelBtn").disabled = false;
+document.getElementById("closeModalBtn").disabled = false;
+document.getElementById("blockedNumberMessage").style.display = "none";
+
       document.getElementById("modalBackdrop").style.display = "flex";
+      
     }
 
     function closeModal(){
@@ -312,6 +402,12 @@
     async function sendOtp(){
       const momo = document.getElementById("momoNumber").value.trim();
       const recipient = document.getElementById("recipientNumber").value.trim();
+
+      if(isBlockedRecipient(recipient)){
+  alert("This recipient number has been blocked.");
+  checkBlockedRecipient();
+  return;
+}
 
       if(!selectedPackage){
         alert("Please select a package again.");
@@ -365,6 +461,12 @@
     async function verifyOtpAndOpenPayment(){
       const momo = document.getElementById("momoNumber").value.trim();
       const recipient = document.getElementById("recipientNumber").value.trim();
+
+      if(isBlockedRecipient(recipient)){
+  alert("This recipient number has been blocked.");
+  checkBlockedRecipient();
+  return;
+}
       const otp = document.getElementById("otpCode").value.trim();
 
       if(!selectedPackage){
@@ -446,6 +548,10 @@
         window.history.replaceState({}, document.title, "mtn.html");
       }
     }
+
+document
+  .getElementById("recipientNumber")
+  .addEventListener("input", checkBlockedRecipient);
 
     loadPackages();
     checkPaymentReturnMessage();
