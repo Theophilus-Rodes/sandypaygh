@@ -1645,58 +1645,84 @@ if (!telephoneAllowed) {
 //
 // Selecting 1 or 2 simply ends the session.
 // ======================================================
+// ======================================================
+// SIMPLE NALO CHECKSTATE USSD
+// Code: *920*994#
+// ======================================================
 router.post("/nalo", (req, res) => {
-  const body = req.body || {};
+  try {
+    console.log("📲 NALO CHECKSTATE REQUEST:", req.body);
 
-  const USERID = body.USERID || "";
-  const MSISDN = body.MSISDN || "";
-  const USERDATA = String(body.USERDATA || "").trim();
+    let body = req.body || {};
 
-  // First screen
-  if (USERDATA === "") {
-    return res.json({
+    // Support JSON sent as text
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body);
+      } catch (error) {
+        console.error("❌ Invalid NALO JSON:", error.message);
+
+        return res.status(200).json({
+          USERID: "",
+          MSISDN: "",
+          USERDATA: "",
+          MSG: "Welcome to CheckState.\n1. Buy your results checker\n2. Help",
+          MSGTYPE: true
+        });
+      }
+    }
+
+    const USERID = String(
+      body.USERID ??
+      body.userID ??
+      body.userid ??
+      ""
+    ).trim();
+
+    const MSISDN = String(
+      body.MSISDN ??
+      body.msisdn ??
+      ""
+    ).trim();
+
+    const USERDATA = String(
+      body.USERDATA ??
+      body.userData ??
+      body.userdata ??
+      ""
+    ).trim();
+
+    console.log("✅ PARSED NALO REQUEST:", {
       USERID,
       MSISDN,
       USERDATA,
-      MSG:
-`Welcome to CheckState
+      MSGTYPE: body.MSGTYPE
+    });
 
-1. Buy your results checker
-2. Help`,
+    // Always return the same menu.
+    // Selecting 1 or 2 will not run any function.
+    return res.status(200).json({
+      USERID: USERID,
+      MSISDN: MSISDN,
+      USERDATA: USERDATA,
+      MSG:
+        "Welcome to CheckState.\n" +
+        "1. Buy your results checker\n" +
+        "2. Help",
+      MSGTYPE: true
+    });
+
+  } catch (error) {
+    console.error("❌ NALO CHECKSTATE ERROR:", error);
+
+    return res.status(200).json({
+      USERID: "",
+      MSISDN: "",
+      USERDATA: "",
+      MSG: "Welcome to CheckState.\n1. Buy your results checker\n2. Help",
       MSGTYPE: true
     });
   }
-
-  // User selected 1
-  if (USERDATA === "1") {
-    return res.json({
-      USERID,
-      MSISDN,
-      USERDATA,
-      MSG: "Coming Soon.",
-      MSGTYPE: false
-    });
-  }
-
-  // User selected 2
-  if (USERDATA === "2") {
-    return res.json({
-      USERID,
-      MSISDN,
-      USERDATA,
-      MSG: "Please contact support.",
-      MSGTYPE: false
-    });
-  }
-
-  // Invalid option
-  return res.json({
-    USERID,
-    MSISDN,
-    USERDATA,
-    MSG: "Invalid option.",
-    MSGTYPE: false
-  });
 });
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
