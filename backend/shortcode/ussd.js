@@ -12,149 +12,13 @@ const fs = require("fs");
 
 const router = express.Router();
 
-
 // ======================================================
-// NALO CHECKSTATE USSD
-// Code: *920*994#
-// Keep this route above the general body middleware
+// READ NALO REQUEST AS RAW TEXT
+// This must stay above all other body parsers
 // ======================================================
-router.post(
-  "/nalo",
+router.use("/nalo", express.text({ type: "*/*" }));
 
-  // NALO may send JSON without application/json header
-  express.text({ type: "*/*" }),
 
-  (req, res) => {
-    try {
-      console.log("====================================");
-      console.log("📲 NALO RAW BODY:", req.body);
-      console.log(
-        "📲 NALO CONTENT TYPE:",
-        req.headers["content-type"]
-      );
-      console.log("====================================");
-
-      let data = {};
-
-      // Convert raw request text to JSON
-      if (typeof req.body === "string") {
-        try {
-          data = JSON.parse(req.body);
-        } catch (parseError) {
-          console.error(
-            "❌ Invalid NALO JSON:",
-            parseError.message
-          );
-
-          return res
-            .status(200)
-            .type("application/json")
-            .send(
-              JSON.stringify({
-                USERID: "",
-                MSISDN: "",
-                USERDATA: "",
-                MSG: "Invalid request.",
-                MSGTYPE: false
-              })
-            );
-        }
-      } else {
-        data = req.body || {};
-      }
-
-      const USERID = String(
-        data.USERID || ""
-      ).trim();
-
-      const MSISDN = String(
-        data.MSISDN || ""
-      ).trim();
-
-      const USERDATA = String(
-        data.USERDATA || ""
-      ).trim();
-
-      const isInitialRequest =
-        data.MSGTYPE === true ||
-        data.MSGTYPE === 1 ||
-        String(data.MSGTYPE).toLowerCase() === "true" ||
-        String(data.MSGTYPE).trim() === "1";
-
-      console.log("✅ NALO PARSED DATA:", {
-        USERID,
-        MSISDN,
-        USERDATA,
-        MSGTYPE: data.MSGTYPE,
-        isInitialRequest
-      });
-
-      const menu =
-        "Welcome to CheckState.\n" +
-        "1. Buy your results checker\n" +
-        "2. Help";
-
-      // Initial dial
-      if (isInitialRequest) {
-        const response = {
-          USERID,
-          MSISDN,
-          USERDATA,
-          MSG: menu,
-          MSGTYPE: true
-        };
-
-        console.log(
-          "📤 NALO INITIAL RESPONSE:",
-          response
-        );
-
-        return res
-          .status(200)
-          .type("application/json")
-          .send(JSON.stringify(response));
-      }
-
-      // After user selects 1 or 2, show same menu and end
-      const response = {
-        USERID,
-        MSISDN,
-        USERDATA,
-        MSG: menu,
-        MSGTYPE: false
-      };
-
-      console.log(
-        "📤 NALO FINAL RESPONSE:",
-        response
-      );
-
-      return res
-        .status(200)
-        .type("application/json")
-        .send(JSON.stringify(response));
-
-    } catch (error) {
-      console.error(
-        "❌ NALO ROUTE ERROR:",
-        error
-      );
-
-      return res
-        .status(200)
-        .type("application/json")
-        .send(
-          JSON.stringify({
-            USERID: "",
-            MSISDN: "",
-            USERDATA: "",
-            MSG: "Service unavailable.",
-            MSGTYPE: false
-          })
-        );
-    }
-  }
-);
 
 ///////////////////////////////////////////////////////////////////////////
 // ✅ Create database connection (SECURE + supports CA text or path)
@@ -280,7 +144,9 @@ function getBulkClixNetwork(network) {
 // ====== MIDDLEWARE (scoped to this router) ======
 
 // JSON requests from Moolre, UZO and NALO Solutions
-router.use(express.json({ type: "application/json" }));
+router.use(express.json({
+  type: ["application/json", "text/json", "application/*+json"]
+}));
 
 // Keep URL-encoded support as a fallback
 router.use(express.urlencoded({ extended: false }));
@@ -1797,6 +1663,91 @@ if (!telephoneAllowed) {
 // SIMPLE NALO CHECKSTATE USSD
 // Code: *920*994#
 // ======================================================
+
+
+// ======================================================
+// SIMPLE NALO CHECKSTATE USSD
+// Code: *920*994#
+// ======================================================
+router.post("/nalo", (req, res) => {
+  try {
+    console.log("📲 NALO REQUEST BODY:", req.body);
+    console.log("📲 CONTENT TYPE:", req.headers["content-type"]);
+
+    let data = req.body || {};
+
+    // NALO may send the JSON as raw text
+    if (typeof data === "string") {
+      try {
+        data = JSON.parse(data);
+      } catch (error) {
+        console.error("❌ NALO JSON PARSE ERROR:", error.message);
+
+        return res.status(200).json({
+          USERID: "",
+          MSISDN: "",
+          USERDATA: "",
+          MSG: "Invalid request.",
+          MSGTYPE: false
+        });
+      }
+    }
+
+    const USERID = String(data.USERID || "").trim();
+    const MSISDN = String(data.MSISDN || "").trim();
+    const USERDATA = String(data.USERDATA || "").trim();
+
+    const MSGTYPE =
+      data.MSGTYPE === true ||
+      data.MSGTYPE === 1 ||
+      String(data.MSGTYPE).toLowerCase() === "true" ||
+      String(data.MSGTYPE) === "1";
+
+    console.log("✅ NALO PARSED REQUEST:", {
+      USERID,
+      MSISDN,
+      USERDATA,
+      MSGTYPE
+    });
+
+    const menu =
+      "Welcome to CheckState.\n" +
+      "1. Buy your results checker\n" +
+      "2. Help";
+
+    // Initial dial: NALO sends MSGTYPE=true
+    if (MSGTYPE === true) {
+      return res.status(200).json({
+        USERID,
+        MSISDN,
+        USERDATA,
+        MSG: menu,
+        MSGTYPE: true
+      });
+    }
+
+    // User has selected 1 or 2.
+    // Do nothing and end the session.
+    return res.status(200).json({
+      USERID,
+      MSISDN,
+      USERDATA,
+      MSG: menu,
+      MSGTYPE: false
+    });
+
+  } catch (error) {
+    console.error("❌ NALO ROUTE ERROR:", error);
+
+    return res.status(200).json({
+      USERID: "",
+      MSISDN: "",
+      USERDATA: "",
+      MSG: "Service unavailable.",
+      MSGTYPE: false
+    });
+  }
+});
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
