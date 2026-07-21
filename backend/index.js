@@ -110,10 +110,22 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-app.use(bodyParser.json());
-//Continue ussd
+
+// ======================================================
+// USSD ROUTER MUST COME BEFORE THE MAIN JSON PARSER
+// This allows NALO's router to read its own request body.
+// ======================================================
 app.use("/api/moolre", moolreRouter);
 
+app.get("/api/nalo-health", (req, res) => {
+  res.status(200).json({
+    ok: true,
+    message: "Main SandyPay API is running"
+  });
+});
+
+// JSON parser for the remaining API routes
+app.use(bodyParser.json());
 
 
 
