@@ -1649,79 +1649,89 @@ if (!telephoneAllowed) {
 // SIMPLE NALO CHECKSTATE USSD
 // Code: *920*994#
 // ======================================================
-router.post("/nalo", (req, res) => {
+// ======================================================
+// SIMPLE NALO CHECKSTATE USSD
+// Code: *920*994#
+// ======================================================
+router.all("/nalo", (req, res) => {
   try {
-    console.log("📲 NALO CHECKSTATE REQUEST:", req.body);
+    console.log("======================================");
+    console.log("📲 NALO REQUEST RECEIVED");
+    console.log("METHOD:", req.method);
+    console.log("HEADERS:", req.headers);
+    console.log("BODY:", req.body);
+    console.log("QUERY:", req.query);
+    console.log("======================================");
 
     let body = req.body || {};
 
-    // Support JSON sent as text
+    // Handle raw JSON text
     if (typeof body === "string") {
       try {
         body = JSON.parse(body);
-      } catch (error) {
-        console.error("❌ Invalid NALO JSON:", error.message);
-
-        return res.status(200).json({
-          USERID: "",
-          MSISDN: "",
-          USERDATA: "",
-          MSG: "Welcome to CheckState.\n1. Buy your results checker\n2. Help",
-          MSGTYPE: true
-        });
+      } catch {
+        body = {};
       }
     }
 
+    // Support both POST body and GET query parameters
+    const source = {
+      ...req.query,
+      ...body
+    };
+
     const USERID = String(
-      body.USERID ??
-      body.userID ??
-      body.userid ??
-      ""
+      source.USERID ??
+      source.userID ??
+      source.userid ??
+      "NALOTest"
     ).trim();
 
     const MSISDN = String(
-      body.MSISDN ??
-      body.msisdn ??
+      source.MSISDN ??
+      source.msisdn ??
       ""
     ).trim();
 
     const USERDATA = String(
-      body.USERDATA ??
-      body.userData ??
-      body.userdata ??
+      source.USERDATA ??
+      source.userData ??
+      source.userdata ??
       ""
     ).trim();
 
-    console.log("✅ PARSED NALO REQUEST:", {
-      USERID,
-      MSISDN,
-      USERDATA,
-      MSGTYPE: body.MSGTYPE
-    });
-
-    // Always return the same menu.
-    // Selecting 1 or 2 will not run any function.
-    return res.status(200).json({
+    const response = {
       USERID: USERID,
       MSISDN: MSISDN,
       USERDATA: USERDATA,
-      MSG:
-        "Welcome to CheckState.\n" +
-        "1. Buy your results checker\n" +
-        "2. Help",
+      MSG: "Welcome to CheckState.\n1. Buy your results checker\n2. Help",
       MSGTYPE: true
-    });
+    };
+
+    console.log("📤 NALO RESPONSE:", response);
+
+    res.setHeader("Content-Type", "application/json");
+
+    return res
+      .status(200)
+      .send(JSON.stringify(response));
 
   } catch (error) {
-    console.error("❌ NALO CHECKSTATE ERROR:", error);
+    console.error("❌ NALO ROUTE ERROR:", error);
 
-    return res.status(200).json({
-      USERID: "",
+    const fallback = {
+      USERID: "NALOTest",
       MSISDN: "",
       USERDATA: "",
       MSG: "Welcome to CheckState.\n1. Buy your results checker\n2. Help",
       MSGTYPE: true
-    });
+    };
+
+    res.setHeader("Content-Type", "application/json");
+
+    return res
+      .status(200)
+      .send(JSON.stringify(fallback));
   }
 });
 
