@@ -135,10 +135,10 @@ function getBulkClixNetwork(network) {
 
 // ====== MIDDLEWARE (scoped to this router) ======
 
-// JSON requests from Moolre, UZO and Arkesel
+// JSON requests from Moolre, UZO and NALO Solutions
 router.use(express.json({ type: "application/json" }));
 
-// Arkesel may send application/x-www-form-urlencoded
+// Keep URL-encoded support as a fallback
 router.use(express.urlencoded({ extended: false }));
 
 // Moolre sometimes sends text/plain
@@ -437,25 +437,32 @@ function checkAccess(msisdn, cb) {
 }
 
 
-
 // ======================================================
-// ARKESEL RESPONSE ADAPTER
+// NALO SOLUTIONS RESPONSE ADAPTER
 //
-// The existing handleSession() function returns:
+// The shared handleSession() function returns:
 // {
 //   message: "...",
 //   reply: true/false
 // }
 //
-// Arkesel expects plain text:
-// CON message  = continue session
-// END message  = close session
+// NALO expects:
+// {
+//   USERID: "...",
+//   MSISDN: "...",
+//   USERDATA: "...",
+//   MSG: "...",
+//   MSGTYPE: true/false
+// }
+//
+// MSGTYPE true  = continue the USSD session
+// MSGTYPE false = terminate the USSD session
 // ======================================================
-function createArkeselResponseAdapter(
+function createNaloResponseAdapter(
   res,
-  sessionID,
   userID,
-  msisdn
+  msisdn,
+  userData
 ) {
   return {
     json(data) {
@@ -463,31 +470,38 @@ function createArkeselResponseAdapter(
 
       const cleanMessage = rawMessage
         .replace(/^CON\s*/i, "")
-        .replace(/^END\s*/i, "");
+        .replace(/^END\s*/i, "")
+        .trim();
+
+      const shouldContinue = data?.reply !== false;
+
+      console.log("📤 NALO USSD RESPONSE:", {
+        USERID: String(userID || ""),
+        MSISDN: String(msisdn || ""),
+        USERDATA: String(userData || ""),
+        MSG: cleanMessage,
+        MSGTYPE: shouldContinue,
+      });
 
       return res.status(200).json({
-        sessionID: String(sessionID || ""),
-        userID: String(userID || ""),
-        msisdn: String(msisdn || ""),
-        message: cleanMessage,
-        continueSession: data?.reply !== false,
+        USERID: String(userID || ""),
+        MSISDN: String(msisdn || ""),
+        USERDATA: String(userData || ""),
+        MSG: cleanMessage,
+        MSGTYPE: shouldContinue,
       });
     },
   };
 }
 
 
-// Arkesel normally sends accumulated input such as:
-// 1
-// 1*2
-// 1*2*0241234567
-//
-// Our shared session handler only needs the newest input.
-function getArkeselLatestInput(userData, isNewSession) {
+// NALO normally sends the value entered by the user in USERDATA.
+// This helper also supports accumulated values separated by *.
+function getNaloLatestInput(userData, isNewSession) {
   const value = String(userData || "").trim();
 
-  // The initial request contains the dialled USSD string.
-  // It is not a menu answer.
+  // Ignore USERDATA on the first request because it may contain
+  // the dialled USSD code instead of a menu answer.
   if (isNewSession) {
     return "";
   }
@@ -496,21 +510,19 @@ function getArkeselLatestInput(userData, isNewSession) {
     return "";
   }
 
-  // Remove surrounding # and spaces
   const cleaned = value
     .replace(/^#+|#+$/g, "")
     .trim();
 
-  // If Arkesel sends accumulated values separated by *,
-  // use only the newest handset response.
   const parts = cleaned
     .split("*")
     .map((item) => item.trim())
     .filter(Boolean);
 
-  return parts.length ? parts[parts.length - 1] : cleaned;
+  return parts.length
+    ? parts[parts.length - 1]
+    : cleaned;
 }
-
 
 
 // ====== CORE SESSION HANDLER ======
@@ -832,7 +844,8 @@ end(
 // PAYMENT PROVIDER ROUTING
 //
 // ALL USSD PAYMENTS USE BULKCLIX
-// Arkesel plain/admin sessions use ADMIN_BULKCLIX
+// NALO admin *920*994# uses ADMIN_BULKCLIX
+// Moolre plain/admin sessions use ADMIN_BULKCLIX
 // Vendor sessions use VENDOR_BULKCLIX
 // UZO admin 87 uses UZO_ADMIN_87_BULKCLIX
 // ======================================================
@@ -900,7 +913,7 @@ end(
 
 
 // ======================================================
-// EVERY OTHER CODE CONTINUES TO USE BULKCLIX
+// ALL USSD CODES USE BULKCLIX
 // ======================================================
 const bulkNetwork = getBulkClixNetwork(network);
 
@@ -915,10 +928,7 @@ if (!bulkNetwork) {
 
 const bulkClixAccount = getBulkClixAccount(state);
 
-const paymentBrand =
-  state.isArkeselAdmin145 === true
-    ? "DIDWAPA DATA"
-    : "SANDYPAY";
+const paymentBrand = "SANDYPAY";
 
 const bulkPayload = {
   amount: Number(amount.toFixed(2)),
@@ -933,7 +943,7 @@ const bulkPayload = {
 };
 
 console.log(
-  "📤 Sending non-Arkesel payment to BULKCLIX:",
+  "📤 Sending USSD payment to BULKCLIX:",
   bulkPayload
 );
 
@@ -1403,181 +1413,293 @@ if (!telephoneAllowed) {
   });
 });
 
+// ======================================================
+// NALO SOLUTIONS ADMIN USSD ROUTE
+//
+// USSD CODE:
+// *920*994#
+//
+// Callback URL to give NALO:
+// https://sandipay.co/api/moolre/nalo
+//
+// NALO request fields:
+// USERID
+// MSISDN
+// USERDATA
+// MSGTYPE
+// SESSIONID
+// NETWORK
+// ======================================================
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// router.post("/nalo", (req, res) => {
+//   console.log("📲 NEW NALO USSD REQUEST:", req.body);
+
+//   let payload = req.body || {};
+
+//   // Support text JSON in case the provider sends raw text.
+//   if (typeof payload === "string") {
+//     try {
+//       payload = JSON.parse(payload);
+//     } catch (error) {
+//       console.error("❌ Invalid NALO JSON:", error.message);
+
+//       return res.status(200).json({
+//         USERID: "",
+//         MSISDN: "",
+//         USERDATA: "",
+//         MSG: "Invalid request format.",
+//         MSGTYPE: false,
+//       });
+//     }
+//   }
+
+//   // NALO documentation uses uppercase field names.
+//   // Lowercase alternatives are included only as a fallback.
+//   const userID = String(
+//     payload.USERID ??
+//     payload.userID ??
+//     payload.userId ??
+//     ""
+//   ).trim();
+
+//   const msisdn = String(
+//     payload.MSISDN ??
+//     payload.msisdn ??
+//     payload.phoneNumber ??
+//     payload.phone_number ??
+//     ""
+//   ).trim();
+
+//   const userData = String(
+//     payload.USERDATA ??
+//     payload.userData ??
+//     payload.user_data ??
+//     payload.text ??
+//     ""
+//   ).trim();
+
+//   const sessionID = String(
+//     payload.SESSIONID ??
+//     payload.sessionID ??
+//     payload.sessionId ??
+//     payload.session_id ??
+//     ""
+//   ).trim();
+
+//   const network = String(
+//     payload.NETWORK ??
+//     payload.network ??
+//     ""
+//   ).trim();
+
+//   const rawMsgType =
+//     payload.MSGTYPE ??
+//     payload.msgType ??
+//     payload.msgtype;
+
+//   // According to NALO documentation:
+//   // true/1 means this is the first request.
+//   const firstRequest =
+//     rawMsgType === true ||
+//     rawMsgType === 1 ||
+//     String(rawMsgType || "").toLowerCase() === "true" ||
+//     String(rawMsgType || "").trim() === "1";
+
+//   console.log("🔍 PARSED NALO REQUEST:", {
+//     USERID: userID,
+//     MSISDN: msisdn,
+//     USERDATA: userData,
+//     MSGTYPE: rawMsgType,
+//     SESSIONID: sessionID,
+//     NETWORK: network,
+//     firstRequest,
+//   });
+
+//   if (!sessionID) {
+//     return res.status(200).json({
+//       USERID: userID,
+//       MSISDN: msisdn,
+//       USERDATA: userData,
+//       MSG: "Invalid session.",
+//       MSGTYPE: false,
+//     });
+//   }
+
+//   if (!userID) {
+//     return res.status(200).json({
+//       USERID: "",
+//       MSISDN: msisdn,
+//       USERDATA: userData,
+//       MSG: "Invalid user ID.",
+//       MSGTYPE: false,
+//     });
+//   }
+
+//   if (!msisdn) {
+//     return res.status(200).json({
+//       USERID: userID,
+//       MSISDN: "",
+//       USERDATA: userData,
+//       MSG: "Invalid phone number.",
+//       MSGTYPE: false,
+//     });
+//   }
+
+//   const naloSessionKey = `NALO_${sessionID}`;
+
+//   const hasExistingSession =
+//     Boolean(sessions[naloSessionKey]);
+
+//   const isNewSession =
+//     firstRequest || !hasExistingSession;
+
+//   const naloRes = createNaloResponseAdapter(
+//     res,
+//     userID,
+//     msisdn,
+//     userData
+//   );
+
+//   // ==================================================
+//   // NEW NALO ADMIN SESSION
+//   // ==================================================
+//   if (isNewSession) {
+//     sessions[naloSessionKey] = {
+//       step: "start",
+
+//       // Admin/plain mode uses packages from AdminData.
+//       vendorId: 1,
+//       isPlain: true,
+
+//       brandName: "BigMan Data",
+
+//       ussdProvider: "nalo",
+//       isNaloAdmin994: true,
+
+//       naloUserID: userID,
+//       naloNetwork: network,
+//       naloCode: "994",
+
+//       network: "",
+//       selectedPkg: "",
+//       recipient: "",
+//       packageList: [],
+//       packagePage: 0,
+//     };
+
+//     console.log(
+//       "🟦 CREATED NALO ADMIN 994 SESSION:",
+//       {
+//         sessionKey: naloSessionKey,
+//         msisdn,
+//         userID,
+//         code: "*920*994#",
+//       }
+//     );
+
+//     return handleSession(
+//       naloSessionKey,
+//       "",
+//       msisdn,
+//       naloRes
+//     );
+//   }
+
+//   // ==================================================
+//   // CONTINUE EXISTING NALO SESSION
+//   // ==================================================
+//   const latestInput = getNaloLatestInput(
+//     userData,
+//     false
+//   );
+
+//   console.log("➡️ CONTINUING NALO SESSION:", {
+//     naloSessionKey,
+//     userData,
+//     latestInput,
+//     currentStep:
+//       sessions[naloSessionKey]?.step,
+//   });
+
+//   return handleSession(
+//     naloSessionKey,
+//     latestInput,
+//     msisdn,
+//     naloRes
+//   );
+// });
+
+
+
+
 
 // ======================================================
-// ARKESEL ADMIN USSD ROUTE
+// SIMPLE NALO USSD
+// *920*994#
 //
-// Callback URL:
-// https://sandipay.co/api/moolre/arkesel
+// Displays:
 //
-// Arkesel request fields:
-// sessionID
-// userID
-// newSession
-// msisdn
-// userData
-// network
+// Welcome to CheckState.
+// 1. Buy your results checker
+// 2. Help
+//
+// Selecting 1 or 2 simply ends the session.
 // ======================================================
-router.post("/arkesel", (req, res) => {
-  console.log("📲 NEW ARKESEL USSD REQUEST:", req.body);
+router.post("/nalo", (req, res) => {
+  const body = req.body || {};
 
-  let payload = req.body || {};
+  const USERID = body.USERID || "";
+  const MSISDN = body.MSISDN || "";
+  const USERDATA = String(body.USERDATA || "").trim();
 
-  if (typeof payload === "string") {
-    try {
-      payload = JSON.parse(payload);
-    } catch (error) {
-      console.error("❌ Invalid Arkesel JSON:", error.message);
+  // First screen
+  if (USERDATA === "") {
+    return res.json({
+      USERID,
+      MSISDN,
+      USERDATA,
+      MSG:
+`Welcome to CheckState
 
-      return res.status(200).json({
-        sessionID: "",
-        userID: "",
-        msisdn: "",
-        message: "Invalid request format.",
-        continueSession: false,
-      });
-    }
-  }
-
-  const sessionID = String(
-    payload.sessionID ||
-    payload.sessionId ||
-    payload.session_id ||
-    ""
-  ).trim();
-
-  const userID = String(
-    payload.userID ||
-    payload.userId ||
-    payload.user_id ||
-    ""
-  ).trim();
-
-  const msisdn = String(
-    payload.msisdn ||
-    payload.phoneNumber ||
-    payload.phone_number ||
-    ""
-  ).trim();
-
-  const userData = String(
-    payload.userData ??
-    payload.user_data ??
-    payload.text ??
-    ""
-  ).trim();
-
-  const newSession =
-    payload.newSession === true ||
-    String(payload.newSession || "").toLowerCase() === "true";
-
-  const network = String(
-    payload.network || ""
-  ).trim();
-
-  console.log("🔍 PARSED ARKESEL REQUEST:", {
-    sessionID,
-    userID,
-    newSession,
-    msisdn,
-    userData,
-    network,
-  });
-
-  if (!sessionID) {
-    return res.status(200).json({
-      sessionID: "",
-      userID,
-      msisdn,
-      message: "Invalid session.",
-      continueSession: false,
+1. Buy your results checker
+2. Help`,
+      MSGTYPE: true
     });
   }
 
-  if (!msisdn) {
-    return res.status(200).json({
-      sessionID,
-      userID,
-      msisdn: "",
-      message: "Invalid phone number.",
-      continueSession: false,
+  // User selected 1
+  if (USERDATA === "1") {
+    return res.json({
+      USERID,
+      MSISDN,
+      USERDATA,
+      MSG: "Coming Soon.",
+      MSGTYPE: false
     });
   }
 
-  const arkeselSessionKey = `ARKESEL_${sessionID}`;
-
-  const arkeselRes = createArkeselResponseAdapter(
-    res,
-    sessionID,
-    userID,
-    msisdn
-  );
-
-  const hasExistingSession =
-    Boolean(sessions[arkeselSessionKey]);
-
-  // ==================================================
-  // NEW ARKESEL SESSION
-  // ==================================================
-  if (newSession || !hasExistingSession) {
-    sessions[arkeselSessionKey] = {
-      step: "start",
-
-      vendorId: 1,
-      isPlain: true,
-
-      brandName: "Didwapa Data",
-
-      ussdProvider: "arkesel",
-      isArkeselAdmin145: true,
-
-      arkeselUserID: userID,
-      arkeselNetwork: network,
-
-      network: "",
-      selectedPkg: "",
-      recipient: "",
-      packageList: [],
-      packagePage: 0,
-    };
-
-    console.log(
-      "🟪 CREATED ARKESEL DIDWAPA DATA SESSION:",
-      sessions[arkeselSessionKey]
-    );
-
-    return handleSession(
-      arkeselSessionKey,
-      "",
-      msisdn,
-      arkeselRes
-    );
+  // User selected 2
+  if (USERDATA === "2") {
+    return res.json({
+      USERID,
+      MSISDN,
+      USERDATA,
+      MSG: "Please contact support.",
+      MSGTYPE: false
+    });
   }
 
-  // ==================================================
-  // CONTINUE EXISTING SESSION
-  // ==================================================
-  const latestInput = getArkeselLatestInput(
-    userData,
-    false
-  );
-
-  console.log("➡️ CONTINUING ARKESEL SESSION:", {
-    arkeselSessionKey,
-    userData,
-    latestInput,
-    currentStep:
-      sessions[arkeselSessionKey]?.step,
+  // Invalid option
+  return res.json({
+    USERID,
+    MSISDN,
+    USERDATA,
+    MSG: "Invalid option.",
+    MSGTYPE: false
   });
-
-  return handleSession(
-    arkeselSessionKey,
-    latestInput,
-    msisdn,
-    arkeselRes
-  );
 });
 
+/////////////////////////////////////////////////////////////////////////////////////////////////
 
 ///// Uzo Code
 // ====== USSD ROUTE (UZO - VENDORS ONLY) ======
