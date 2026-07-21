@@ -1669,6 +1669,12 @@ if (!telephoneAllowed) {
 // SIMPLE NALO CHECKSTATE USSD
 // Code: *920*994#
 // ======================================================
+
+
+// ======================================================
+// SIMPLE NALO CHECKSTATE USSD
+// Code: *920*994#
+// ======================================================
 router.post("/nalo", (req, res) => {
   try {
     console.log("📲 NALO REQUEST BODY:", req.body);
@@ -1676,20 +1682,27 @@ router.post("/nalo", (req, res) => {
 
     let data = req.body || {};
 
-    // NALO may send the JSON as raw text
+    // NALO may send raw JSON text
     if (typeof data === "string") {
       try {
         data = JSON.parse(data);
       } catch (error) {
         console.error("❌ NALO JSON PARSE ERROR:", error.message);
 
-        return res.status(200).json({
-          USERID: "",
-          MSISDN: "",
-          USERDATA: "",
-          MSG: "Invalid request.",
-          MSGTYPE: false
-        });
+        res.setHeader(
+          "Content-Type",
+          "text/html; charset=UTF-8"
+        );
+
+        return res.status(200).send(
+          JSON.stringify({
+            USERID: "",
+            MSISDN: "",
+            USERDATA: "",
+            MSG: "Invalid request.",
+            MSGTYPE: false
+          })
+        );
       }
     }
 
@@ -1697,17 +1710,24 @@ router.post("/nalo", (req, res) => {
     const MSISDN = String(data.MSISDN || "").trim();
     const USERDATA = String(data.USERDATA || "").trim();
 
-    const MSGTYPE =
+    // Included by NALO
+    const NETWORK = String(data.NETWORK || "").trim();
+    const SESSIONID = String(data.SESSIONID || "").trim();
+
+    const isInitialRequest =
       data.MSGTYPE === true ||
       data.MSGTYPE === 1 ||
       String(data.MSGTYPE).toLowerCase() === "true" ||
-      String(data.MSGTYPE) === "1";
+      String(data.MSGTYPE).trim() === "1";
 
     console.log("✅ NALO PARSED REQUEST:", {
       USERID,
       MSISDN,
       USERDATA,
-      MSGTYPE
+      MSGTYPE: data.MSGTYPE,
+      NETWORK,
+      SESSIONID,
+      isInitialRequest
     });
 
     const menu =
@@ -1715,37 +1735,43 @@ router.post("/nalo", (req, res) => {
       "1. Buy your results checker\n" +
       "2. Help";
 
-    // Initial dial: NALO sends MSGTYPE=true
-    if (MSGTYPE === true) {
-      return res.status(200).json({
-        USERID,
-        MSISDN,
-        USERDATA,
-        MSG: menu,
-        MSGTYPE: true
-      });
-    }
-
-    // User has selected 1 or 2.
-    // Do nothing and end the session.
-    return res.status(200).json({
+    const response = {
       USERID,
       MSISDN,
       USERDATA,
-      MSG: menu,
-      MSGTYPE: false
-    });
+      MSG: isInitialRequest ? menu : "Thank you.",
+      MSGTYPE: isInitialRequest
+    };
+
+    console.log("📤 NALO RESPONSE:", response);
+
+    // Match the response header shown in NALO documentation
+    res.setHeader(
+      "Content-Type",
+      "text/html; charset=UTF-8"
+    );
+
+    return res
+      .status(200)
+      .send(JSON.stringify(response));
 
   } catch (error) {
     console.error("❌ NALO ROUTE ERROR:", error);
 
-    return res.status(200).json({
-      USERID: "",
-      MSISDN: "",
-      USERDATA: "",
-      MSG: "Service unavailable.",
-      MSGTYPE: false
-    });
+    res.setHeader(
+      "Content-Type",
+      "text/html; charset=UTF-8"
+    );
+
+    return res.status(200).send(
+      JSON.stringify({
+        USERID: "",
+        MSISDN: "",
+        USERDATA: "",
+        MSG: "Service unavailable.",
+        MSGTYPE: false
+      })
+    );
   }
 });
 
