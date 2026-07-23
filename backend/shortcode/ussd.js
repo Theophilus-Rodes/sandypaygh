@@ -1596,7 +1596,7 @@ router.post("/nalo", (req, res) => {
       vendorId: 1,
       isPlain: true,
 
-      brandName: "BigMan ",
+      brandName: "BigMan Data",
 
       ussdProvider: "nalo",
       isNaloAdmin994: true,
