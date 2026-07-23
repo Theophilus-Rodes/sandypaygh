@@ -590,7 +590,7 @@ function handleSession(sessionId, input, msisdn, res) {
         state.step = "menu";
         const brand = state.brandName || "SandyPay";
         return reply(
-          `${brand}.\nNB: Welcome to BigMan\n0. Cancel\n\n1. Recharge\n2. Contact Us`
+          `${brand}.\n0. Cancel\n\n1. Recharge\n2. Contact Us`
         );
       }
 
@@ -1596,7 +1596,7 @@ router.post("/nalo", (req, res) => {
       vendorId: 1,
       isPlain: true,
 
-      brandName: "BigMan Data",
+      brandName: "Welcome to BigMan",
 
       ussdProvider: "nalo",
       isNaloAdmin994: true,
