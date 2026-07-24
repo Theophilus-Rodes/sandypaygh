@@ -1599,7 +1599,7 @@ if (!telephoneAllowed) {
 //       brandName: "Welcome to BigMan",
 
 //       ussdProvider: "nalo",
-//       isNaloAdmin994: true,
+//      isNaloAdmin346: true,
 
 //       naloUserID: userID,
 //       naloNetwork: network,
