@@ -1746,7 +1746,8 @@ router.post("/nalo", (req, res) => {
     });
 
     const menu =
-      "Welcome to CheckState.\n" +
+      "Welcome to KOPORTAL\n" +
+      "Buy your results checker here\n"+
       "1. Buy your results checker\n" +
       "2. Help";
 
@@ -1754,7 +1755,7 @@ router.post("/nalo", (req, res) => {
       USERID,
       MSISDN,
       USERDATA,
-      MSG: isInitialRequest ? menu : "Thank you.",
+      MSG: isInitialRequest ? menu : "Under Maintanace",
       MSGTYPE: isInitialRequest
     };
 
