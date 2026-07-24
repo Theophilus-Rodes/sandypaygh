@@ -1456,203 +1456,203 @@ if (!telephoneAllowed) {
 // NETWORK
 // ======================================================
 //////////////////////////////////////////////////////////////////////////////////////////////////
-router.post("/nalo", (req, res) => {
-  console.log("📲 NEW NALO USSD REQUEST:", req.body);
+// router.post("/nalo", (req, res) => {
+//   console.log("📲 NEW NALO USSD REQUEST:", req.body);
 
-  let payload = req.body || {};
+//   let payload = req.body || {};
 
-  // Support text JSON in case the provider sends raw text.
-  if (typeof payload === "string") {
-    try {
-      payload = JSON.parse(payload);
-    } catch (error) {
-      console.error("❌ Invalid NALO JSON:", error.message);
+//   // Support text JSON in case the provider sends raw text.
+//   if (typeof payload === "string") {
+//     try {
+//       payload = JSON.parse(payload);
+//     } catch (error) {
+//       console.error("❌ Invalid NALO JSON:", error.message);
 
-      return res.status(200).json({
-        USERID: "",
-        MSISDN: "",
-        USERDATA: "",
-        MSG: "Invalid request format.",
-        MSGTYPE: false,
-      });
-    }
-  }
+//       return res.status(200).json({
+//         USERID: "",
+//         MSISDN: "",
+//         USERDATA: "",
+//         MSG: "Invalid request format.",
+//         MSGTYPE: false,
+//       });
+//     }
+//   }
 
-  // NALO documentation uses uppercase field names.
-  // Lowercase alternatives are included only as a fallback.
-  const userID = String(
-    payload.USERID ??
-    payload.userID ??
-    payload.userId ??
-    ""
-  ).trim();
+//   // NALO documentation uses uppercase field names.
+//   // Lowercase alternatives are included only as a fallback.
+//   const userID = String(
+//     payload.USERID ??
+//     payload.userID ??
+//     payload.userId ??
+//     ""
+//   ).trim();
 
-  const msisdn = String(
-    payload.MSISDN ??
-    payload.msisdn ??
-    payload.phoneNumber ??
-    payload.phone_number ??
-    ""
-  ).trim();
+//   const msisdn = String(
+//     payload.MSISDN ??
+//     payload.msisdn ??
+//     payload.phoneNumber ??
+//     payload.phone_number ??
+//     ""
+//   ).trim();
 
-  const userData = String(
-    payload.USERDATA ??
-    payload.userData ??
-    payload.user_data ??
-    payload.text ??
-    ""
-  ).trim();
+//   const userData = String(
+//     payload.USERDATA ??
+//     payload.userData ??
+//     payload.user_data ??
+//     payload.text ??
+//     ""
+//   ).trim();
 
-  const sessionID = String(
-    payload.SESSIONID ??
-    payload.sessionID ??
-    payload.sessionId ??
-    payload.session_id ??
-    ""
-  ).trim();
+//   const sessionID = String(
+//     payload.SESSIONID ??
+//     payload.sessionID ??
+//     payload.sessionId ??
+//     payload.session_id ??
+//     ""
+//   ).trim();
 
-  const network = String(
-    payload.NETWORK ??
-    payload.network ??
-    ""
-  ).trim();
+//   const network = String(
+//     payload.NETWORK ??
+//     payload.network ??
+//     ""
+//   ).trim();
 
-  const rawMsgType =
-    payload.MSGTYPE ??
-    payload.msgType ??
-    payload.msgtype;
+//   const rawMsgType =
+//     payload.MSGTYPE ??
+//     payload.msgType ??
+//     payload.msgtype;
 
-  // According to NALO documentation:
-  // true/1 means this is the first request.
-  const firstRequest =
-    rawMsgType === true ||
-    rawMsgType === 1 ||
-    String(rawMsgType || "").toLowerCase() === "true" ||
-    String(rawMsgType || "").trim() === "1";
+//   // According to NALO documentation:
+//   // true/1 means this is the first request.
+//   const firstRequest =
+//     rawMsgType === true ||
+//     rawMsgType === 1 ||
+//     String(rawMsgType || "").toLowerCase() === "true" ||
+//     String(rawMsgType || "").trim() === "1";
 
-  console.log("🔍 PARSED NALO REQUEST:", {
-    USERID: userID,
-    MSISDN: msisdn,
-    USERDATA: userData,
-    MSGTYPE: rawMsgType,
-    SESSIONID: sessionID,
-    NETWORK: network,
-    firstRequest,
-  });
+//   console.log("🔍 PARSED NALO REQUEST:", {
+//     USERID: userID,
+//     MSISDN: msisdn,
+//     USERDATA: userData,
+//     MSGTYPE: rawMsgType,
+//     SESSIONID: sessionID,
+//     NETWORK: network,
+//     firstRequest,
+//   });
 
-  if (!sessionID) {
-    return res.status(200).json({
-      USERID: userID,
-      MSISDN: msisdn,
-      USERDATA: userData,
-      MSG: "Invalid session.",
-      MSGTYPE: false,
-    });
-  }
+//   if (!sessionID) {
+//     return res.status(200).json({
+//       USERID: userID,
+//       MSISDN: msisdn,
+//       USERDATA: userData,
+//       MSG: "Invalid session.",
+//       MSGTYPE: false,
+//     });
+//   }
 
-  if (!userID) {
-    return res.status(200).json({
-      USERID: "",
-      MSISDN: msisdn,
-      USERDATA: userData,
-      MSG: "Invalid user ID.",
-      MSGTYPE: false,
-    });
-  }
+//   if (!userID) {
+//     return res.status(200).json({
+//       USERID: "",
+//       MSISDN: msisdn,
+//       USERDATA: userData,
+//       MSG: "Invalid user ID.",
+//       MSGTYPE: false,
+//     });
+//   }
 
-  if (!msisdn) {
-    return res.status(200).json({
-      USERID: userID,
-      MSISDN: "",
-      USERDATA: userData,
-      MSG: "Invalid phone number.",
-      MSGTYPE: false,
-    });
-  }
+//   if (!msisdn) {
+//     return res.status(200).json({
+//       USERID: userID,
+//       MSISDN: "",
+//       USERDATA: userData,
+//       MSG: "Invalid phone number.",
+//       MSGTYPE: false,
+//     });
+//   }
 
-  const naloSessionKey = `NALO_${sessionID}`;
+//   const naloSessionKey = `NALO_${sessionID}`;
 
-  const hasExistingSession =
-    Boolean(sessions[naloSessionKey]);
+//   const hasExistingSession =
+//     Boolean(sessions[naloSessionKey]);
 
-  const isNewSession =
-    firstRequest || !hasExistingSession;
+//   const isNewSession =
+//     firstRequest || !hasExistingSession;
 
-  const naloRes = createNaloResponseAdapter(
-    res,
-    userID,
-    msisdn,
-    userData
-  );
+//   const naloRes = createNaloResponseAdapter(
+//     res,
+//     userID,
+//     msisdn,
+//     userData
+//   );
 
-  // ==================================================
-  // NEW NALO ADMIN SESSION
-  // ==================================================
-  if (isNewSession) {
-    sessions[naloSessionKey] = {
-      step: "start",
+//   // ==================================================
+//   // NEW NALO ADMIN SESSION
+//   // ==================================================
+//   if (isNewSession) {
+//     sessions[naloSessionKey] = {
+//       step: "start",
 
-      // Admin/plain mode uses packages from AdminData.
-      vendorId: 1,
-      isPlain: true,
+//       // Admin/plain mode uses packages from AdminData.
+//       vendorId: 1,
+//       isPlain: true,
 
-      brandName: "Welcome to BigMan",
+//       brandName: "Welcome to BigMan",
 
-      ussdProvider: "nalo",
-     isNaloAdmin346: true,
+//       ussdProvider: "nalo",
+//      isNaloAdmin346: true,
 
-      naloUserID: userID,
-      naloNetwork: network,
-      naloCode: "994",
+//       naloUserID: userID,
+//       naloNetwork: network,
+//       naloCode: "994",
 
-      network: "",
-      selectedPkg: "",
-      recipient: "",
-      packageList: [],
-      packagePage: 0,
-    };
+//       network: "",
+//       selectedPkg: "",
+//       recipient: "",
+//       packageList: [],
+//       packagePage: 0,
+//     };
 
-    console.log(
-      "🟦 CREATED NALO ADMIN 994 SESSION:",
-      {
-        sessionKey: naloSessionKey,
-        msisdn,
-        userID,
-        code: "*920*994#",
-      }
-    );
+//     console.log(
+//       "🟦 CREATED NALO ADMIN 994 SESSION:",
+//       {
+//         sessionKey: naloSessionKey,
+//         msisdn,
+//         userID,
+//         code: "*920*994#",
+//       }
+//     );
 
-    return handleSession(
-      naloSessionKey,
-      "",
-      msisdn,
-      naloRes
-    );
-  }
+//     return handleSession(
+//       naloSessionKey,
+//       "",
+//       msisdn,
+//       naloRes
+//     );
+//   }
 
-  // ==================================================
-  // CONTINUE EXISTING NALO SESSION
-  // ==================================================
-  const latestInput = getNaloLatestInput(
-    userData,
-    false
-  );
+//   // ==================================================
+//   // CONTINUE EXISTING NALO SESSION
+//   // ==================================================
+//   const latestInput = getNaloLatestInput(
+//     userData,
+//     false
+//   );
 
-  console.log("➡️ CONTINUING NALO SESSION:", {
-    naloSessionKey,
-    userData,
-    latestInput,
-    currentStep:
-      sessions[naloSessionKey]?.step,
-  });
+//   console.log("➡️ CONTINUING NALO SESSION:", {
+//     naloSessionKey,
+//     userData,
+//     latestInput,
+//     currentStep:
+//       sessions[naloSessionKey]?.step,
+//   });
 
-  return handleSession(
-    naloSessionKey,
-    latestInput,
-    msisdn,
-    naloRes
-  );
-});
+//   return handleSession(
+//     naloSessionKey,
+//     latestInput,
+//     msisdn,
+//     naloRes
+//   );
+// });
 
 
 
@@ -1690,105 +1690,91 @@ router.post("/nalo", (req, res) => {
 // SIMPLE NALO CHECKSTATE USSD
 // Code: *920*994#
 // ======================================================
-// router.post("/nalo", (req, res) => {
-//   try {
-//     console.log("📲 NALO REQUEST BODY:", req.body);
-//     console.log("📲 CONTENT TYPE:", req.headers["content-type"]);
+router.post("/nalo", (req, res) => {
+  try {
+    console.log("📲 NALO REQUEST BODY:", req.body);
+    console.log("📲 CONTENT TYPE:", req.headers["content-type"]);
 
-//     let data = req.body || {};
+    let data = req.body || {};
 
-//     // NALO may send raw JSON text
-//     if (typeof data === "string") {
-//       try {
-//         data = JSON.parse(data);
-//       } catch (error) {
-//         console.error("❌ NALO JSON PARSE ERROR:", error.message);
+    // NALO may send raw JSON text
+    if (typeof data === "string") {
+      try {
+        data = JSON.parse(data);
+      } catch (error) {
+        console.error("❌ NALO JSON PARSE ERROR:", error.message);
 
-//         res.setHeader(
-//           "Content-Type",
-//           "text/html; charset=UTF-8"
-//         );
+        res.setHeader(
+          "Content-Type",
+          "text/html; charset=UTF-8"
+        );
 
-//         return res.status(200).send(
-//           JSON.stringify({
-//             USERID: "",
-//             MSISDN: "",
-//             USERDATA: "",
-//             MSG: "Invalid request.",
-//             MSGTYPE: false
-//           })
-//         );
-//       }
-//     }
+        return res.status(200).send(
+          JSON.stringify({
+            USERID: "",
+            MSISDN: "",
+            USERDATA: "",
+            MSG: "Invalid request.",
+            MSGTYPE: false
+          })
+        );
+      }
+    }
 
-//     const USERID = String(data.USERID || "").trim();
-//     const MSISDN = String(data.MSISDN || "").trim();
-//     const USERDATA = String(data.USERDATA || "").trim();
+    const USERID = String(data.USERID || "").trim();
+    const MSISDN = String(data.MSISDN || "").trim();
+    const USERDATA = String(data.USERDATA || "").trim();
 
-//     // Included by NALO
-//     const NETWORK = String(data.NETWORK || "").trim();
-//     const SESSIONID = String(data.SESSIONID || "").trim();
+    // Included by NALO
+    const NETWORK = String(data.NETWORK || "").trim();
+    const SESSIONID = String(data.SESSIONID || "").trim();
 
-//     const isInitialRequest =
-//       data.MSGTYPE === true ||
-//       data.MSGTYPE === 1 ||
-//       String(data.MSGTYPE).toLowerCase() === "true" ||
-//       String(data.MSGTYPE).trim() === "1";
+    const isInitialRequest =
+      data.MSGTYPE === true ||
+      data.MSGTYPE === 1 ||
+      String(data.MSGTYPE).toLowerCase() === "true" ||
+      String(data.MSGTYPE).trim() === "1";
 
-//     console.log("✅ NALO PARSED REQUEST:", {
-//       USERID,
-//       MSISDN,
-//       USERDATA,
-//       MSGTYPE: data.MSGTYPE,
-//       NETWORK,
-//       SESSIONID,
-//       isInitialRequest
-//     });
+    console.log("✅ NALO PARSED REQUEST:", {
+      USERID,
+      MSISDN,
+      USERDATA,
+      MSGTYPE: data.MSGTYPE,
+      NETWORK,
+      SESSIONID,
+      isInitialRequest
+    });
 
-//     const menu =
-//       "Welcome to CheckState.\n" +
-//       "1. Buy your results checker\n" +
-//       "2. Help";
+    const menu =
+      "Welcome to CheckState.\n" +
+      "1. Buy your results checker\n" +
+      "2. Help";
 
-//     const response = {
-//       USERID,
-//       MSISDN,
-//       USERDATA,
-//       MSG: isInitialRequest ? menu : "Thank you.",
-//       MSGTYPE: isInitialRequest
-//     };
+    const response = {
+      USERID,
+      MSISDN,
+      USERDATA,
+      MSG: isInitialRequest ? menu : "Thank you.",
+      MSGTYPE: isInitialRequest
+    };
 
-//     console.log("📤 NALO RESPONSE:", response);
+    console.log("📤 NALO RESPONSE:", response);
 
-//     // Match the response header shown in NALO documentation
-//     res.setHeader(
-//       "Content-Type",
-//       "text/html; charset=UTF-8"
-//     );
+    // Match the response header shown in NALO documentation
+  return res.status(200).json(response);
 
-//     return res
-//       .status(200)
-//       .send(JSON.stringify(response));
+  } catch (error) {
+    console.error("❌ NALO ROUTE ERROR:", error);
 
-//   } catch (error) {
-//     console.error("❌ NALO ROUTE ERROR:", error);
-
-//     res.setHeader(
-//       "Content-Type",
-//       "text/html; charset=UTF-8"
-//     );
-
-//     return res.status(200).send(
-//       JSON.stringify({
-//         USERID: "",
-//         MSISDN: "",
-//         USERDATA: "",
-//         MSG: "Service unavailable.",
-//         MSGTYPE: false
-//       })
-//     );
-//   }
-// });
+  return res.status(200).json({
+  USERID: "",
+  MSISDN: "",
+  USERDATA: "",
+  MSG: "Service unavailable.",
+  MSGTYPE: false
+});
+  }
+});
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
