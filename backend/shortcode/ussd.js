@@ -12,11 +12,7 @@ const fs = require("fs");
 
 const router = express.Router();
 
-// ======================================================
-// READ NALO REQUEST AS RAW TEXT
-// This must stay above all other body parsers
-// ======================================================
-router.use("/nalo", express.text({ type: "*/*" }));
+
 
 
 
@@ -123,10 +119,10 @@ function getBulkClixAccount(state) {
     return UZO_ADMIN_87_BULKCLIX;
   }
 
-  // NALO Admin (*920*994#)
-  if (state && state.isNaloAdmin994 === true) {
-    return VENDOR_BULKCLIX;
-  }
+// FROG Admin (*800*789#)
+if (state && state.isFrogAdmin789 === true) {
+  return VENDOR_BULKCLIX;
+}
 
   // Normal admin (*203*888# / *203*444#)
   if (state && state.isPlain === true) {
@@ -869,7 +865,7 @@ end(
 // PAYMENT PROVIDER ROUTING
 //
 // ALL USSD PAYMENTS USE BULKCLIX
-// NALO admin *920*994# uses ADMIN_BULKCLIX
+// FROG admin *800*789# uses VENDOR_BULKCLIX
 // Moolre plain/admin sessions use ADMIN_BULKCLIX
 // Vendor sessions use VENDOR_BULKCLIX
 // UZO admin 87 uses UZO_ADMIN_87_BULKCLIX
@@ -1438,220 +1434,251 @@ if (!telephoneAllowed) {
   });
 });
 
+////////////////////////////////////////////////////////////////////////////////////////////
 // ======================================================
-// NALO SOLUTIONS ADMIN USSD ROUTE
+// FROG / WIGAL SMART USSD V1
 //
 // USSD CODE:
-// *920*994#
+// *800*789#
 //
-// Callback URL to give NALO:
-// https://sandipay.co/api/moolre/nalo
+// CALLBACK URL:
+// https://sandipay.co/api/moolre/frog
 //
-// NALO request fields:
-// USERID
-// MSISDN
-// USERDATA
-// MSGTYPE
-// SESSIONID
-// NETWORK
+// METHOD:
+// GET
+//
+// FROG sends:
+// network
+// mode
+// msisdn
+// sessionid
+// userdata
+// username
+// trafficid
+// other
 // ======================================================
-//////////////////////////////////////////////////////////////////////////////////////////////////
-// router.post("/nalo", (req, res) => {
-//   console.log("📲 NEW NALO USSD REQUEST:", req.body);
 
-//   let payload = req.body || {};
 
-//   // Support text JSON in case the provider sends raw text.
-//   if (typeof payload === "string") {
-//     try {
-//       payload = JSON.parse(payload);
-//     } catch (error) {
-//       console.error("❌ Invalid NALO JSON:", error.message);
+// Converts the normal handleSession response into
+// the pipe-separated response required by FROG.
+function createFrogResponseAdapter(res, frogRequest) {
+  return {
+    json(data) {
+      const shouldContinue = data?.reply !== false;
 
-//       return res.status(200).json({
-//         USERID: "",
-//         MSISDN: "",
-//         USERDATA: "",
-//         MSG: "Invalid request format.",
-//         MSGTYPE: false,
-//       });
+      // FROG requires MORE to continue and END to close.
+      const responseMode = shouldContinue ? "MORE" : "END";
+
+      let message = String(data?.message || "")
+        .replace(/^CON\s*/i, "")
+        .replace(/^END\s*/i, "")
+        .trim();
+
+      // FROG uses ^ to represent a new line.
+      message = message
+        .replace(/\r?\n/g, "^")
+        .replace(/\|/g, " ");
+
+      const responseString = [
+        frogRequest.network,
+        responseMode,
+        frogRequest.msisdn,
+        frogRequest.sessionid,
+        message,
+        frogRequest.username,
+        frogRequest.trafficid,
+        frogRequest.other
+      ].join("|");
+
+      console.log("📤 FROG RESPONSE:", responseString);
+
+      return res
+        .status(200)
+        .type("text/plain")
+        .send(responseString);
+    }
+  };
+}
+
+
+// // FROG uses GET, not POST.
+// router.get("/frog", (req, res) => {
+//   try {
+//     console.log("📲 FROG GET REQUEST:", req.query);
+
+//     // All FROG parameters are strings.
+//     const network = String(req.query.network || "").trim();
+
+//     const mode = String(req.query.mode || "")
+//       .trim()
+//       .toUpperCase();
+
+//     const msisdn = String(req.query.msisdn || "").trim();
+
+//     const sessionid = String(
+//       req.query.sessionid || ""
+//     ).trim();
+
+//     const userdata = String(
+//       req.query.userdata || ""
+//     ).trim();
+
+//     const username = String(
+//       req.query.username || ""
+//     ).trim();
+
+//     const trafficid = String(
+//       req.query.trafficid || ""
+//     ).trim();
+
+//     const other = String(
+//       req.query.other || ""
+//     ).trim();
+
+//     console.log("✅ PARSED FROG REQUEST:", {
+//       network,
+//       mode,
+//       msisdn,
+//       sessionid,
+//       userdata,
+//       username,
+//       trafficid,
+//       other
+//     });
+
+//     // FROG requires these important values.
+//     if (
+//       !network ||
+//       !mode ||
+//       !msisdn ||
+//       !sessionid ||
+//       !username ||
+//       !trafficid
+//     ) {
+//       console.error("❌ Missing required FROG parameters");
+
+//       const errorResponse = [
+//         network,
+//         "END",
+//         msisdn,
+//         sessionid,
+//         "Invalid request.",
+//         username,
+//         trafficid,
+//         other
+//       ].join("|");
+
+//       return res
+//         .status(200)
+//         .type("text/plain")
+//         .send(errorResponse);
 //     }
-//   }
 
-//   // NALO documentation uses uppercase field names.
-//   // Lowercase alternatives are included only as a fallback.
-//   const userID = String(
-//     payload.USERID ??
-//     payload.userID ??
-//     payload.userId ??
-//     ""
-//   ).trim();
+//     const frogSessionKey = `FROG_${sessionid}`;
 
-//   const msisdn = String(
-//     payload.MSISDN ??
-//     payload.msisdn ??
-//     payload.phoneNumber ??
-//     payload.phone_number ??
-//     ""
-//   ).trim();
-
-//   const userData = String(
-//     payload.USERDATA ??
-//     payload.userData ??
-//     payload.user_data ??
-//     payload.text ??
-//     ""
-//   ).trim();
-
-//   const sessionID = String(
-//     payload.SESSIONID ??
-//     payload.sessionID ??
-//     payload.sessionId ??
-//     payload.session_id ??
-//     ""
-//   ).trim();
-
-//   const network = String(
-//     payload.NETWORK ??
-//     payload.network ??
-//     ""
-//   ).trim();
-
-//   const rawMsgType =
-//     payload.MSGTYPE ??
-//     payload.msgType ??
-//     payload.msgtype;
-
-//   // According to NALO documentation:
-//   // true/1 means this is the first request.
-//   const firstRequest =
-//     rawMsgType === true ||
-//     rawMsgType === 1 ||
-//     String(rawMsgType || "").toLowerCase() === "true" ||
-//     String(rawMsgType || "").trim() === "1";
-
-//   console.log("🔍 PARSED NALO REQUEST:", {
-//     USERID: userID,
-//     MSISDN: msisdn,
-//     USERDATA: userData,
-//     MSGTYPE: rawMsgType,
-//     SESSIONID: sessionID,
-//     NETWORK: network,
-//     firstRequest,
-//   });
-
-//   if (!sessionID) {
-//     return res.status(200).json({
-//       USERID: userID,
-//       MSISDN: msisdn,
-//       USERDATA: userData,
-//       MSG: "Invalid session.",
-//       MSGTYPE: false,
-//     });
-//   }
-
-//   if (!userID) {
-//     return res.status(200).json({
-//       USERID: "",
-//       MSISDN: msisdn,
-//       USERDATA: userData,
-//       MSG: "Invalid user ID.",
-//       MSGTYPE: false,
-//     });
-//   }
-
-//   if (!msisdn) {
-//     return res.status(200).json({
-//       USERID: userID,
-//       MSISDN: "",
-//       USERDATA: userData,
-//       MSG: "Invalid phone number.",
-//       MSGTYPE: false,
-//     });
-//   }
-
-//   const naloSessionKey = `NALO_${sessionID}`;
-
-//   const hasExistingSession =
-//     Boolean(sessions[naloSessionKey]);
-
-//   const isNewSession =
-//     firstRequest || !hasExistingSession;
-
-//   const naloRes = createNaloResponseAdapter(
-//     res,
-//     userID,
-//     msisdn,
-//     userData
-//   );
-
-//   // ==================================================
-//   // NEW NALO ADMIN SESSION
-//   // ==================================================
-//   if (isNewSession) {
-//     sessions[naloSessionKey] = {
-//       step: "start",
-
-//       // Admin/plain mode uses packages from AdminData.
-//       vendorId: 1,
-//       isPlain: true,
-
-//       brandName: "Welcome to BigMan",
-
-//       ussdProvider: "nalo",
-//      isNaloAdmin346: true,
-
-//       naloUserID: userID,
-//       naloNetwork: network,
-//       naloCode: "994",
-
-//       network: "",
-//       selectedPkg: "",
-//       recipient: "",
-//       packageList: [],
-//       packagePage: 0,
+//     const frogRequest = {
+//       network,
+//       msisdn,
+//       sessionid,
+//       username,
+//       trafficid,
+//       other
 //     };
 
-//     console.log(
-//       "🟦 CREATED NALO ADMIN 994 SESSION:",
-//       {
-//         sessionKey: naloSessionKey,
-//         msisdn,
-//         userID,
-//         code: "*920*994#",
-//       }
+//     const frogRes = createFrogResponseAdapter(
+//       res,
+//       frogRequest
 //     );
+
+//     const hasExistingSession = Boolean(
+//       sessions[frogSessionKey]
+//     );
+
+//     const isNewSession =
+//       mode === "START" || !hasExistingSession;
+
+//     // ==================================================
+//     // NEW FROG SESSION
+//     // ==================================================
+//     if (isNewSession) {
+//       sessions[frogSessionKey] = {
+//         step: "start",
+
+//         // Makes FROG use AdminData packages.
+//         vendorId: 1,
+//         isPlain: true,
+
+//         // Makes FROG use VENDOR_BULKCLIX.
+//         isFrogAdmin789: true,
+
+//         ussdProvider: "frog",
+//         frogCode: "789",
+
+//         brandName: "SandyPay",
+
+//         network: "",
+//         selectedPkg: "",
+//         recipient: "",
+//         packageList: [],
+//         packagePage: 0
+//       };
+
+//       console.log("🟦 CREATED FROG ADMIN SESSION:", {
+//         frogSessionKey,
+//         msisdn,
+//         code: "*800*789#"
+//       });
+
+//       return handleSession(
+//         frogSessionKey,
+//         "",
+//         msisdn,
+//         frogRes
+//       );
+//     }
+
+//     // ==================================================
+//     // CONTINUE EXISTING FROG SESSION
+//     // ==================================================
+//     console.log("➡️ CONTINUING FROG SESSION:", {
+//       frogSessionKey,
+//       userdata,
+//       currentStep: sessions[frogSessionKey]?.step
+//     });
 
 //     return handleSession(
-//       naloSessionKey,
-//       "",
+//       frogSessionKey,
+//       userdata,
 //       msisdn,
-//       naloRes
+//       frogRes
 //     );
+
+//   } catch (error) {
+//     console.error("❌ FROG ROUTE ERROR:", error);
+
+//     const network = String(req.query.network || "");
+//     const msisdn = String(req.query.msisdn || "");
+//     const sessionid = String(req.query.sessionid || "");
+//     const username = String(req.query.username || "");
+//     const trafficid = String(req.query.trafficid || "");
+//     const other = String(req.query.other || "");
+
+//     const errorResponse = [
+//       network,
+//       "END",
+//       msisdn,
+//       sessionid,
+//       "Service temporarily unavailable.",
+//       username,
+//       trafficid,
+//       other
+//     ].join("|");
+
+//     return res
+//       .status(200)
+//       .type("text/plain")
+//       .send(errorResponse);
 //   }
-
-//   // ==================================================
-//   // CONTINUE EXISTING NALO SESSION
-//   // ==================================================
-//   const latestInput = getNaloLatestInput(
-//     userData,
-//     false
-//   );
-
-//   console.log("➡️ CONTINUING NALO SESSION:", {
-//     naloSessionKey,
-//     userData,
-//     latestInput,
-//     currentStep:
-//       sessions[naloSessionKey]?.step,
-//   });
-
-//   return handleSession(
-//     naloSessionKey,
-//     latestInput,
-//     msisdn,
-//     naloRes
-//   );
 // });
 
 
@@ -1659,121 +1686,135 @@ if (!telephoneAllowed) {
 
 
 // ======================================================
-// SIMPLE NALO USSD
-// *920*994#
-//
-// Displays:
-//
-// Welcome to CheckState.
-// 1. Buy your results checker
-// 2. Help
-//
-// Selecting 1 or 2 simply ends the session.
+// SIMPLE FROG / WIGAL SMART USSD V1
+// USSD CODE: *800*789#
+// CALLBACK:
+// https://sandipay.co/api/moolre/frog
+// METHOD: GET
 // ======================================================
-// ======================================================
-// SIMPLE NALO CHECKSTATE USSD
-// Code: *920*994#
-// ======================================================
-// ======================================================
-// SIMPLE NALO CHECKSTATE USSD
-// Code: *920*994#
-// ======================================================
-
-
-// ======================================================
-// SIMPLE NALO CHECKSTATE USSD
-// Code: *920*994#
-// ======================================================
-
-
-// ======================================================
-// SIMPLE NALO CHECKSTATE USSD
-// Code: *920*994#
-// ======================================================
-router.post("/nalo", (req, res) => {
+router.get("/frog", (req, res) => {
   try {
-    console.log("📲 NALO REQUEST BODY:", req.body);
-    console.log("📲 CONTENT TYPE:", req.headers["content-type"]);
+    console.log("📲 FROG REQUEST QUERY:", req.query);
 
-    let data = req.body || {};
+    const network = String(req.query.network || "").trim();
+    const mode = String(req.query.mode || "")
+      .trim()
+      .toUpperCase();
 
-    // NALO may send raw JSON text
-    if (typeof data === "string") {
-      try {
-        data = JSON.parse(data);
-      } catch (error) {
-        console.error("❌ NALO JSON PARSE ERROR:", error.message);
+    const msisdn = String(req.query.msisdn || "").trim();
+    const sessionid = String(req.query.sessionid || "").trim();
+    const userdata = String(req.query.userdata || "").trim();
+    const username = String(req.query.username || "").trim();
+    const trafficid = String(req.query.trafficid || "").trim();
+    const other = String(req.query.other || "").trim();
 
-        res.setHeader(
-          "Content-Type",
-          "text/html; charset=UTF-8"
-        );
+    console.log("✅ FROG PARSED REQUEST:", {
+      network,
+      mode,
+      msisdn,
+      sessionid,
+      userdata,
+      username,
+      trafficid,
+      other
+    });
 
-        return res.status(200).send(
-          JSON.stringify({
-            USERID: "",
-            MSISDN: "",
-            USERDATA: "",
-            MSG: "Invalid request.",
-            MSGTYPE: false
-          })
-        );
+    if (
+      !network ||
+      !mode ||
+      !msisdn ||
+      !sessionid ||
+      !username ||
+      !trafficid
+    ) {
+      console.error("❌ Missing required FROG parameters");
+
+      const invalidResponse = [
+        network,
+        "END",
+        msisdn,
+        sessionid,
+        "Invalid request.",
+        username,
+        trafficid,
+        other
+      ].join("|");
+
+      return res
+        .status(200)
+        .type("text/plain")
+        .send(invalidResponse);
+    }
+
+    let responseMode;
+    let message;
+
+    // First request after dialing *800*789#
+    if (mode === "START") {
+      responseMode = "MORE";
+
+      // Use ^ for new lines in FROG.
+      message =
+        "Welcome to KOPORTAL^" +
+        "Buy your results checker here^" +
+        "1. Buy your results checker^" +
+        "2. Help";
+    } else {
+      // User selected an option.
+      responseMode = "END";
+
+      if (userdata === "1") {
+        message = "Results checker service is under maintenance.";
+      } else if (userdata === "2") {
+        message = "Please contact support for assistance.";
+      } else {
+        message = "Invalid option.";
       }
     }
 
-    const USERID = String(data.USERID || "").trim();
-    const MSISDN = String(data.MSISDN || "").trim();
-    const USERDATA = String(data.USERDATA || "").trim();
+    const responseString = [
+      network,
+      responseMode,
+      msisdn,
+      sessionid,
+      message,
+      username,
+      trafficid,
+      other
+    ].join("|");
 
-    // Included by NALO
-    const NETWORK = String(data.NETWORK || "").trim();
-    const SESSIONID = String(data.SESSIONID || "").trim();
+    console.log("📤 FROG RESPONSE:", responseString);
 
-    const isInitialRequest =
-      data.MSGTYPE === true ||
-      data.MSGTYPE === 1 ||
-      String(data.MSGTYPE).toLowerCase() === "true" ||
-      String(data.MSGTYPE).trim() === "1";
-
-    console.log("✅ NALO PARSED REQUEST:", {
-      USERID,
-      MSISDN,
-      USERDATA,
-      MSGTYPE: data.MSGTYPE,
-      NETWORK,
-      SESSIONID,
-      isInitialRequest
-    });
-
-    const menu =
-      "Welcome to KOPORTAL\n" +
-      "Buy your results checker here\n"+
-      "1. Buy your results checker\n" +
-      "2. Help";
-
-    const response = {
-      USERID,
-      MSISDN,
-      USERDATA,
-      MSG: isInitialRequest ? menu : "Under Maintanace",
-      MSGTYPE: isInitialRequest
-    };
-
-    console.log("📤 NALO RESPONSE:", response);
-
-    // Match the response header shown in NALO documentation
-  return res.status(200).json(response);
+    return res
+      .status(200)
+      .type("text/plain")
+      .send(responseString);
 
   } catch (error) {
-    console.error("❌ NALO ROUTE ERROR:", error);
+    console.error("❌ FROG ROUTE ERROR:", error);
 
-  return res.status(200).json({
-  USERID: "",
-  MSISDN: "",
-  USERDATA: "",
-  MSG: "Service unavailable.",
-  MSGTYPE: false
-});
+    const network = String(req.query.network || "");
+    const msisdn = String(req.query.msisdn || "");
+    const sessionid = String(req.query.sessionid || "");
+    const username = String(req.query.username || "");
+    const trafficid = String(req.query.trafficid || "");
+    const other = String(req.query.other || "");
+
+    const errorResponse = [
+      network,
+      "END",
+      msisdn,
+      sessionid,
+      "Service unavailable.",
+      username,
+      trafficid,
+      other
+    ].join("|");
+
+    return res
+      .status(200)
+      .type("text/plain")
+      .send(errorResponse);
   }
 });
 
