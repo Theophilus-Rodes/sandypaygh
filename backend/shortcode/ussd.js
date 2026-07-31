@@ -1614,7 +1614,7 @@ router.get("/frog", (req, res) => {
         ussdProvider: "frog",
         frogCode: "789",
 
-        brandName: "SandyPay",
+        brandName: "KOPortal",
 
         network: "",
         selectedPkg: "",
