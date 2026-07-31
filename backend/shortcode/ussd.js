@@ -1502,213 +1502,40 @@ function createFrogResponseAdapter(res, frogRequest) {
 
 
 // // FROG uses GET, not POST.
-// router.get("/frog", (req, res) => {
-//   try {
-//     console.log("📲 FROG GET REQUEST:", req.query);
-
-//     // All FROG parameters are strings.
-//     const network = String(req.query.network || "").trim();
-
-//     const mode = String(req.query.mode || "")
-//       .trim()
-//       .toUpperCase();
-
-//     const msisdn = String(req.query.msisdn || "").trim();
-
-//     const sessionid = String(
-//       req.query.sessionid || ""
-//     ).trim();
-
-//     const userdata = String(
-//       req.query.userdata || ""
-//     ).trim();
-
-//     const username = String(
-//       req.query.username || ""
-//     ).trim();
-
-//     const trafficid = String(
-//       req.query.trafficid || ""
-//     ).trim();
-
-//     const other = String(
-//       req.query.other || ""
-//     ).trim();
-
-//     console.log("✅ PARSED FROG REQUEST:", {
-//       network,
-//       mode,
-//       msisdn,
-//       sessionid,
-//       userdata,
-//       username,
-//       trafficid,
-//       other
-//     });
-
-//     // FROG requires these important values.
-//     if (
-//       !network ||
-//       !mode ||
-//       !msisdn ||
-//       !sessionid ||
-//       !username ||
-//       !trafficid
-//     ) {
-//       console.error("❌ Missing required FROG parameters");
-
-//       const errorResponse = [
-//         network,
-//         "END",
-//         msisdn,
-//         sessionid,
-//         "Invalid request.",
-//         username,
-//         trafficid,
-//         other
-//       ].join("|");
-
-//       return res
-//         .status(200)
-//         .type("text/plain")
-//         .send(errorResponse);
-//     }
-
-//     const frogSessionKey = `FROG_${sessionid}`;
-
-//     const frogRequest = {
-//       network,
-//       msisdn,
-//       sessionid,
-//       username,
-//       trafficid,
-//       other
-//     };
-
-//     const frogRes = createFrogResponseAdapter(
-//       res,
-//       frogRequest
-//     );
-
-//     const hasExistingSession = Boolean(
-//       sessions[frogSessionKey]
-//     );
-
-//     const isNewSession =
-//       mode === "START" || !hasExistingSession;
-
-//     // ==================================================
-//     // NEW FROG SESSION
-//     // ==================================================
-//     if (isNewSession) {
-//       sessions[frogSessionKey] = {
-//         step: "start",
-
-//         // Makes FROG use AdminData packages.
-//         vendorId: 1,
-//         isPlain: true,
-
-//         // Makes FROG use VENDOR_BULKCLIX.
-//         isFrogAdmin789: true,
-
-//         ussdProvider: "frog",
-//         frogCode: "789",
-
-//         brandName: "SandyPay",
-
-//         network: "",
-//         selectedPkg: "",
-//         recipient: "",
-//         packageList: [],
-//         packagePage: 0
-//       };
-
-//       console.log("🟦 CREATED FROG ADMIN SESSION:", {
-//         frogSessionKey,
-//         msisdn,
-//         code: "*800*789#"
-//       });
-
-//       return handleSession(
-//         frogSessionKey,
-//         "",
-//         msisdn,
-//         frogRes
-//       );
-//     }
-
-//     // ==================================================
-//     // CONTINUE EXISTING FROG SESSION
-//     // ==================================================
-//     console.log("➡️ CONTINUING FROG SESSION:", {
-//       frogSessionKey,
-//       userdata,
-//       currentStep: sessions[frogSessionKey]?.step
-//     });
-
-//     return handleSession(
-//       frogSessionKey,
-//       userdata,
-//       msisdn,
-//       frogRes
-//     );
-
-//   } catch (error) {
-//     console.error("❌ FROG ROUTE ERROR:", error);
-
-//     const network = String(req.query.network || "");
-//     const msisdn = String(req.query.msisdn || "");
-//     const sessionid = String(req.query.sessionid || "");
-//     const username = String(req.query.username || "");
-//     const trafficid = String(req.query.trafficid || "");
-//     const other = String(req.query.other || "");
-
-//     const errorResponse = [
-//       network,
-//       "END",
-//       msisdn,
-//       sessionid,
-//       "Service temporarily unavailable.",
-//       username,
-//       trafficid,
-//       other
-//     ].join("|");
-
-//     return res
-//       .status(200)
-//       .type("text/plain")
-//       .send(errorResponse);
-//   }
-// });
-
-
-
-
-
-// ======================================================
-// SIMPLE FROG / WIGAL SMART USSD V1
-// USSD CODE: *800*789#
-// CALLBACK:
-// https://sandipay.co/api/moolre/frog
-// METHOD: GET
-// ======================================================
 router.get("/frog", (req, res) => {
   try {
-    console.log("📲 FROG REQUEST QUERY:", req.query);
+    console.log("📲 FROG GET REQUEST:", req.query);
 
+    // All FROG parameters are strings.
     const network = String(req.query.network || "").trim();
+
     const mode = String(req.query.mode || "")
       .trim()
       .toUpperCase();
 
     const msisdn = String(req.query.msisdn || "").trim();
-    const sessionid = String(req.query.sessionid || "").trim();
-    const userdata = String(req.query.userdata || "").trim();
-    const username = String(req.query.username || "").trim();
-    const trafficid = String(req.query.trafficid || "").trim();
-    const other = String(req.query.other || "").trim();
 
-    console.log("✅ FROG PARSED REQUEST:", {
+    const sessionid = String(
+      req.query.sessionid || ""
+    ).trim();
+
+    const userdata = String(
+      req.query.userdata || ""
+    ).trim();
+
+    const username = String(
+      req.query.username || ""
+    ).trim();
+
+    const trafficid = String(
+      req.query.trafficid || ""
+    ).trim();
+
+    const other = String(
+      req.query.other || ""
+    ).trim();
+
+    console.log("✅ PARSED FROG REQUEST:", {
       network,
       mode,
       msisdn,
@@ -1719,6 +1546,7 @@ router.get("/frog", (req, res) => {
       other
     });
 
+    // FROG requires these important values.
     if (
       !network ||
       !mode ||
@@ -1729,7 +1557,7 @@ router.get("/frog", (req, res) => {
     ) {
       console.error("❌ Missing required FROG parameters");
 
-      const invalidResponse = [
+      const errorResponse = [
         network,
         "END",
         msisdn,
@@ -1743,52 +1571,87 @@ router.get("/frog", (req, res) => {
       return res
         .status(200)
         .type("text/plain")
-        .send(invalidResponse);
+        .send(errorResponse);
     }
 
-    let responseMode;
-    let message;
+    const frogSessionKey = `FROG_${sessionid}`;
 
-    // First request after dialing *800*789#
-    if (mode === "START") {
-      responseMode = "MORE";
-
-      // Use ^ for new lines in FROG.
-      message =
-        "Welcome to KOPORTAL^" +
-        "Buy your results checker here^" +
-        "1. Buy your results checker^" +
-        "2. Help";
-    } else {
-      // User selected an option.
-      responseMode = "END";
-
-      if (userdata === "1") {
-        message = "Results checker service is under maintenance.";
-      } else if (userdata === "2") {
-        message = "Please contact support for assistance.";
-      } else {
-        message = "Invalid option.";
-      }
-    }
-
-    const responseString = [
+    const frogRequest = {
       network,
-      responseMode,
       msisdn,
       sessionid,
-      message,
       username,
       trafficid,
       other
-    ].join("|");
+    };
 
-    console.log("📤 FROG RESPONSE:", responseString);
+    const frogRes = createFrogResponseAdapter(
+      res,
+      frogRequest
+    );
 
-    return res
-      .status(200)
-      .type("text/plain")
-      .send(responseString);
+    const hasExistingSession = Boolean(
+      sessions[frogSessionKey]
+    );
+
+    const isNewSession =
+      mode === "START" || !hasExistingSession;
+
+    // ==================================================
+    // NEW FROG SESSION
+    // ==================================================
+    if (isNewSession) {
+      sessions[frogSessionKey] = {
+        step: "start",
+
+        // Makes FROG use AdminData packages.
+        vendorId: 1,
+        isPlain: true,
+
+        // Makes FROG use VENDOR_BULKCLIX.
+        isFrogAdmin789: true,
+
+        ussdProvider: "frog",
+        frogCode: "789",
+
+        brandName: "SandyPay",
+
+        network: "",
+        selectedPkg: "",
+        recipient: "",
+        packageList: [],
+        packagePage: 0
+      };
+
+      console.log("🟦 CREATED FROG ADMIN SESSION:", {
+        frogSessionKey,
+        msisdn,
+        code: "*800*789#"
+      });
+
+      return handleSession(
+        frogSessionKey,
+        "",
+        msisdn,
+        frogRes
+      );
+    }
+
+    // ==================================================
+    // CONTINUE EXISTING FROG SESSION
+    // ==================================================
+    console.log("➡️ CONTINUING FROG SESSION:", {
+      frogSessionKey,
+      userdata,
+      currentStep: sessions[frogSessionKey]?.step
+    });
+
+    return handleSession(
+      frogSessionKey,
+      userdata,
+      msisdn,
+      frogRes
+    );
 
   } catch (error) {
     console.error("❌ FROG ROUTE ERROR:", error);
@@ -1805,7 +1668,7 @@ router.get("/frog", (req, res) => {
       "END",
       msisdn,
       sessionid,
-      "Service unavailable.",
+      "Service temporarily unavailable.",
       username,
       trafficid,
       other
@@ -1817,6 +1680,143 @@ router.get("/frog", (req, res) => {
       .send(errorResponse);
   }
 });
+
+
+
+
+
+// ======================================================
+// SIMPLE FROG / WIGAL SMART USSD V1
+// USSD CODE: *800*789#
+// CALLBACK:
+// https://sandipay.co/api/moolre/frog
+// METHOD: GET
+// ======================================================
+// router.get("/frog", (req, res) => {
+//   try {
+//     console.log("📲 FROG REQUEST QUERY:", req.query);
+
+//     const network = String(req.query.network || "").trim();
+//     const mode = String(req.query.mode || "")
+//       .trim()
+//       .toUpperCase();
+
+//     const msisdn = String(req.query.msisdn || "").trim();
+//     const sessionid = String(req.query.sessionid || "").trim();
+//     const userdata = String(req.query.userdata || "").trim();
+//     const username = String(req.query.username || "").trim();
+//     const trafficid = String(req.query.trafficid || "").trim();
+//     const other = String(req.query.other || "").trim();
+
+//     console.log("✅ FROG PARSED REQUEST:", {
+//       network,
+//       mode,
+//       msisdn,
+//       sessionid,
+//       userdata,
+//       username,
+//       trafficid,
+//       other
+//     });
+
+//     if (
+//       !network ||
+//       !mode ||
+//       !msisdn ||
+//       !sessionid ||
+//       !username ||
+//       !trafficid
+//     ) {
+//       console.error("❌ Missing required FROG parameters");
+
+//       const invalidResponse = [
+//         network,
+//         "END",
+//         msisdn,
+//         sessionid,
+//         "Invalid request.",
+//         username,
+//         trafficid,
+//         other
+//       ].join("|");
+
+//       return res
+//         .status(200)
+//         .type("text/plain")
+//         .send(invalidResponse);
+//     }
+
+//     let responseMode;
+//     let message;
+
+//     // First request after dialing *800*789#
+//     if (mode === "START") {
+//       responseMode = "MORE";
+
+//       // Use ^ for new lines in FROG.
+//       message =
+//         "Welcome to KOPORTAL^" +
+//         "Buy your results checker here^" +
+//         "1. Buy your results checker^" +
+//         "2. Help";
+//     } else {
+//       // User selected an option.
+//       responseMode = "END";
+
+//       if (userdata === "1") {
+//         message = "Results checker service is under maintenance.";
+//       } else if (userdata === "2") {
+//         message = "Please contact support for assistance.";
+//       } else {
+//         message = "Invalid option.";
+//       }
+//     }
+
+//     const responseString = [
+//       network,
+//       responseMode,
+//       msisdn,
+//       sessionid,
+//       message,
+//       username,
+//       trafficid,
+//       other
+//     ].join("|");
+
+//     console.log("📤 FROG RESPONSE:", responseString);
+
+//     return res
+//       .status(200)
+//       .type("text/plain")
+//       .send(responseString);
+
+//   } catch (error) {
+//     console.error("❌ FROG ROUTE ERROR:", error);
+
+//     const network = String(req.query.network || "");
+//     const msisdn = String(req.query.msisdn || "");
+//     const sessionid = String(req.query.sessionid || "");
+//     const username = String(req.query.username || "");
+//     const trafficid = String(req.query.trafficid || "");
+//     const other = String(req.query.other || "");
+
+//     const errorResponse = [
+//       network,
+//       "END",
+//       msisdn,
+//       sessionid,
+//       "Service unavailable.",
+//       username,
+//       trafficid,
+//       other
+//     ].join("|");
+
+//     return res
+//       .status(200)
+//       .type("text/plain")
+//       .send(errorResponse);
+//   }
+// });
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
