@@ -1461,362 +1461,331 @@ if (!telephoneAllowed) {
 
 // Converts the normal handleSession response into
 // the pipe-separated response required by FROG.
-function createFrogResponseAdapter(res, frogRequest) {
+function createPaystackResponseAdapter(res) {
   return {
     json(data) {
-      const shouldContinue = data?.reply !== false;
 
-      // FROG requires MORE to continue and END to close.
-      const responseMode = shouldContinue ? "MORE" : "END";
-
-      let message = String(data?.message || "")
+      const message = String(data?.message || "")
         .replace(/^CON\s*/i, "")
         .replace(/^END\s*/i, "")
         .trim();
 
-      // FROG uses ^ to represent a new line.
-      message = message
-        .replace(/\r?\n/g, "^")
-        .replace(/\|/g, " ");
+      let type = "continue";
 
-      const responseString = [
-        frogRequest.network,
-        responseMode,
-        frogRequest.msisdn,
-        frogRequest.sessionid,
+      if (data?.reply === false) {
+        type = "end";
+      }
+
+      return res.status(200).json({
         message,
-        frogRequest.username,
-        frogRequest.trafficid,
-        frogRequest.other
-      ].join("|");
-
-      console.log("📤 FROG RESPONSE:", responseString);
-
-      return res
-        .status(200)
-        .type("text/plain")
-        .send(responseString);
+        type
+      });
     }
   };
 }
 
 
-// // FROG uses GET, not POST.
-router.get("/frog", (req, res) => {
-  try {
-    console.log("📲 FROG GET REQUEST:", req.query);
+// ======================================================
+// PAYSTACK USSD ROUTE
+//
+// CALLBACK URL:
+// https://sandipay.co/api/moolre/paystack
+//
+// METHOD:
+// POST
+//
+// PAYSTACK SENDS:
+// session
+// message
+// phone
+// network_code
+// service_code
+// ======================================================
+// router.post("/paystack", async (req, res) => {
+//   try {
+//     console.log("📲 PAYSTACK USSD REQUEST:", req.body);
 
-    // All FROG parameters are strings.
-    const network = String(req.query.network || "").trim();
+//     let payload = req.body || {};
 
-    const mode = String(req.query.mode || "")
-      .trim()
-      .toUpperCase();
+//     // Support cases where the request arrives as text
+//     if (typeof payload === "string") {
+//       try {
+//         payload = JSON.parse(payload);
+//       } catch (parseError) {
+//         console.error(
+//           "❌ PAYSTACK JSON PARSE ERROR:",
+//           parseError.message
+//         );
 
-    const msisdn = String(req.query.msisdn || "").trim();
+//         return res.status(200).json({
+//           message: "Invalid request.",
+//           type: "end",
+//         });
+//       }
+//     }
 
-    const sessionid = String(
-      req.query.sessionid || ""
-    ).trim();
+//     const session = String(payload.session || "").trim();
+//     const message = String(payload.message || "").trim();
+//     const phone = String(payload.phone || "").trim();
+//     const networkCode = String(
+//       payload.network_code || ""
+//     )
+//       .trim()
+//       .toUpperCase();
 
-    const userdata = String(
-      req.query.userdata || ""
-    ).trim();
+//     const serviceCode = String(
+//       payload.service_code || ""
+//     ).trim();
 
-    const username = String(
-      req.query.username || ""
-    ).trim();
+//     console.log("✅ PARSED PAYSTACK REQUEST:", {
+//       session,
+//       message,
+//       phone,
+//       networkCode,
+//       serviceCode,
+//     });
 
-    const trafficid = String(
-      req.query.trafficid || ""
-    ).trim();
+//     // Validate required Paystack fields
+//     if (!session || !phone) {
+//       console.error("❌ Missing Paystack session or phone");
 
-    const other = String(
-      req.query.other || ""
-    ).trim();
+//       return res.status(200).json({
+//         message: "Invalid USSD request.",
+//         type: "end",
+//       });
+//     }
 
-    console.log("✅ PARSED FROG REQUEST:", {
-      network,
-      mode,
-      msisdn,
-      sessionid,
-      userdata,
-      username,
-      trafficid,
-      other
+//     const paystackSessionKey = `PAYSTACK_${session}`;
+
+//     // Converts the normal handleSession response to Paystack format
+//     const paystackRes = createPaystackResponseAdapter(res);
+
+//     const hasExistingSession = Boolean(
+//       sessions[paystackSessionKey]
+//     );
+
+//     // Paystack sends an empty message on the first request
+//     const isNewSession =
+//       !hasExistingSession || message === "";
+
+//     // ==================================================
+//     // NEW PAYSTACK SESSION
+//     // ==================================================
+//     if (isNewSession && !hasExistingSession) {
+//       sessions[paystackSessionKey] = {
+//         step: "start",
+
+//         // Use AdminData packages
+//         vendorId: 1,
+//         isPlain: true,
+
+//         // Identifies this as a Paystack session
+//         isPaystack: true,
+//         ussdProvider: "paystack",
+
+//         brandName: "SandyPay",
+
+//         serviceCode,
+//         paystackNetworkCode: networkCode,
+
+//         network: "",
+//         selectedPkg: "",
+//         recipient: "",
+//         packageList: [],
+//         packagePage: 0,
+//       };
+
+//       console.log("🟦 CREATED PAYSTACK ADMIN SESSION:", {
+//         paystackSessionKey,
+//         phone,
+//         serviceCode,
+//         networkCode,
+//       });
+
+//       return handleSession(
+//         paystackSessionKey,
+//         "",
+//         phone,
+//         paystackRes
+//       );
+//     }
+
+//     // ==================================================
+//     // CONTINUE EXISTING PAYSTACK SESSION
+//     // ==================================================
+
+//     /*
+//      * Paystack accumulates selections with an asterisk.
+//      *
+//      * Examples:
+//      * 1
+//      * 1*2
+//      * 1*2*3
+//      *
+//      * We only send the latest answer to handleSession().
+//      */
+//     const messageParts = message
+//       .split("*")
+//       .map((value) => value.trim())
+//       .filter(Boolean);
+
+//     const latestInput =
+//       messageParts.length > 0
+//         ? messageParts[messageParts.length - 1]
+//         : "";
+
+//     console.log("➡️ CONTINUING PAYSTACK SESSION:", {
+//       paystackSessionKey,
+//       fullMessage: message,
+//       latestInput,
+//       currentStep:
+//         sessions[paystackSessionKey]?.step,
+//     });
+
+//     return handleSession(
+//       paystackSessionKey,
+//       latestInput,
+//       phone,
+//       paystackRes
+//     );
+//   } catch (error) {
+//     console.error("❌ PAYSTACK USSD ROUTE ERROR:", error);
+
+//     return res.status(200).json({
+//       message:
+//         "Service temporarily unavailable. Please try again later.",
+//       type: "end",
+//     });
+//   }
+// });
+
+
+
+
+
+
+
+
+
+
+// ======================================================
+// PAYSTACK USSD - KOPORTAL RESULTS CHECKER
+//
+// CALLBACK URL:
+// https://yourdomain.com/paystack
+//
+// METHOD:
+// POST
+// ======================================================
+
+router.post("/paystack", (req, res) => {
+
+  console.log("📲 PAYSTACK REQUEST:", req.body);
+
+  const {
+    session,
+    message,
+    phone,
+    network_code,
+    service_code
+  } = req.body;
+
+  // First request
+  if (!message || message.trim() === "") {
+
+    return res.json({
+      message:
+        "Welcome to KOPORTAL\n" +
+        "Buy your Results Checker\n\n" +
+        "1. Buy Results Checker\n" +
+        "2. Help",
+      type: "continue"
     });
 
-    // FROG requires these important values.
-    if (
-      !network ||
-      !mode ||
-      !msisdn ||
-      !sessionid ||
-      !username ||
-      !trafficid
-    ) {
-      console.error("❌ Missing required FROG parameters");
-
-      const errorResponse = [
-        network,
-        "END",
-        msisdn,
-        sessionid,
-        "Invalid request.",
-        username,
-        trafficid,
-        other
-      ].join("|");
-
-      return res
-        .status(200)
-        .type("text/plain")
-        .send(errorResponse);
-    }
-
-    const frogSessionKey = `FROG_${sessionid}`;
-
-    const frogRequest = {
-      network,
-      msisdn,
-      sessionid,
-      username,
-      trafficid,
-      other
-    };
-
-    const frogRes = createFrogResponseAdapter(
-      res,
-      frogRequest
-    );
-
-    const hasExistingSession = Boolean(
-      sessions[frogSessionKey]
-    );
-
-    const isNewSession =
-      mode === "START" || !hasExistingSession;
-
-    // ==================================================
-    // NEW FROG SESSION
-    // ==================================================
-    if (isNewSession) {
-      sessions[frogSessionKey] = {
-        step: "start",
-
-        // Makes FROG use AdminData packages.
-        vendorId: 1,
-        isPlain: true,
-
-        // Makes FROG use VENDOR_BULKCLIX.
-        isFrogAdmin789: true,
-
-        ussdProvider: "frog",
-        frogCode: "789",
-
-        brandName: "KOPortal",
-
-        network: "",
-        selectedPkg: "",
-        recipient: "",
-        packageList: [],
-        packagePage: 0
-      };
-
-      console.log("🟦 CREATED FROG ADMIN SESSION:", {
-        frogSessionKey,
-        msisdn,
-        code: "*800*789#"
-      });
-
-      return handleSession(
-        frogSessionKey,
-        "",
-        msisdn,
-        frogRes
-      );
-    }
-
-    // ==================================================
-    // CONTINUE EXISTING FROG SESSION
-    // ==================================================
-    console.log("➡️ CONTINUING FROG SESSION:", {
-      frogSessionKey,
-      userdata,
-      currentStep: sessions[frogSessionKey]?.step
-    });
-
-    return handleSession(
-      frogSessionKey,
-      userdata,
-      msisdn,
-      frogRes
-    );
-
-  } catch (error) {
-    console.error("❌ FROG ROUTE ERROR:", error);
-
-    const network = String(req.query.network || "");
-    const msisdn = String(req.query.msisdn || "");
-    const sessionid = String(req.query.sessionid || "");
-    const username = String(req.query.username || "");
-    const trafficid = String(req.query.trafficid || "");
-    const other = String(req.query.other || "");
-
-    const errorResponse = [
-      network,
-      "END",
-      msisdn,
-      sessionid,
-      "Service temporarily unavailable.",
-      username,
-      trafficid,
-      other
-    ].join("|");
-
-    return res
-      .status(200)
-      .type("text/plain")
-      .send(errorResponse);
   }
+
+  // User selected 1
+  if (message === "1") {
+
+    return res.json({
+      message:
+        "Choose Checker\n" +
+        "1. BECE Checker - GHS 15\n" +
+        "2. WASSCE Checker - GHS 20",
+      type: "continue"
+    });
+
+  }
+
+  // User selected BECE
+  if (message === "1*1") {
+
+    return res.json({
+      message:
+        "You selected BECE Checker\nConfirm Purchase?",
+      type: "continue"
+    });
+
+  }
+
+  // User selected WASSCE
+  if (message === "1*2") {
+
+    return res.json({
+      message:
+        "You selected WASSCE Checker\nConfirm Purchase?",
+      type: "continue"
+    });
+
+  }
+
+  // Confirm BECE payment
+  if (message === "1*1*1") {
+
+    return res.json({
+      message: "Processing payment...",
+      type: "charge",
+      data: {
+        amount: 15
+      }
+    });
+
+  }
+
+  // Confirm WASSCE payment
+  if (message === "1*2*1") {
+
+    return res.json({
+      message: "Processing payment...",
+      type: "charge",
+      data: {
+        amount: 20
+      }
+    });
+
+  }
+
+  // Help
+  if (message === "2") {
+
+    return res.json({
+      message:
+        "Call 024XXXXXXX for assistance.",
+      type: "end"
+    });
+
+  }
+
+  return res.json({
+    message: "Invalid option.",
+    type: "end"
+  });
+
 });
 
 
 
 
-
-// ======================================================
-// SIMPLE FROG / WIGAL SMART USSD V1
-// USSD CODE: *800*789#
-// CALLBACK:
-// https://sandipay.co/api/moolre/frog
-// METHOD: GET
-// ======================================================
-// router.get("/frog", (req, res) => {
-//   try {
-//     console.log("📲 FROG REQUEST QUERY:", req.query);
-
-//     const network = String(req.query.network || "").trim();
-//     const mode = String(req.query.mode || "")
-//       .trim()
-//       .toUpperCase();
-
-//     const msisdn = String(req.query.msisdn || "").trim();
-//     const sessionid = String(req.query.sessionid || "").trim();
-//     const userdata = String(req.query.userdata || "").trim();
-//     const username = String(req.query.username || "").trim();
-//     const trafficid = String(req.query.trafficid || "").trim();
-//     const other = String(req.query.other || "").trim();
-
-//     console.log("✅ FROG PARSED REQUEST:", {
-//       network,
-//       mode,
-//       msisdn,
-//       sessionid,
-//       userdata,
-//       username,
-//       trafficid,
-//       other
-//     });
-
-//     if (
-//       !network ||
-//       !mode ||
-//       !msisdn ||
-//       !sessionid ||
-//       !username ||
-//       !trafficid
-//     ) {
-//       console.error("❌ Missing required FROG parameters");
-
-//       const invalidResponse = [
-//         network,
-//         "END",
-//         msisdn,
-//         sessionid,
-//         "Invalid request.",
-//         username,
-//         trafficid,
-//         other
-//       ].join("|");
-
-//       return res
-//         .status(200)
-//         .type("text/plain")
-//         .send(invalidResponse);
-//     }
-
-//     let responseMode;
-//     let message;
-
-//     // First request after dialing *800*789#
-//     if (mode === "START") {
-//       responseMode = "MORE";
-
-//       // Use ^ for new lines in FROG.
-//       message =
-//         "Welcome to KOPORTAL^" +
-//         "Buy your results checker here^" +
-//         "1. Buy your results checker^" +
-//         "2. Help";
-//     } else {
-//       // User selected an option.
-//       responseMode = "END";
-
-//       if (userdata === "1") {
-//         message = "Results checker service is under maintenance.";
-//       } else if (userdata === "2") {
-//         message = "Please contact support for assistance.";
-//       } else {
-//         message = "Invalid option.";
-//       }
-//     }
-
-//     const responseString = [
-//       network,
-//       responseMode,
-//       msisdn,
-//       sessionid,
-//       message,
-//       username,
-//       trafficid,
-//       other
-//     ].join("|");
-
-//     console.log("📤 FROG RESPONSE:", responseString);
-
-//     return res
-//       .status(200)
-//       .type("text/plain")
-//       .send(responseString);
-
-//   } catch (error) {
-//     console.error("❌ FROG ROUTE ERROR:", error);
-
-//     const network = String(req.query.network || "");
-//     const msisdn = String(req.query.msisdn || "");
-//     const sessionid = String(req.query.sessionid || "");
-//     const username = String(req.query.username || "");
-//     const trafficid = String(req.query.trafficid || "");
-//     const other = String(req.query.other || "");
-
-//     const errorResponse = [
-//       network,
-//       "END",
-//       msisdn,
-//       sessionid,
-//       "Service unavailable.",
-//       username,
-//       trafficid,
-//       other
-//     ].join("|");
-
-//     return res
-//       .status(200)
-//       .type("text/plain")
-//       .send(errorResponse);
-//   }
-// });
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
