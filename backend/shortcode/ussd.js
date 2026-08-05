@@ -921,6 +921,55 @@ if (isNewSessionInner) {
       extensionMode = "custom";
       assignedCode = ext;
 
+
+
+// ===============================================
+// ADMIN OVERRIDE
+// *203*401*1#
+// ===============================================
+if (ext === "401" && String(inputInner || "").trim() === "1") {
+  const [intl, local, plusIntl] = msisdnVariants(msisdn);
+
+  const [rows] = await dbp.query(
+    `SELECT 1
+     FROM telephone_numbers
+     WHERE phone_number IN (?, ?, ?)
+     AND (status IS NULL OR status='allowed')
+     LIMIT 1`,
+    [intl, local, plusIntl]
+  );
+
+  if (!rows.length) {
+    return res.json({
+      message: "APPLICATION UNKNOWN",
+      reply: false,
+    });
+  }
+
+  sessions[sessionId] = {
+    step: "start",
+    vendorId: 1,
+    brandName: "SandyPay",
+    isPlain: true,
+    network: "",
+    selectedPkg: "",
+    recipient: "",
+    packageList: [],
+    packagePage: 0,
+    moolreSessionId: sessionId,
+  };
+
+  console.log("🟦 ADMIN OVERRIDE: *203*401*1#");
+
+  return handleSession(
+    sessionId,
+    "",
+    String(msisdn || ""),
+    res
+  );
+}
+
+
      const [codeRows] = await dbp.query(
   `SELECT
      uvc.vendor_id,
