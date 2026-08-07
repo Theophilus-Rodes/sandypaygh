@@ -91,6 +91,18 @@ const UZO_ADMIN_87_BULKCLIX = {
   apiKey: process.env.UZO_ADMIN_87_BULKCLIX_API_KEY || "fTQMwISNm8wyFn6Xg5eY6xj8IU6tdqEdIwRLJk3K",
 };
 
+
+///////////////////////////////Me
+// ======================================================
+// FASTUPPAGE BULKCLIX ACCOUNT
+// USED ONLY BY *920*142#
+// ======================================================
+const FASTUPPAGE_BULKCLIX = {
+  url: `${BULKCLIX_BASE_URL}/momopay`,
+  apiKey: process.env.FASTUPPAGE_BULKCLIX_API_KEY || "cKfY4iURvjRTRPFrQSgTP7X6taXsM7fwzGNueQTd",
+};
+/////////////////////////////////Me
+
 function getBulkClixAccount(state) {
   if (state && state.isUzoAdmin87 === true) return UZO_ADMIN_87_BULKCLIX;
   if (state && state.isPlain === true) return ADMIN_BULKCLIX;
@@ -214,6 +226,158 @@ function msisdnVariants(msisdn) {
 function toLocalMsisdn(msisdn) {
   const intl = normalizeMsisdn(msisdn);
   return "0" + intl.slice(3);
+}
+
+// Check whether a caller is allowed to use a locked vendor code
+// ======================================================
+// FASTUPPAGE *920*142# HELPERS
+// ======================================================
+
+// Detect network from Ghana mobile number
+function detectFastuppageNetwork(msisdn) {
+  const local = toLocalMsisdn(msisdn);
+
+  if (!/^0\d{9}$/.test(local)) {
+    return null;
+  }
+
+  const prefix = local.substring(0, 3);
+
+  // MTN
+  const mtnPrefixes = [
+    "024",
+    "025",
+    "053",
+    "054",
+    "055",
+    "059",
+  ];
+
+  // Telecel
+  const telecelPrefixes = [
+    "020",
+    "050",
+  ];
+
+  // AirtelTigo / AT
+  const atPrefixes = [
+    "026",
+    "027",
+    "056",
+    "057",
+  ];
+
+  if (mtnPrefixes.includes(prefix)) {
+    return "MTN";
+  }
+
+  if (telecelPrefixes.includes(prefix)) {
+    return "TELECEL";
+  }
+
+  if (atPrefixes.includes(prefix)) {
+    return "AIRTELTIGO";
+  }
+
+  return null;
+}
+
+
+// ======================================================
+// SEND FASTUPPAGE PAYMENT TO BULKCLIX
+// ======================================================
+async function sendFastuppagePayment({
+  amount,
+  msisdn,
+  transactionId,
+}) {
+  const momoNumber = toLocalMsisdn(msisdn);
+
+  if (!/^0\d{9}$/.test(momoNumber)) {
+    throw new Error(
+      `Invalid Fastuppage MoMo number: ${momoNumber}`
+    );
+  }
+
+  const network = detectFastuppageNetwork(
+    momoNumber
+  );
+
+  if (!network) {
+    throw new Error(
+      `Could not detect network for ${momoNumber}`
+    );
+  }
+
+  if (!FASTUPPAGE_BULKCLIX.apiKey) {
+    throw new Error(
+      "FASTUPPAGE_BULKCLIX_API_KEY is missing."
+    );
+  }
+
+  const payload = {
+    amount: Number(
+      Number(amount).toFixed(2)
+    ),
+
+    phone_number: momoNumber,
+
+    network,
+
+    transaction_id: transactionId,
+
+    callback_url:
+      "https://sandipay.co/api/moolre/fastuppage-bulkclix-webhook",
+
+    reference:
+      `FASTUPPAGE GHS ${Number(amount).toFixed(2)}`,
+  };
+
+  console.log(
+    "📤 FASTUPPAGE → BULKCLIX:",
+    {
+      ...payload,
+      apiKey: "[HIDDEN]",
+    }
+  );
+
+  const response = await axios.post(
+    FASTUPPAGE_BULKCLIX.url,
+    payload,
+    {
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "x-api-key":
+          FASTUPPAGE_BULKCLIX.apiKey,
+      },
+
+      timeout: 30000,
+
+      validateStatus: () => true,
+    }
+  );
+
+  console.log(
+    "📥 FASTUPPAGE BULKCLIX RESPONSE:",
+    {
+      httpStatus: response.status,
+      data: response.data,
+    }
+  );
+
+  if (
+    response.status < 200 ||
+    response.status >= 300
+  ) {
+    throw new Error(
+      `BulkClix rejected payment: ${JSON.stringify(
+        response.data
+      )}`
+    );
+  }
+
+  return response.data;
 }
 
 
@@ -1217,8 +1381,234 @@ router.post("/uzo", (req, res) => {
     .split("*")
     .filter(Boolean);
 
-  const mainCode = parts[0] || baseParts[0];
+ const mainCode = parts[0] || baseParts[0];
 const uzoCode = parts[1] || baseParts[1];
+
+
+// ======================================================
+// FASTUPPAGE *920*142#
+// COMPLETELY SEPARATE FROM EXISTING UZO VENDOR/ADMIN FLOW
+// ======================================================
+
+
+// ------------------------------------------------------
+// CONTINUE EXISTING FASTUPPAGE SESSION
+// ------------------------------------------------------
+if (
+  sessions[uzoSessionKey] &&
+  sessions[uzoSessionKey].isFastuppage142 === true
+) {
+  const fastState =
+    sessions[uzoSessionKey];
+
+  console.log(
+    "🟪 CONTINUE FASTUPPAGE SESSION:",
+    {
+      uzoSessionKey,
+      step: fastState.step,
+      fullUssd,
+      msisdn,
+    }
+  );
+
+  // Get the latest value typed by the user.
+  //
+  // UZO may return:
+  // 20
+  //
+  // or:
+  // 920*142*20
+  //
+  // So always take the last part.
+
+  let latestInput = "";
+
+  if (parts.length) {
+    latestInput =
+      String(parts[parts.length - 1]).trim();
+  } else {
+    latestInput =
+      String(fullUssd || "").trim();
+  }
+
+
+  // ====================================================
+  // USER IS ENTERING AMOUNT
+  // ====================================================
+  if (
+    fastState.step ===
+    "fastuppage_amount"
+  ) {
+    const cleanAmount =
+      latestInput.replace(
+        /[^0-9.]/g,
+        ""
+      );
+
+    const amount =
+      Number(cleanAmount);
+
+
+    // Invalid amount
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      return res.json({
+        message:
+          "Invalid amount.\nEnter amount to purchase:",
+
+        ussdServiceOp: 2,
+      });
+    }
+
+
+    const finalAmount =
+      Number(amount.toFixed(2));
+
+
+    // Create separate transaction reference
+    const transactionId =
+      `FASTUP${Date.now()}${Math.floor(
+        Math.random() * 1000
+      )}`.slice(0, 30);
+
+
+    console.log(
+      "💰 FASTUPPAGE PAYMENT REQUEST:",
+      {
+        transactionId,
+        amount: finalAmount,
+        msisdn,
+      }
+    );
+
+
+    // End USSD screen first
+    res.json({
+      message:
+        `GHS ${finalAmount.toFixed(2)} payment initiated.\n` +
+        "Please wait for the MoMo prompt and enter your PIN to approve.",
+
+      ussdServiceOp: 17,
+    });
+
+
+    // Send payment request to Fastuppage BulkClix account
+    sendFastuppagePayment({
+      amount: finalAmount,
+
+      msisdn:
+        String(msisdn || ""),
+
+      transactionId,
+    })
+      .then((result) => {
+        console.log(
+          "✅ FASTUPPAGE PAYMENT INITIATED:",
+          {
+            transactionId,
+            amount: finalAmount,
+            result,
+          }
+        );
+      })
+
+      .catch((error) => {
+        console.error(
+          "❌ FASTUPPAGE PAYMENT ERROR:",
+          error.response?.data ||
+          error.message ||
+          error
+        );
+      });
+
+
+    // Remove only Fastuppage session.
+    // Does not touch other USSD sessions.
+    delete sessions[uzoSessionKey];
+
+    return;
+  }
+
+
+  delete sessions[uzoSessionKey];
+
+  return res.json({
+    message:
+      "Session ended. Please dial *920*142# again.",
+
+    ussdServiceOp: 17,
+  });
+}
+
+
+// ------------------------------------------------------
+// NEW FASTUPPAGE SESSION
+// *920*142#
+// ------------------------------------------------------
+if (
+  mainCode === "920" &&
+  uzoCode === "142"
+) {
+  console.log(
+    "🟪 NEW FASTUPPAGE *920*142# SESSION:",
+    {
+      uzoSessionKey,
+      msisdn,
+    }
+  );
+
+
+  const customerNumber =
+    toLocalMsisdn(msisdn);
+
+
+  if (
+    !/^0\d{9}$/.test(
+      customerNumber
+    )
+  ) {
+    return res.json({
+      message:
+        "Invalid mobile number.",
+
+      ussdServiceOp: 17,
+    });
+  }
+
+
+  // Create a special session.
+  // Notice that we DO NOT set isPlain
+  // and DO NOT send it to handleSession().
+  sessions[uzoSessionKey] = {
+    step:
+      "fastuppage_amount",
+
+    isFastuppage142: true,
+
+    ussdProvider: "uzo",
+
+    brandName: "Fastuppage",
+
+    mainCode: "920",
+
+    uzoCode: "142",
+
+    customerNumber,
+  };
+
+
+  return res.json({
+    message:
+      "Welcome to Fastuppage\n\n" +
+      "Enter amount to purchase:",
+
+    ussdServiceOp: 2,
+  });
+}
+
+
 
 // Existing session first
 if (sessions[uzoSessionKey]) {
@@ -1599,5 +1989,135 @@ router.post("/bulkclix-webhook", async (req, res) => {
     return res.status(500).send("Server error");
   }
 });
+
+
+// ======================================================
+// FASTUPPAGE BULKCLIX WEBHOOK
+// USED ONLY BY *920*142#
+// ======================================================
+router.post(
+  "/fastuppage-bulkclix-webhook",
+  async (req, res) => {
+    try {
+      console.log(
+        "📩 FASTUPPAGE BULKCLIX WEBHOOK:",
+        req.body
+      );
+
+      let body = req.body || {};
+
+      if (typeof body === "string") {
+        try {
+          body =
+            JSON.parse(body);
+        } catch (error) {
+          console.error(
+            "❌ FASTUPPAGE WEBHOOK JSON ERROR:",
+            error.message
+          );
+
+          return res
+            .status(400)
+            .send("Invalid JSON");
+        }
+      }
+
+
+      const transactionId =
+        String(
+          body.transaction_id ||
+          ""
+        ).trim();
+
+
+      const status =
+        String(
+          body.status ||
+          ""
+        )
+          .trim()
+          .toLowerCase();
+
+
+      if (!transactionId) {
+        return res
+          .status(400)
+          .send(
+            "Missing transaction_id"
+          );
+      }
+
+
+      // Only Fastuppage transactions
+      if (
+        !transactionId.startsWith(
+          "FASTUP"
+        )
+      ) {
+        console.log(
+          "⚠️ Ignoring non-Fastuppage transaction:",
+          transactionId
+        );
+
+        return res
+          .status(200)
+          .send("OK");
+      }
+
+
+      if (status === "success") {
+        console.log(
+          "✅ FASTUPPAGE PAYMENT SUCCESS:",
+          {
+            transactionId,
+
+            phone:
+              body.phone_number,
+
+            amount:
+              body.amount,
+
+            providerReference:
+              body.ext_transaction_id,
+          }
+        );
+
+        return res
+          .status(200)
+          .send("OK");
+      }
+
+
+      console.log(
+        "⚠️ FASTUPPAGE PAYMENT STATUS:",
+        {
+          transactionId,
+          status,
+
+          phone:
+            body.phone_number,
+
+          amount:
+            body.amount,
+        }
+      );
+
+
+      return res
+        .status(200)
+        .send("OK");
+
+    } catch (error) {
+      console.error(
+        "❌ FASTUPPAGE WEBHOOK ERROR:",
+        error
+      );
+
+      return res
+        .status(500)
+        .send("Server error");
+    }
+  }
+);
 
 module.exports = router;
