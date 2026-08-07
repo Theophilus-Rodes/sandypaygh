@@ -12,10 +12,6 @@ const fs = require("fs");
 
 const router = express.Router();
 
-
-
-
-
 ///////////////////////////////////////////////////////////////////////////
 // ✅ Create database connection (SECURE + supports CA text or path)
 const required = ["DB_HOST", "DB_PORT", "DB_USER", "DB_NAME"];
@@ -95,58 +91,11 @@ const UZO_ADMIN_87_BULKCLIX = {
   apiKey: process.env.UZO_ADMIN_87_BULKCLIX_API_KEY || "fTQMwISNm8wyFn6Xg5eY6xj8IU6tdqEdIwRLJk3K",
 };
 
-////////////////////////////////////////////////////////////////////////////////Me
-// ======================================================
-// FASTUPPAGE BULKCLIX ACCOUNT
-// Used ONLY by UZO *920*142#
-// ======================================================
-
-const FASTUPPAGE_BULKCLIX = {
-  url: `${BULKCLIX_BASE_URL}/momopay`,
-
-  apiKey:
-    process.env.FASTUPPAGE_BULKCLIX_API_KEY || "cKfY4iURvjRTRPFrQSgTP7X6taXsM7fwzGNueQTd",
-};
-/////////////////////////////////////////////////////////////////////////////////Me
-
-// ✅ MOOLRE ACCOUNT USED ONLY BY ARKESEL *928*145#
-// ✅ MOOLRE ACCOUNT USED ONLY BY ARKESEL *928*145#
-// const ARKESEL_ADMIN_MOOLRE = {
-//   url: "https://api.moolre.com/open/transact/payment",
-
-//   user:
-//     process.env.ARKESEL_ADMIN_MOOLRE_USER ||
-//     "dataguygh",
-
-//   pubkey:
-//     process.env.ARKESEL_ADMIN_MOOLRE_PUBKEY ||
-//     "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjkxNywiZXhwIjoxOTU2NTQ1OTk5fQ.hpJg5emG0kyO40d7XIaZ12iUAspshzKvNoJPkiorkq8",
-
-//   wallet:
-//     process.env.ARKESEL_ADMIN_MOOLRE_WALLET ||
-//     "10691706058501",
-// };
-
 function getBulkClixAccount(state) {
-  // UZO Admin (*426*87#)
-  if (state && state.isUzoAdmin87 === true) {
-    return UZO_ADMIN_87_BULKCLIX;
-  }
-
-// FROG Admin (*800*789#)
-if (state && state.isFrogAdmin789 === true) {
+  if (state && state.isUzoAdmin87 === true) return UZO_ADMIN_87_BULKCLIX;
+  if (state && state.isPlain === true) return ADMIN_BULKCLIX;
   return VENDOR_BULKCLIX;
 }
-
-  // Normal admin (*203*888# / *203*444#)
-  if (state && state.isPlain === true) {
-    return ADMIN_BULKCLIX;
-  }
-
-  // All vendor USSD codes
-  return VENDOR_BULKCLIX;
-}
-
 
 function getBulkClixNetwork(network) {
   switch ((network || "").toLowerCase()) {
@@ -167,18 +116,8 @@ function getBulkClixNetwork(network) {
 
 
 // ====== MIDDLEWARE (scoped to this router) ======
-
-// JSON requests from Moolre, UZO and NALO Solutions
-router.use(express.json({
-  type: ["application/json", "text/json", "application/*+json"]
-}));
-
-// Keep URL-encoded support as a fallback
-router.use(express.urlencoded({ extended: false }));
-
-// Moolre sometimes sends text/plain
-router.use(bodyParser.text({ type: "text/plain" }));
-
+router.use(express.json({ type: "application/json" })); // for JSON
+router.use(bodyParser.text({ type: "*/*" })); // Moolre sometimes sends text/plain
 router.use(cors());
 
 // ====== DATABASE ======
@@ -215,106 +154,6 @@ function getChannelId(network) {
       return null;
   }
 }
-
-// ======================================================
-// SEND ARKESEL PAYMENT THROUGH MOOLRE
-// Used only by *928*145#
-// ======================================================
-// async function sendArkeselMoolrePayment({
-//   amount,
-//   network,
-//   momoNumber,
-//   transactionId,
-//   dataPackage,
-// }) {
-//   const channel = getChannelId(network);
-
-//   if (!channel) {
-//     throw new Error(`Unsupported Moolre network: ${network}`);
-//   }
-
-//   const payer = toLocalMsisdn(momoNumber);
-
-//   if (!/^0\d{9}$/.test(payer)) {
-//     throw new Error(`Invalid Moolre payer number: ${payer}`);
-//   }
-
-//   const requestPayload = {
-//     type: 1,
-//     channel,
-//     currency: "GHS",
-//     payer,
-//     amount: Number(Number(amount).toFixed(2)),
-//     externalref: transactionId,
-//     otpcode: "",
-//     reference: `DIDWAPA DATA ${dataPackage}`,
-//     accountnumber: ARKESEL_ADMIN_MOOLRE.wallet,
-//   };
-
-//   console.log("📤 ARKESEL → MOOLRE PAYMENT REQUEST:", {
-//     ...requestPayload,
-//     apiUser: ARKESEL_ADMIN_MOOLRE.user,
-//     pubkey: "[HIDDEN]",
-//   });
-
-//   const response = await axios.post(
-//     ARKESEL_ADMIN_MOOLRE.url,
-//     requestPayload,
-//     {
-//       headers: {
-//         Accept: "application/json",
-//         "Content-Type": "application/json",
-//         "X-API-USER": ARKESEL_ADMIN_MOOLRE.user,
-//         "X-API-PUBKEY": ARKESEL_ADMIN_MOOLRE.pubkey,
-//       },
-//       timeout: 30000,
-//       validateStatus: () => true,
-//     }
-//   );
-
-//   const responseData = response.data || {};
-
-//   console.log("📥 ARKESEL → MOOLRE RAW RESPONSE:", {
-//     httpStatus: response.status,
-//     data: responseData,
-//   });
-
-//   const status = Number(responseData.status);
-//   const code = String(responseData.code || "").trim();
-//   const message = String(
-//     responseData.message ||
-//     responseData.reason ||
-//     ""
-//   ).trim();
-
-//   /*
-//    * Moolre can return status=1 with codes such as TP14
-//    * when the payment approval request has been initiated.
-//    */
-//   const accepted =
-//     response.status >= 200 &&
-//     response.status < 300 &&
-//     (
-//       status === 1 ||
-//       code === "TP14" ||
-//       code === "00" ||
-//       code === "000"
-//     );
-
-//   if (!accepted) {
-//     throw new Error(
-//       `Moolre rejected payment. HTTP=${response.status}, status=${status}, code=${code}, message=${message}`
-//     );
-//   }
-
-//   return {
-//     accepted: true,
-//     status,
-//     code,
-//     message,
-//     raw: responseData,
-//   };
-// }
 
 // ✅ PACKAGES LIST WITH PAGINATION
 function renderPackages(state) {
@@ -471,95 +310,6 @@ function checkAccess(msisdn, cb) {
   }
 }
 
-
-// ======================================================
-// NALO SOLUTIONS RESPONSE ADAPTER
-//
-// The shared handleSession() function returns:
-// {
-//   message: "...",
-//   reply: true/false
-// }
-//
-// NALO expects:
-// {
-//   USERID: "...",
-//   MSISDN: "...",
-//   USERDATA: "...",
-//   MSG: "...",
-//   MSGTYPE: true/false
-// }
-//
-// MSGTYPE true  = continue the USSD session
-// MSGTYPE false = terminate the USSD session
-// ======================================================
-function createNaloResponseAdapter(
-  res,
-  userID,
-  msisdn,
-  userData
-) {
-  return {
-    json(data) {
-      const rawMessage = String(data?.message || "");
-
-      const cleanMessage = rawMessage
-        .replace(/^CON\s*/i, "")
-        .replace(/^END\s*/i, "")
-        .trim();
-
-      const shouldContinue = data?.reply !== false;
-
-      console.log("📤 NALO USSD RESPONSE:", {
-        USERID: String(userID || ""),
-        MSISDN: String(msisdn || ""),
-        USERDATA: String(userData || ""),
-        MSG: cleanMessage,
-        MSGTYPE: shouldContinue,
-      });
-
-      return res.status(200).json({
-        USERID: String(userID || ""),
-        MSISDN: String(msisdn || ""),
-        USERDATA: String(userData || ""),
-        MSG: cleanMessage,
-        MSGTYPE: shouldContinue,
-      });
-    },
-  };
-}
-
-
-// NALO normally sends the value entered by the user in USERDATA.
-// This helper also supports accumulated values separated by *.
-function getNaloLatestInput(userData, isNewSession) {
-  const value = String(userData || "").trim();
-
-  // Ignore USERDATA on the first request because it may contain
-  // the dialled USSD code instead of a menu answer.
-  if (isNewSession) {
-    return "";
-  }
-
-  if (!value) {
-    return "";
-  }
-
-  const cleaned = value
-    .replace(/^#+|#+$/g, "")
-    .trim();
-
-  const parts = cleaned
-    .split("*")
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  return parts.length
-    ? parts[parts.length - 1]
-    : cleaned;
-}
-
-
 // ====== CORE SESSION HANDLER ======
 function handleSession(sessionId, input, msisdn, res) {
   const state = sessions[sessionId];
@@ -600,7 +350,7 @@ function handleSession(sessionId, input, msisdn, res) {
         state.step = "menu";
         const brand = state.brandName || "SandyPay";
         return reply(
-          `${brand}.\n0. Cancel\n\n1. Recharge\n2. Contact Us`
+          `${brand}.\nNB: The Data Is NOT INSTANT.\n It takes between 5min to 30Mins to deliver\n0. Cancel\n\n1. Buy Data\n2. Contact Us`
         );
       }
 
@@ -615,7 +365,7 @@ function handleSession(sessionId, input, msisdn, res) {
 
         if (choice === "2") {
           if (!state.vendorId || state.isPlain) {
-            return end("Contact us:\n0507946712");
+            return end("Contact us:\n0501403971");
           }
 
           db.query(
@@ -875,142 +625,41 @@ end(
 );
 
 
-// ======================================================
-// PAYMENT PROVIDER ROUTING
-//
-// ALL USSD PAYMENTS USE BULKCLIX
-// FROG admin *800*789# uses VENDOR_BULKCLIX
-// Moolre plain/admin sessions use ADMIN_BULKCLIX
-// Vendor sessions use VENDOR_BULKCLIX
-// UZO admin 87 uses UZO_ADMIN_87_BULKCLIX
-// ======================================================
-
-
-// ======================================================
-// ARKESEL PAYMENT THROUGH MOOLRE ONLY
-// ======================================================
-// ======================================================
-// ARKESEL *928*145# USES MOOLRE ONLY
-// ======================================================
-// if (state.isArkeselAdmin145 === true) {
-//   console.log("🟪 ARKESEL PAYMENT ROUTE SELECTED:", {
-//     transactionId,
-//     network,
-//     momo_number,
-//     amount,
-//     data_package,
-//     wallet: ARKESEL_ADMIN_MOOLRE.wallet,
-//   });
-
-//   sendArkeselMoolrePayment({
-//     amount,
-//     network,
-//     momoNumber: momo_number,
-//     transactionId,
-//     dataPackage: data_package,
-//   })
-//     .then((result) => {
-//       console.log(
-//         "✅ ARKESEL MOOLRE PAYMENT ACCEPTED:",
-//         result
-//       );
-//     })
-//     .catch(async (error) => {
-//       console.error(
-//         "❌ ARKESEL MOOLRE PAYMENT FAILED:",
-//         error.response?.data ||
-//         error.message ||
-//         error
-//       );
-
-//       // Remove the unused temporary order when payment initiation fails
-//       try {
-//         await dbp.query(
-//           `DELETE FROM moolre_temp_orders
-//            WHERE externalref = ?`,
-//           [transactionId]
-//         );
-
-//         console.log(
-//           "🗑️ Failed Arkesel temp order removed:",
-//           transactionId
-//         );
-//       } catch (deleteError) {
-//         console.error(
-//           "❌ Could not remove failed Arkesel temp order:",
-//           deleteError.message
-//         );
-//       }
-//     });
-
-//   return;
-// }
-
-
-// ======================================================
-// ALL USSD CODES USE BULKCLIX
-// ======================================================
+// ✅ ADMIN PAYMENTS USE BULKCLIX
 const bulkNetwork = getBulkClixNetwork(network);
 
 if (!bulkNetwork) {
-  console.error(
-    "❌ Unsupported network for BulkClix:",
-    network
-  );
-
+  console.error("❌ Unsupported network for BulkClix:", network);
   return;
 }
 
 const bulkClixAccount = getBulkClixAccount(state);
 
-const paymentBrand = "SANDYPAY";
-
-const bulkPayload = {
+const payload = {
   amount: Number(amount.toFixed(2)),
   phone_number: toLocalMsisdn(momo_number),
   network: bulkNetwork,
   transaction_id: transactionId,
-
-  callback_url:
-    "https://sandipay.co/api/moolre/bulkclix-webhook",
-
-  reference: `${paymentBrand} ${data_package}`,
+  callback_url: "https://sandipay.co/api/moolre/bulkclix-webhook",
+  reference: `SANDYPAY ${data_package}`,
 };
 
-console.log(
-  "📤 Sending USSD payment to BULKCLIX:",
-  bulkPayload
-);
+console.log("📤 Sending payment to BULKCLIX:", payload);
 
 axios
-  .post(
-    bulkClixAccount.url,
-    bulkPayload,
-    {
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "x-api-key": bulkClixAccount.apiKey,
-      },
-
-      timeout: 30000,
-    }
-  )
+  .post(bulkClixAccount.url, payload, {
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "x-api-key": bulkClixAccount.apiKey,
+    },
+  })
   .then((response) => {
-    console.log(
-      "✅ BULKCLIX payment INIT response:",
-      response.data
-    );
+    console.log("✅ BULKCLIX admin payment INIT response:", response.data);
   })
   .catch((err) => {
-    console.error(
-      "❌ BULKCLIX payment error:",
-      err.response?.data || err.message
-    );
-  });
-
-return;
-
+    console.error("❌ BULKCLIX admin error:", err.response?.data || err.message);
+  });          return;
         }
 
         if (choice === "2") return end("Transaction cancelled.");
@@ -1272,6 +921,55 @@ if (isNewSessionInner) {
       extensionMode = "custom";
       assignedCode = ext;
 
+
+
+// ===============================================
+// ADMIN OVERRIDE
+// *203*401*1#
+// ===============================================
+if (ext === "401" && String(inputInner || "").trim() === "1") {
+  const [intl, local, plusIntl] = msisdnVariants(msisdn);
+
+  const [rows] = await dbp.query(
+    `SELECT 1
+     FROM telephone_numbers
+     WHERE phone_number IN (?, ?, ?)
+     AND (status IS NULL OR status='allowed')
+     LIMIT 1`,
+    [intl, local, plusIntl]
+  );
+
+  if (!rows.length) {
+    return res.json({
+      message: "APPLICATION UNKNOWN",
+      reply: false,
+    });
+  }
+
+  sessions[sessionId] = {
+    step: "start",
+    vendorId: 1,
+    brandName: "SandyPay",
+    isPlain: true,
+    network: "",
+    selectedPkg: "",
+    recipient: "",
+    packageList: [],
+    packagePage: 0,
+    moolreSessionId: sessionId,
+  };
+
+  console.log("🟦 ADMIN OVERRIDE: *203*401*1#");
+
+  return handleSession(
+    sessionId,
+    "",
+    String(msisdn || ""),
+    res
+  );
+}
+
+
      const [codeRows] = await dbp.query(
   `SELECT
      uvc.vendor_id,
@@ -1448,397 +1146,20 @@ if (!telephoneAllowed) {
   });
 });
 
-////////////////////////////////////////////////////////////////////////////////////////////
-// ======================================================
-// FROG / WIGAL SMART USSD V1
-//
-// USSD CODE:
-// *800*789#
-//
-// CALLBACK URL:
-// https://sandipay.co/api/moolre/frog
-//
-// METHOD:
-// GET
-//
-// FROG sends:
-// network
-// mode
-// msisdn
-// sessionid
-// userdata
-// username
-// trafficid
-// other
-// ======================================================
 
 
-// Converts the normal handleSession response into
-// the pipe-separated response required by FROG.
-function createPaystackResponseAdapter(res) {
-  return {
-    json(data) {
 
-      const message = String(data?.message || "")
-        .replace(/^CON\s*/i, "")
-        .replace(/^END\s*/i, "")
-        .trim();
-
-      let type = "continue";
-
-      if (data?.reply === false) {
-        type = "end";
-      }
-
-      return res.status(200).json({
-        message,
-        type
-      });
-    }
-  };
-}
-
-
-// ======================================================
-// PAYSTACK USSD ROUTE
-//
-// CALLBACK URL:
-// https://sandipay.co/api/moolre/paystack
-//
-// METHOD:
-// POST
-//
-// PAYSTACK SENDS:
-// session
-// message
-// phone
-// network_code
-// service_code
-// ======================================================
-// router.post("/paystack", async (req, res) => {
-//   try {
-//     console.log("📲 PAYSTACK USSD REQUEST:", req.body);
-
-//     let payload = req.body || {};
-
-//     // Support cases where the request arrives as text
-//     if (typeof payload === "string") {
-//       try {
-//         payload = JSON.parse(payload);
-//       } catch (parseError) {
-//         console.error(
-//           "❌ PAYSTACK JSON PARSE ERROR:",
-//           parseError.message
-//         );
-
-//         return res.status(200).json({
-//           message: "Invalid request.",
-//           type: "end",
-//         });
-//       }
-//     }
-
-//     const session = String(payload.session || "").trim();
-//     const message = String(payload.message || "").trim();
-//     const phone = String(payload.phone || "").trim();
-//     const networkCode = String(
-//       payload.network_code || ""
-//     )
-//       .trim()
-//       .toUpperCase();
-
-//     const serviceCode = String(
-//       payload.service_code || ""
-//     ).trim();
-
-//     console.log("✅ PARSED PAYSTACK REQUEST:", {
-//       session,
-//       message,
-//       phone,
-//       networkCode,
-//       serviceCode,
-//     });
-
-//     // Validate required Paystack fields
-//     if (!session || !phone) {
-//       console.error("❌ Missing Paystack session or phone");
-
-//       return res.status(200).json({
-//         message: "Invalid USSD request.",
-//         type: "end",
-//       });
-//     }
-
-//     const paystackSessionKey = `PAYSTACK_${session}`;
-
-//     // Converts the normal handleSession response to Paystack format
-//     const paystackRes = createPaystackResponseAdapter(res);
-
-//     const hasExistingSession = Boolean(
-//       sessions[paystackSessionKey]
-//     );
-
-//     // Paystack sends an empty message on the first request
-//     const isNewSession =
-//       !hasExistingSession || message === "";
-
-//     // ==================================================
-//     // NEW PAYSTACK SESSION
-//     // ==================================================
-//     if (isNewSession && !hasExistingSession) {
-//       sessions[paystackSessionKey] = {
-//         step: "start",
-
-//         // Use AdminData packages
-//         vendorId: 1,
-//         isPlain: true,
-
-//         // Identifies this as a Paystack session
-//         isPaystack: true,
-//         ussdProvider: "paystack",
-
-//         brandName: "SandyPay",
-
-//         serviceCode,
-//         paystackNetworkCode: networkCode,
-
-//         network: "",
-//         selectedPkg: "",
-//         recipient: "",
-//         packageList: [],
-//         packagePage: 0,
-//       };
-
-//       console.log("🟦 CREATED PAYSTACK ADMIN SESSION:", {
-//         paystackSessionKey,
-//         phone,
-//         serviceCode,
-//         networkCode,
-//       });
-
-//       return handleSession(
-//         paystackSessionKey,
-//         "",
-//         phone,
-//         paystackRes
-//       );
-//     }
-
-//     // ==================================================
-//     // CONTINUE EXISTING PAYSTACK SESSION
-//     // ==================================================
-
-//     /*
-//      * Paystack accumulates selections with an asterisk.
-//      *
-//      * Examples:
-//      * 1
-//      * 1*2
-//      * 1*2*3
-//      *
-//      * We only send the latest answer to handleSession().
-//      */
-//     const messageParts = message
-//       .split("*")
-//       .map((value) => value.trim())
-//       .filter(Boolean);
-
-//     const latestInput =
-//       messageParts.length > 0
-//         ? messageParts[messageParts.length - 1]
-//         : "";
-
-//     console.log("➡️ CONTINUING PAYSTACK SESSION:", {
-//       paystackSessionKey,
-//       fullMessage: message,
-//       latestInput,
-//       currentStep:
-//         sessions[paystackSessionKey]?.step,
-//     });
-
-//     return handleSession(
-//       paystackSessionKey,
-//       latestInput,
-//       phone,
-//       paystackRes
-//     );
-//   } catch (error) {
-//     console.error("❌ PAYSTACK USSD ROUTE ERROR:", error);
-
-//     return res.status(200).json({
-//       message:
-//         "Service temporarily unavailable. Please try again later.",
-//       type: "end",
-//     });
-//   }
-// });
-
-
-
-
-
-
-
-
-
-
-// ======================================================
-// PAYSTACK USSD - KOPORTAL RESULTS CHECKER
-//
-// CALLBACK URL:
-// https://yourdomain.com/paystack
-//
-// METHOD:
-// POST
-// ======================================================
-
-router.post("/paystack", (req, res) => {
-
-  console.log("📲 PAYSTACK REQUEST:", req.body);
-
-  const {
-    session,
-    message,
-    phone,
-    network_code,
-    service_code
-  } = req.body;
-
-  // First request
-  if (!message || message.trim() === "") {
-
-    return res.json({
-      message:
-        "Welcome to KOPORTAL\n" +
-        "Buy your Results Checker\n\n" +
-        "1. Buy Results Checker\n" +
-        "2. Help",
-      type: "continue"
-    });
-
-  }
-
-  // User selected 1
-  if (message === "1") {
-
-    return res.json({
-      message:
-        "Choose Checker\n" +
-        "1. BECE Checker - GHS 15\n" +
-        "2. WASSCE Checker - GHS 20",
-      type: "continue"
-    });
-
-  }
-
-  // User selected BECE
-  if (message === "1*1") {
-
-    return res.json({
-      message:
-        "You selected BECE Checker\nConfirm Purchase?",
-      type: "continue"
-    });
-
-  }
-
-  // User selected WASSCE
-  if (message === "1*2") {
-
-    return res.json({
-      message:
-        "You selected WASSCE Checker\nConfirm Purchase?",
-      type: "continue"
-    });
-
-  }
-
-  // Confirm BECE payment
-  if (message === "1*1*1") {
-
-    return res.json({
-      message: "Processing payment...",
-      type: "charge",
-      data: {
-        amount: 15
-      }
-    });
-
-  }
-
-  // Confirm WASSCE payment
-  if (message === "1*2*1") {
-
-    return res.json({
-      message: "Processing payment...",
-      type: "charge",
-      data: {
-        amount: 20
-      }
-    });
-
-  }
-
-  // Help
-  if (message === "2") {
-
-    return res.json({
-      message:
-        "Call 024XXXXXXX for assistance.",
-      type: "end"
-    });
-
-  }
-
-  return res.json({
-    message: "Invalid option.",
-    type: "end"
-  });
-
-});
-
-
-
-
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-
-// ======================================================
-// UZO USSD ROUTE
-//
-// SUPPORTED:
-//
-// *920*142#
-//   FASTUPPAGE PAYMENT CODE
-//
-// *426*87#
-//   ADMIN DATA CODE
-//
-// *426*XXXX#
-//   PRIVATE VENDOR UZO CODES
-// ======================================================
-
+///// Uzo Code
+// ====== USSD ROUTE (UZO - VENDORS ONLY) ======
+///// Uzo Code
+// ====== USSD ROUTE (UZO - VENDORS ONLY - PRIVATE CODE MAPPING) ======
 router.post("/uzo", (req, res) => {
-  console.log(
-    "📲 NEW UZO USSD REQUEST:",
-    req.body
-  );
+  console.log("📲 NEW UZO USSD REQUEST:", req.body);
 
   let payload = {};
-
   try {
-    payload =
-      typeof req.body === "string"
-        ? JSON.parse(req.body)
-        : req.body;
-  } catch (error) {
-    console.error(
-      "❌ UZO JSON PARSE ERROR:",
-      error.message
-    );
-
+    payload = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+  } catch {
     return res.json({
       message: "Invalid JSON format",
       ussdServiceOp: 17,
@@ -1854,15 +1175,8 @@ router.post("/uzo", (req, res) => {
     code,
   } = payload;
 
-  // ====================================================
-  // SESSION ID
-  // ====================================================
-
-  const rawSessionId = String(
-    sessionID ||
-    sessionId ||
-    ""
-  ).trim();
+  const rawSessionId = String(sessionID || sessionId || "").trim();
+  const uzoSessionKey = `UZO_${rawSessionId}`;
 
   if (!rawSessionId) {
     return res.json({
@@ -1871,1018 +1185,235 @@ router.post("/uzo", (req, res) => {
     });
   }
 
-  const uzoSessionKey =
-    `UZO_${rawSessionId}`;
+  const fullUssd = String(ussdString || "").trim();
+  const baseCode = String(code || "").trim();
 
-  // ====================================================
-  // PARSE UZO CODE
-  // ====================================================
+  console.log("🔍 UZO SESSION CHECK:", {
+    uzoSessionKey,
+    fullUssd,
+    baseCode,
+    msisdn,
+    ussdServiceOp,
+  });
 
-  const fullUssd = String(
-    ussdString || ""
-  ).trim();
+  const uzoRes = {
+    json: (data) => {
+      const msg = String(data?.message || "").replace(/^END\s*/i, "");
 
-  const baseCode = String(
-    code || ""
-  ).trim();
+      return res.json({
+        message: msg,
+        ussdServiceOp: data?.reply === false ? 17 : 2,
+      });
+    },
+  };
 
   const parts = fullUssd
     .replace(/^#|#$/g, "")
     .split("*")
-    .map((item) => item.trim())
     .filter(Boolean);
 
   const baseParts = baseCode
     .replace(/^#|#$/g, "")
     .split("*")
-    .map((item) => item.trim())
     .filter(Boolean);
 
-  const mainCode =
-    parts[0] ||
-    baseParts[0] ||
-    "";
+  const mainCode = parts[0] || baseParts[0];
+const uzoCode = parts[1] || baseParts[1];
 
-  const uzoCode =
-    parts[1] ||
-    baseParts[1] ||
-    "";
+// Existing session first
+if (sessions[uzoSessionKey]) {
 
-  console.log(
-    "🔍 UZO SESSION CHECK:",
-    {
-      uzoSessionKey,
-      fullUssd,
-      baseCode,
-      mainCode,
-      uzoCode,
-      msisdn,
-      ussdServiceOp,
-    }
+  // Uzo usually sends only latest input after first screen
+  const lastInput =
+    parts.length > 0
+      ? parts[parts.length - 1]
+      : String(ussdString || "").trim();
+
+if (sessions[uzoSessionKey]?.isUzoAdmin87 === true) {
+  return handleSession(
+    uzoSessionKey,
+    lastInput || "",
+    String(msisdn || ""),
+    uzoRes
   );
+}
 
-
-  // ====================================================
-  // STANDARD UZO RESPONSE ADAPTER
-  // Used by your existing SandyPay handleSession()
-  // ====================================================
-
-  const uzoRes = {
-    json: (data) => {
-      const msg = String(
-        data?.message || ""
-      )
-        .replace(/^CON\s*/i, "")
-        .replace(/^END\s*/i, "")
-        .trim();
-
+return checkAccess(msisdn, (allowed) => {
+    if (!allowed) {
       return res.json({
-        message: msg,
-
-        ussdServiceOp:
-          data?.reply === false
-            ? 17
-            : 2,
-      });
-    },
-  };
-
-
-  // ##################################################################
-  // ##################################################################
-  //
-  //               FASTUPPAGE *920*142#
-  //
-  // ##################################################################
-  // ##################################################################
-
-  const existingState =
-    sessions[uzoSessionKey];
-
-
-  // ====================================================
-  // EXISTING FASTUPPAGE SESSION
-  // ====================================================
-
-  if (
-    existingState &&
-    existingState.isFastuppage142 === true
-  ) {
-
-    console.log(
-      "🟪 EXISTING FASTUPPAGE SESSION:",
-      {
-        uzoSessionKey,
-        step: existingState.step,
-        fullUssd,
-        msisdn,
-      }
-    );
-
-    // UZO can send either:
-    //
-    // 20
-    //
-    // OR accumulated data such as:
-    //
-    // 920*142*20
-    //
-    // Get the final entered value.
-
-    let latestInput = "";
-
-    if (parts.length > 0) {
-      latestInput =
-        parts[parts.length - 1];
-    }
-
-    // If provider sends only entered amount
-    if (
-      parts.length === 1 &&
-      parts[0] === "920"
-    ) {
-      latestInput = "";
-    }
-
-    latestInput =
-      String(latestInput || "")
-        .trim();
-
-
-    // ==================================================
-    // FASTUPPAGE STEP: ENTER AMOUNT
-    // ==================================================
-
-    if (
-      existingState.step ===
-      "fastuppage_amount"
-    ) {
-
-      // Remove anything that is not number/dot
-      const cleanedAmount =
-        latestInput.replace(
-          /[^0-9.]/g,
-          ""
-        );
-
-      const amount =
-        Number(cleanedAmount);
-
-
-      // ----------------------------------------------
-      // Validate amount
-      // ----------------------------------------------
-
-      if (
-        !Number.isFinite(amount) ||
-        amount <= 0
-      ) {
-
-        return res.json({
-          message:
-            "Invalid amount.\n\n" +
-            "Enter amount to purchase:",
-
-          ussdServiceOp: 2,
-        });
-      }
-
-
-      // Maximum safety limit.
-      // You can change/remove this later if required.
-      if (amount > 10000) {
-
-        return res.json({
-          message:
-            "Amount is too high.\n\n" +
-            "Enter another amount:",
-
-          ussdServiceOp: 2,
-        });
-      }
-
-
-      // Round to 2 decimal places
-      const finalAmount =
-        Number(amount.toFixed(2));
-
-
-      existingState.amount =
-        finalAmount;
-
-      existingState.step =
-        "fastuppage_processing";
-
-
-      // Create unique BulkClix transaction ID
-      const transactionId =
-        `FASTUP${Date.now()}${Math.floor(
-          Math.random() * 1000
-        )}`.slice(0, 30);
-
-
-      existingState.transactionId =
-        transactionId;
-
-
-      console.log(
-        "💰 FASTUPPAGE AMOUNT RECEIVED:",
-        {
-          transactionId,
-          amount: finalAmount,
-          msisdn,
-        }
-      );
-
-
-      // ------------------------------------------------
-      // Close USSD session immediately.
-      //
-      // BulkClix MoMo prompt will appear separately.
-      // ------------------------------------------------
-
-      res.json({
-        message:
-          `GHS ${finalAmount.toFixed(2)} payment initiated.\n\n` +
-          "Please wait for the MoMo prompt and enter your PIN to approve.",
-
-        ussdServiceOp: 17,
-      });
-
-
-      // ------------------------------------------------
-      // Initiate BulkClix payment AFTER sending USSD
-      // response.
-      // ------------------------------------------------
-
-      sendFastuppageBulkClixPayment({
-        amount: finalAmount,
-
-        msisdn:
-          String(msisdn || ""),
-
-        transactionId,
-      })
-        .then((result) => {
-
-          console.log(
-            "✅ FASTUPPAGE BULKCLIX PAYMENT INITIATED:",
-            {
-              transactionId,
-              amount: finalAmount,
-              msisdn,
-              result,
-            }
-          );
-
-        })
-        .catch((error) => {
-
-          console.error(
-            "❌ FASTUPPAGE BULKCLIX PAYMENT FAILED:",
-            {
-              transactionId,
-              amount: finalAmount,
-              msisdn,
-
-              error:
-                error.response?.data ||
-                error.message ||
-                error,
-            }
-          );
-
-        });
-
-
-      // Remove USSD state because session has ended.
-      delete sessions[uzoSessionKey];
-
-      return;
-    }
-
-
-    // Any unexpected existing Fastuppage state
-    delete sessions[uzoSessionKey];
-
-    return res.json({
-      message:
-        "Session ended. Please dial *920*142# again.",
-
-      ussdServiceOp: 17,
-    });
-  }
-
-
-
-  // ====================================================
-  // NEW FASTUPPAGE SESSION
-  //
-  // USSD:
-  // *920*142#
-  // ====================================================
-
-  if (
-    mainCode === "920" &&
-    uzoCode === "142"
-  ) {
-
-    console.log(
-      "🟪 NEW FASTUPPAGE *920*142# SESSION:",
-      {
-        uzoSessionKey,
-        msisdn,
-      }
-    );
-
-
-    // Validate caller number
-    const customerNumber =
-      toLocalMsisdn(msisdn);
-
-
-    if (
-      !/^0\d{9}$/.test(
-        customerNumber
-      )
-    ) {
-
-      console.error(
-        "❌ Invalid Fastuppage number:",
-        {
-          received: msisdn,
-          converted: customerNumber,
-        }
-      );
-
-      return res.json({
-        message:
-          "Invalid mobile number.",
-
+        message: "Sorry, you don't have access.",
         ussdServiceOp: 17,
       });
     }
-
-
-    // Create independent Fastuppage session
-    sessions[uzoSessionKey] = {
-
-      step:
-        "fastuppage_amount",
-
-      isFastuppage142: true,
-
-      ussdProvider: "uzo",
-
-      mainCode: "920",
-
-      uzoCode: "142",
-
-      brandName:
-        "Fastuppage",
-
-      customerNumber,
-
-      amount: null,
-
-      transactionId: null,
-    };
-
-
-    console.log(
-      "✅ CREATED FASTUPPAGE SESSION:",
-      sessions[uzoSessionKey]
-    );
-
-
-    return res.json({
-      message:
-        "Welcome to Fastuppage\n\n" +
-        "Enter amount to purchase:",
-
-      ussdServiceOp: 2,
-    });
-  }
-
-
-
-  // ##################################################################
-  // ##################################################################
-  //
-  //                  EXISTING SANDYPAY UZO
-  //
-  // ##################################################################
-  // ##################################################################
-
-
-  // ====================================================
-  // EXISTING NORMAL UZO SESSION
-  // ====================================================
-
-  if (sessions[uzoSessionKey]) {
-
-    const lastInput =
-      parts.length > 0
-        ? parts[parts.length - 1]
-        : String(
-            ussdString || ""
-          ).trim();
-
-
-    // ----------------------------------------------
-    // EXISTING *426*87# ADMIN SESSION
-    // ----------------------------------------------
-
-    if (
-      sessions[uzoSessionKey]
-        ?.isUzoAdmin87 === true
-    ) {
-
-      return handleSession(
-        uzoSessionKey,
-
-        lastInput || "",
-
-        String(
-          msisdn || ""
-        ),
-
-        uzoRes
-      );
-    }
-
-
-    // ----------------------------------------------
-    // EXISTING VENDOR UZO SESSION
-    // ----------------------------------------------
-
-    return checkAccess(
-      msisdn,
-
-      (allowed) => {
-
-        if (!allowed) {
-
-          return res.json({
-            message:
-              "Sorry, you don't have access.",
-
-            ussdServiceOp: 17,
-          });
-        }
-
-
-        return handleSession(
-          uzoSessionKey,
-
-          lastInput || "",
-
-          String(
-            msisdn || ""
-          ),
-
-          uzoRes
-        );
-      }
-    );
-  }
-
-
-
-  // ====================================================
-  // UZO ADMIN CODE
-  //
-  // *426*87#
-  //
-  // KEEP EXISTING BEHAVIOUR
-  // ====================================================
-
-  if (
-    mainCode === "426" &&
-    uzoCode === "87"
-  ) {
-
-    sessions[uzoSessionKey] = {
-
-      step: "start",
-
-      vendorId: 1,
-
-      brandName:
-        "SandyPay",
-
-      isPlain: true,
-
-      isUzoAdmin87: true,
-
-      network: "",
-
-      selectedPkg: "",
-
-      recipient: "",
-
-      packageList: [],
-
-      packagePage: 0,
-
-      moolreSessionId:
-        uzoSessionKey,
-
-      uzoCode: "87",
-    };
-
-
-    console.log(
-      "🟦 CREATED UZO ADMIN 87 SESSION:",
-      {
-        uzoSessionKey,
-        msisdn,
-      }
-    );
-
 
     return handleSession(
       uzoSessionKey,
-
-      "",
-
-      String(
-        msisdn || ""
-      ),
-
+      lastInput || "",
+      String(msisdn || ""),
       uzoRes
     );
-  }
+  });
+}
 
 
+// ✅ UZO ADMIN CODE: *426*87#
+// Works like admin 888/plain mode
+// ✅ UZO ADMIN CODE: *426*87#
+// Allows ALL numbers, uses AdminData, but uses special UZO payment account
+if (mainCode === "426" && uzoCode === "87") {
+  sessions[uzoSessionKey] = {
+    step: "start",
+    vendorId: 1,
+    brandName: "SandyPay",
+    isPlain: true,
+    isUzoAdmin87: true,
+    network: "",
+    selectedPkg: "",
+    recipient: "",
+    packageList: [],
+    packagePage: 0,
+    moolreSessionId: uzoSessionKey,
+    uzoCode: "87",
+  };
 
-  // ====================================================
-  // NORMAL VENDOR UZO ENTRY VALIDATION
-  //
-  // Your vendor UZO codes remain under:
-  //
-  // *426*CODE#
-  // ====================================================
-
-  if (
-    mainCode !== "426" ||
-    !uzoCode
-  ) {
-
-    console.log(
-      "❌ INVALID UZO ENTRY POINT:",
-      {
-        mainCode,
-        uzoCode,
-      }
-    );
-
-    return res.json({
-      message:
-        "Invalid USSD entry point.",
-
-      ussdServiceOp: 17,
-    });
-  }
-
-
-
-  // ====================================================
-  // NEW PRIVATE VENDOR UZO SESSION
-  // ====================================================
-
-  checkAccess(
+  console.log("🟦 CREATED UZO ADMIN 87 SESSION - ALL NUMBERS ALLOWED:", {
+    uzoSessionKey,
     msisdn,
-
-    (allowed) => {
-
-      if (!allowed) {
-
-        return res.json({
-          message:
-            "Sorry, you don't have access.",
-
-          ussdServiceOp: 17,
-        });
-      }
-
-
-      console.log(
-        "🟧 NEW UZO PRIVATE CODE SESSION:",
-        {
-          uzoCode,
-          msisdn,
-          uzoSessionKey,
-        }
-      );
-
-
-      (async () => {
-
-        // --------------------------------------------
-        // Get vendor assigned to UZO code
-        // --------------------------------------------
-
-        const [codeRows] =
-          await dbp.query(
-            `
-            SELECT
-              uvc.vendor_id,
-              uvc.code,
-              uvc.code_type,
-              uvc.status,
-              uvc.expiry_date,
-              u.username,
-              u.ussd_locked
-            FROM uzo_vendor_codes uvc
-
-            JOIN users u
-              ON u.id = uvc.vendor_id
-
-            WHERE uvc.code = ?
-
-              AND LOWER(
-                TRIM(uvc.code_type)
-              ) = 'uzo'
-
-              AND LOWER(
-                TRIM(uvc.status)
-              ) = 'active'
-
-              AND (
-                uvc.expiry_date IS NULL
-                OR DATE(
-                  uvc.expiry_date
-                ) >= CURDATE()
-              )
-
-              AND u.role = 'vendor'
-
-            LIMIT 1
-            `,
-            [uzoCode]
-          );
-
-
-        // --------------------------------------------
-        // UZO CODE NOT FOUND
-        // --------------------------------------------
-
-        if (
-          !codeRows ||
-          !codeRows.length
-        ) {
-
-          console.log(
-            "❌ Uzo code not mapped:",
-            uzoCode
-          );
-
-          return res.json({
-            message:
-              "APPLICATION UNKNOWN.",
-
-            ussdServiceOp: 17,
-          });
-        }
-
-
-        // --------------------------------------------
-        // VENDOR LOCK
-        // --------------------------------------------
-
-        if (
-          Number(
-            codeRows[0]
-              .ussd_locked
-          ) === 1
-        ) {
-
-          console.log(
-            "❌ Uzo vendor locked:",
-            codeRows[0]
-              .vendor_id
-          );
-
-          return res.json({
-            message:
-              "This vendor account has been locked. Please contact admin for support.",
-
-            ussdServiceOp: 17,
-          });
-        }
-
-
-        const vendorId =
-          codeRows[0]
-            .vendor_id;
-
-
-        const brandName =
-          codeRows[0]
-            .username ||
-          "SandyPay";
-
-
-        // --------------------------------------------
-        // CHECK VENDOR HITS
-        // --------------------------------------------
-
-        const remaining =
-          await getRemainingHits(
-            vendorId
-          );
-
-
-        console.log(
-          "📊 UZO Remaining hits:",
-          {
-            vendorId,
-            remaining,
-          }
-        );
-
-
-        if (remaining <= 0) {
-
-          return res.json({
-            message:
-              "APPLICATION UNKNOWN.",
-
-            ussdServiceOp: 17,
-          });
-        }
-
-
-        // --------------------------------------------
-        // CONSUME HIT
-        // --------------------------------------------
-
-        const ok =
-          await consumeOneHit(
-            vendorId
-          );
-
-
-        if (!ok) {
-
-          return res.json({
-            message:
-              "Sorry, your session has finished.",
-
-            ussdServiceOp: 17,
-          });
-        }
-
-
-        // --------------------------------------------
-        // UPDATE COUNTERS
-        // --------------------------------------------
-
-        await incrementUssdCounter(
-          vendorId
-        );
-
-
-        await saveVendorCustomer(
-          vendorId,
-          msisdn,
-          "uzo"
-        );
-
-
-        // --------------------------------------------
-        // CREATE VENDOR SESSION
-        // --------------------------------------------
-
-        sessions[uzoSessionKey] = {
-
-          step: "start",
-
-          vendorId,
-
-          brandName,
-
-          isPlain: false,
-
-          network: "",
-
-          selectedPkg: "",
-
-          recipient: "",
-
-          packageList: [],
-
-          packagePage: 0,
-
-          moolreSessionId:
-            uzoSessionKey,
-
-          uzoCode,
-        };
-
-
-        console.log(
-          "🟩 CREATED UZO VENDOR SESSION:",
-          sessions[
-            uzoSessionKey
-          ]
-        );
-
-
-        return handleSession(
-          uzoSessionKey,
-
-          "",
-
-          String(
-            msisdn || ""
-          ),
-
-          uzoRes
-        );
-
-      })().catch((error) => {
-
-        console.error(
-          "❌ UZO private code session error:",
-          error
-        );
-
-
-        return res.json({
-          message:
-            "Service temporarily unavailable. Please try again later.",
-
-          ussdServiceOp: 17,
-        });
+  });
+
+  return handleSession(
+    uzoSessionKey,
+    "",
+    String(msisdn || ""),
+    uzoRes
+  );
+}
+// ONLY validate entry point for NEW session
+if (mainCode !== "426" || !uzoCode) {
+  return res.json({
+    message: "Invalid USSD entry point.",
+    ussdServiceOp: 17,
+  });
+}
+  // New Uzo session:
+  // Uzo does not support vendor ID in the dial code,
+  // so we check uzo_vendor_codes table to know which vendor owns the code.
+  checkAccess(msisdn, (allowed) => {
+    if (!allowed) {
+      return res.json({
+        message: "Sorry, you don't have access.",
+        ussdServiceOp: 17,
       });
     }
-  );
+
+    console.log("🟧 NEW UZO PRIVATE CODE SESSION:", {
+      uzoCode,
+      msisdn,
+      uzoSessionKey,
+    });
+
+    (async () => {
+    const [codeRows] = await dbp.query(
+  `SELECT
+     uvc.vendor_id,
+     uvc.code,
+     uvc.code_type,
+     uvc.status,
+     uvc.expiry_date,
+     u.username,
+     u.ussd_locked
+   FROM uzo_vendor_codes uvc
+   JOIN users u
+     ON u.id = uvc.vendor_id
+   WHERE uvc.code = ?
+     AND LOWER(TRIM(uvc.code_type)) = 'uzo'
+     AND LOWER(TRIM(uvc.status)) = 'active'
+     AND (
+       uvc.expiry_date IS NULL
+       OR DATE(uvc.expiry_date) >= CURDATE()
+     )
+     AND u.role = 'vendor'
+   LIMIT 1`,
+  [uzoCode]
+);
+
+      if (!codeRows || !codeRows.length) {
+        console.log("❌ Uzo code not mapped to any active vendor:", uzoCode);
+        return res.json({
+          message: "APPLICATION UNKNOWN.",
+          ussdServiceOp: 17,
+        });
+      }
+
+      if (Number(codeRows[0].ussd_locked) === 1) {
+  console.log("❌ Uzo vendor account locked:", codeRows[0].vendor_id);
+
+  return res.json({
+    message: "This vendor account has been locked. Please contact admin for support.",
+    ussdServiceOp: 17,
+  });
+}
+
+      const vendorId = codeRows[0].vendor_id;
+      const brandName = codeRows[0].username || "SandyPay";
+
+      const remaining = await getRemainingHits(vendorId);
+
+      console.log("📊 UZO Remaining hits for vendor", vendorId, "=", remaining);
+
+      if (remaining <= 0) {
+        return res.json({
+          message: "APPLICATION UNKNOWN.",
+          ussdServiceOp: 17,
+        });
+      }
+
+      const ok = await consumeOneHit(vendorId);
+
+      if (!ok) {
+        return res.json({
+          message: "Sorry, your session has finished.",
+          ussdServiceOp: 17,
+        });
+      }
+
+      await incrementUssdCounter(vendorId);
+      await saveVendorCustomer(vendorId, msisdn, "uzo");
+
+      sessions[uzoSessionKey] = {
+        step: "start",
+        vendorId,
+        brandName,
+        isPlain: false,
+        network: "",
+        selectedPkg: "",
+        recipient: "",
+        packageList: [],
+        packagePage: 0,
+        moolreSessionId: uzoSessionKey,
+        uzoCode,
+      };
+
+      console.log("🟩 CREATED UZO VENDOR SESSION:", sessions[uzoSessionKey]);
+
+      return handleSession(
+        uzoSessionKey,
+        "",
+        String(msisdn || ""),
+        uzoRes
+      );
+    })().catch((e) => {
+      console.error("❌ UZO private code session error:", e);
+
+      return res.json({
+        message: "Service temporarily unavailable. Please try again later.",
+        ussdServiceOp: 17,
+      });
+    });
+  });
 });
 /////////////////////////////////////////////////////////////////////////////////////////
 
-
-
-
-//////////////////////////////////////////////////Me
-
-
-
-
-
-
-
-
-// ======================================================
-// FASTUPPAGE HELPERS
-// ======================================================
-
-// Detect Ghana mobile network from number.
-// BulkClix requires a network when initiating MoMo payment.
-function detectFastuppageNetwork(msisdn) {
-  const local = toLocalMsisdn(msisdn);
-
-  if (!/^0\d{9}$/.test(local)) {
-    return null;
-  }
-
-  // First 3 digits e.g. 024, 054, 020
-  const prefix = local.substring(0, 3);
-
-  const MTN_PREFIXES = [
-    "024",
-    "025",
-    "053",
-    "054",
-    "055",
-    "059",
-  ];
-
-  const TELECEL_PREFIXES = [
-    "020",
-    "050",
-  ];
-
-  const AIRTELTIGO_PREFIXES = [
-    "026",
-    "027",
-    "056",
-    "057",
-  ];
-
-  if (MTN_PREFIXES.includes(prefix)) {
-    return "MTN";
-  }
-
-  if (TELECEL_PREFIXES.includes(prefix)) {
-    return "TELECEL";
-  }
-
-  if (AIRTELTIGO_PREFIXES.includes(prefix)) {
-    return "AIRTELTIGO";
-  }
-
-  return null;
-}
-
-
-// ======================================================
-// SEND FASTUPPAGE PAYMENT THROUGH BULKCLIX
-// ======================================================
-
-async function sendFastuppageBulkClixPayment({
-  amount,
-  msisdn,
-  transactionId,
-}) {
-  const phoneNumber = toLocalMsisdn(msisdn);
-
-  if (!/^0\d{9}$/.test(phoneNumber)) {
-    throw new Error(
-      `Invalid Fastuppage MoMo number: ${phoneNumber}`
-    );
-  }
-
-  const network = detectFastuppageNetwork(phoneNumber);
-
-  if (!network) {
-    throw new Error(
-      `Could not detect network for ${phoneNumber}`
-    );
-  }
-
-  if (!FASTUPPAGE_BULKCLIX.apiKey) {
-    throw new Error(
-      "FASTUPPAGE_BULKCLIX_API_KEY is not configured."
-    );
-  }
-
-  const payload = {
-    amount: Number(Number(amount).toFixed(2)),
-
-    phone_number: phoneNumber,
-
-    network,
-
-    transaction_id: transactionId,
-
-    callback_url:
-      "https://sandipay.co/api/moolre/fastuppage-bulkclix-webhook",
-
-    reference: `FASTUPPAGE GHS ${Number(amount).toFixed(2)}`,
-  };
-
-  console.log("📤 FASTUPPAGE → BULKCLIX PAYMENT:", {
-    ...payload,
-    apiKey: "[HIDDEN]",
-  });
-
-  const response = await axios.post(
-    FASTUPPAGE_BULKCLIX.url,
-    payload,
-    {
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-
-        "x-api-key":
-          FASTUPPAGE_BULKCLIX.apiKey,
-      },
-
-      timeout: 30000,
-
-      // We inspect BulkClix's response ourselves.
-      validateStatus: () => true,
-    }
-  );
-
-  console.log(
-    "📥 FASTUPPAGE BULKCLIX RESPONSE:",
-    {
-      httpStatus: response.status,
-      data: response.data,
-    }
-  );
-
-  if (
-    response.status < 200 ||
-    response.status >= 300
-  ) {
-    throw new Error(
-      `BulkClix payment failed. HTTP ${response.status}: ${
-        JSON.stringify(response.data)
-      }`
-    );
-  }
-
-  return {
-    success: true,
-    response: response.data,
-  };
-}
-
-//////////////////////////////////////////////////Me
 
 
 async function saveVendorCustomer(vendorId, msisdn, source = "moolre") {
@@ -3068,198 +1599,5 @@ router.post("/bulkclix-webhook", async (req, res) => {
     return res.status(500).send("Server error");
   }
 });
-
-
-
-///////////////////////////////////////////Me
-
-// ======================================================
-// FASTUPPAGE BULKCLIX WEBHOOK
-//
-// CALLBACK:
-// https://sandipay.co/api/moolre/fastuppage-bulkclix-webhook
-// ======================================================
-
-router.post(
-  "/fastuppage-bulkclix-webhook",
-  async (req, res) => {
-
-    try {
-
-      console.log(
-        "📩 FASTUPPAGE BULKCLIX WEBHOOK:",
-        req.body
-      );
-
-
-      let body = req.body || {};
-
-
-      if (
-        typeof body === "string"
-      ) {
-
-        try {
-
-          body =
-            JSON.parse(body);
-
-        } catch (error) {
-
-          console.error(
-            "❌ FASTUPPAGE WEBHOOK JSON ERROR:",
-            error.message
-          );
-
-          return res
-            .status(400)
-            .send(
-              "Invalid JSON"
-            );
-        }
-      }
-
-
-      const transactionId =
-        String(
-          body.transaction_id ||
-          ""
-        ).trim();
-
-
-      const status =
-        String(
-          body.status ||
-          ""
-        )
-          .trim()
-          .toLowerCase();
-
-
-      console.log(
-        "💳 FASTUPPAGE PAYMENT STATUS:",
-        {
-          transactionId,
-          status,
-          phone:
-            body.phone_number,
-
-          amount:
-            body.amount,
-
-          extTransactionId:
-            body.ext_transaction_id,
-        }
-      );
-
-
-      // BulkClix should always have transaction id
-      if (!transactionId) {
-
-        return res
-          .status(400)
-          .send(
-            "Missing transaction_id"
-          );
-      }
-
-
-      // Make sure this is actually one of
-      // our Fastuppage transactions.
-      if (
-        !transactionId.startsWith(
-          "FASTUP"
-        )
-      ) {
-
-        console.log(
-          "⚠️ Non-Fastuppage transaction received:",
-          transactionId
-        );
-
-        return res
-          .status(200)
-          .send("OK");
-      }
-
-
-      // ----------------------------------------------
-      // SUCCESS
-      // ----------------------------------------------
-
-      if (
-        status === "success"
-      ) {
-
-        console.log(
-          "✅ FASTUPPAGE PAYMENT SUCCESS:",
-          {
-            transactionId,
-
-            phone:
-              body.phone_number,
-
-            amount:
-              body.amount,
-
-            providerReference:
-              body.ext_transaction_id,
-          }
-        );
-
-
-        /*
-         * Add anything you want to happen
-         * after successful payment here.
-         *
-         * The customer's MoMo has already
-         * been charged by BulkClix.
-         */
-
-
-        return res
-          .status(200)
-          .send("OK");
-      }
-
-
-      // ----------------------------------------------
-      // FAILED / CANCELLED / OTHER STATUS
-      // ----------------------------------------------
-
-      console.log(
-        "⚠️ FASTUPPAGE PAYMENT NOT SUCCESSFUL:",
-        {
-          transactionId,
-          status,
-        }
-      );
-
-
-      return res
-        .status(200)
-        .send("OK");
-
-    } catch (error) {
-
-      console.error(
-        "❌ FASTUPPAGE BULKCLIX WEBHOOK ERROR:",
-        error.response?.data ||
-        error.message ||
-        error
-      );
-
-
-      return res
-        .status(500)
-        .send(
-          "Server error"
-        );
-    }
-  }
-);
-
-
-////////////////////////////////////////////Me
 
 module.exports = router;
