@@ -98,8 +98,8 @@ const UZO_ADMIN_87_BULKCLIX = {
 // USED ONLY BY *920*142#
 // ======================================================
 const FASTUPPAGE_BULKCLIX = {
-    url: `${BULKCLIX_BASE_URL}/momopay`,
-    apiKey: ADMIN_BULKCLIX.apiKey
+  url: `${BULKCLIX_BASE_URL}/momopay`,
+  apiKey: process.env.FASTUPPAGE_BULKCLIX_API_KEY || "tCYDNA23VV5XCN3b2gDUBbJJw1wM9kHnPwdEU7s9",
 };
 /////////////////////////////////Me
 
