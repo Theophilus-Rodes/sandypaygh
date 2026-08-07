@@ -2106,82 +2106,96 @@ router.post("/fastuppage", async (req, res) => {
       );
 
 
-      // Remove session because USSD ends here.
-      delete sessions[
-        naloSessionKey
-      ];
-
-
       // ==================================================
-      // SEND NALO RESPONSE FIRST
-      // ==================================================
+// TRIGGER BULKCLIX PAYMENT FIRST
+// ==================================================
 
-      sendNaloResponse(
-        `GHS ${finalAmount.toFixed(2)} payment initiated.\nPlease wait for the MoMo prompt and enter your PIN to approve.`,
-        false
-      );
+try {
 
-
-      // ==================================================
-      // THEN TRIGGER BULKCLIX PAYMENT
-      // ==================================================
-
-      sendFastuppagePayment({
-
-        amount:
-          finalAmount,
-
-        msisdn,
-
-        transactionId,
-
-        network:
-          state.network ||
-          network,
-
-      })
-
-        .then((result) => {
-
-          console.log(
-            "✅ NALO FASTUPPAGE BULKCLIX INIT SUCCESS:",
-            {
-              transactionId,
-
-              amount:
-                finalAmount,
-
-              msisdn,
-
-              result,
-            }
-          );
-
-        })
-
-        .catch((error) => {
-
-          console.error(
-            "❌ NALO FASTUPPAGE BULKCLIX INIT FAILED:",
-            {
-              transactionId,
-
-              amount:
-                finalAmount,
-
-              msisdn,
-
-              error:
-                error.response?.data ||
-                error.message ||
-                error,
-            }
-          );
-
-        });
+  console.log(
+    "🚀 ABOUT TO SEND FASTUPPAGE PAYMENT:",
+    {
+      transactionId,
+      amount: finalAmount,
+      receivedMsisdn: msisdn,
+      localMsisdn: toLocalMsisdn(msisdn),
+      naloNetwork: state.network || network,
+    }
+  );
 
 
-      return;
+  const paymentResult =
+    await sendFastuppagePayment({
+      amount: finalAmount,
+
+      msisdn,
+
+      transactionId,
+
+      network:
+        state.network ||
+        network,
+    });
+
+
+  console.log(
+    "✅ FASTUPPAGE BULKCLIX PAYMENT ACCEPTED:",
+    {
+      transactionId,
+      amount: finalAmount,
+      msisdn,
+      paymentResult,
+    }
+  );
+
+
+  // Payment request accepted by BulkClix.
+  // We can now close the NALO session.
+  delete sessions[
+    naloSessionKey
+  ];
+
+
+  return sendNaloResponse(
+    `GHS ${finalAmount.toFixed(2)} payment initiated.\nPlease wait for the MoMo prompt and enter your PIN to approve.`,
+    false
+  );
+
+}
+
+catch (error) {
+
+  console.error(
+    "❌ FASTUPPAGE BULKCLIX PAYMENT FAILED:",
+    {
+      transactionId,
+
+      amount:
+        finalAmount,
+
+      msisdn,
+
+      network:
+        state.network ||
+        network,
+
+      message:
+        error.message,
+
+      bulkclixResponse:
+        error.response?.data ||
+        null,
+    }
+  );
+
+
+  // Keep the NALO session alive so customer
+  // can try another amount/payment.
+  return sendNaloResponse(
+    "Payment could not be initiated.\nPlease try again.",
+    true
+  );
+}
     }
 
 
