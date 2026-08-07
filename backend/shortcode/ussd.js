@@ -285,11 +285,13 @@ function detectFastuppageNetwork(msisdn) {
 
 // ======================================================
 // SEND FASTUPPAGE PAYMENT TO BULKCLIX
+// USED BY NALO *920*142#
 // ======================================================
 async function sendFastuppagePayment({
   amount,
   msisdn,
   transactionId,
+  network,
 }) {
   const momoNumber = toLocalMsisdn(msisdn);
 
@@ -299,21 +301,58 @@ async function sendFastuppagePayment({
     );
   }
 
-  const network = detectFastuppageNetwork(
-    momoNumber
-  );
+  // ====================================================
+  // FIRST TRY THE NETWORK NALO SENT TO US
+  // ====================================================
+  let bulkNetwork = null;
 
-  if (!network) {
+  const naloNetwork = String(network || "")
+    .trim()
+    .toLowerCase();
+
+  if (
+    naloNetwork.includes("mtn")
+  ) {
+    bulkNetwork = "MTN";
+  }
+
+  else if (
+    naloNetwork.includes("airtel") ||
+    naloNetwork.includes("tigo") ||
+    naloNetwork === "at"
+  ) {
+    bulkNetwork = "AIRTELTIGO";
+  }
+
+  else if (
+    naloNetwork.includes("telecel") ||
+    naloNetwork.includes("vodafone")
+  ) {
+    bulkNetwork = "TELECEL";
+  }
+
+
+  // If NALO didn't give us a usable network,
+  // fall back to detecting it from the number.
+  if (!bulkNetwork) {
+    bulkNetwork =
+      detectFastuppageNetwork(momoNumber);
+  }
+
+
+  if (!bulkNetwork) {
     throw new Error(
-      `Could not detect network for ${momoNumber}`
+      `Could not determine network for ${momoNumber}`
     );
   }
+
 
   if (!FASTUPPAGE_BULKCLIX.apiKey) {
     throw new Error(
       "FASTUPPAGE_BULKCLIX_API_KEY is missing."
     );
   }
+
 
   const payload = {
     amount: Number(
@@ -322,9 +361,10 @@ async function sendFastuppagePayment({
 
     phone_number: momoNumber,
 
-    network,
+    network: bulkNetwork,
 
-    transaction_id: transactionId,
+    transaction_id:
+      transactionId,
 
     callback_url:
       "https://sandipay.co/api/moolre/fastuppage-bulkclix-webhook",
@@ -333,38 +373,50 @@ async function sendFastuppagePayment({
       `FASTUPPAGE GHS ${Number(amount).toFixed(2)}`,
   };
 
+
   console.log(
-    "📤 FASTUPPAGE → BULKCLIX:",
+    "📤 FASTUPPAGE NALO → BULKCLIX:",
     {
       ...payload,
       apiKey: "[HIDDEN]",
     }
   );
 
-  const response = await axios.post(
-    FASTUPPAGE_BULKCLIX.url,
-    payload,
-    {
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "x-api-key":
-          FASTUPPAGE_BULKCLIX.apiKey,
-      },
 
-      timeout: 30000,
+  const response =
+    await axios.post(
+      FASTUPPAGE_BULKCLIX.url,
+      payload,
+      {
+        headers: {
+          Accept:
+            "application/json",
 
-      validateStatus: () => true,
-    }
-  );
+          "Content-Type":
+            "application/json",
+
+          "x-api-key":
+            FASTUPPAGE_BULKCLIX.apiKey,
+        },
+
+        timeout: 30000,
+
+        validateStatus: () => true,
+      }
+    );
+
 
   console.log(
     "📥 FASTUPPAGE BULKCLIX RESPONSE:",
     {
-      httpStatus: response.status,
-      data: response.data,
+      httpStatus:
+        response.status,
+
+      data:
+        response.data,
     }
   );
+
 
   if (
     response.status < 200 ||
@@ -376,6 +428,7 @@ async function sendFastuppagePayment({
       )}`
     );
   }
+
 
   return response.data;
 }
@@ -1385,231 +1438,6 @@ router.post("/uzo", (req, res) => {
 const uzoCode = parts[1] || baseParts[1];
 
 
-// ======================================================
-// FASTUPPAGE *920*142#
-// COMPLETELY SEPARATE FROM EXISTING UZO VENDOR/ADMIN FLOW
-// ======================================================
-
-
-// ------------------------------------------------------
-// CONTINUE EXISTING FASTUPPAGE SESSION
-// ------------------------------------------------------
-if (
-  sessions[uzoSessionKey] &&
-  sessions[uzoSessionKey].isFastuppage142 === true
-) {
-  const fastState =
-    sessions[uzoSessionKey];
-
-  console.log(
-    "🟪 CONTINUE FASTUPPAGE SESSION:",
-    {
-      uzoSessionKey,
-      step: fastState.step,
-      fullUssd,
-      msisdn,
-    }
-  );
-
-  // Get the latest value typed by the user.
-  //
-  // UZO may return:
-  // 20
-  //
-  // or:
-  // 920*142*20
-  //
-  // So always take the last part.
-
-  let latestInput = "";
-
-  if (parts.length) {
-    latestInput =
-      String(parts[parts.length - 1]).trim();
-  } else {
-    latestInput =
-      String(fullUssd || "").trim();
-  }
-
-
-  // ====================================================
-  // USER IS ENTERING AMOUNT
-  // ====================================================
-  if (
-    fastState.step ===
-    "fastuppage_amount"
-  ) {
-    const cleanAmount =
-      latestInput.replace(
-        /[^0-9.]/g,
-        ""
-      );
-
-    const amount =
-      Number(cleanAmount);
-
-
-    // Invalid amount
-    if (
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
-      return res.json({
-        message:
-          "Invalid amount.\nEnter amount to purchase:",
-
-        ussdServiceOp: 2,
-      });
-    }
-
-
-    const finalAmount =
-      Number(amount.toFixed(2));
-
-
-    // Create separate transaction reference
-    const transactionId =
-      `FASTUP${Date.now()}${Math.floor(
-        Math.random() * 1000
-      )}`.slice(0, 30);
-
-
-    console.log(
-      "💰 FASTUPPAGE PAYMENT REQUEST:",
-      {
-        transactionId,
-        amount: finalAmount,
-        msisdn,
-      }
-    );
-
-
-    // End USSD screen first
-    res.json({
-      message:
-        `GHS ${finalAmount.toFixed(2)} payment initiated.\n` +
-        "Please wait for the MoMo prompt and enter your PIN to approve.",
-
-      ussdServiceOp: 17,
-    });
-
-
-    // Send payment request to Fastuppage BulkClix account
-    sendFastuppagePayment({
-      amount: finalAmount,
-
-      msisdn:
-        String(msisdn || ""),
-
-      transactionId,
-    })
-      .then((result) => {
-        console.log(
-          "✅ FASTUPPAGE PAYMENT INITIATED:",
-          {
-            transactionId,
-            amount: finalAmount,
-            result,
-          }
-        );
-      })
-
-      .catch((error) => {
-        console.error(
-          "❌ FASTUPPAGE PAYMENT ERROR:",
-          error.response?.data ||
-          error.message ||
-          error
-        );
-      });
-
-
-    // Remove only Fastuppage session.
-    // Does not touch other USSD sessions.
-    delete sessions[uzoSessionKey];
-
-    return;
-  }
-
-
-  delete sessions[uzoSessionKey];
-
-  return res.json({
-    message:
-      "Session ended. Please dial *920*142# again.",
-
-    ussdServiceOp: 17,
-  });
-}
-
-
-// ------------------------------------------------------
-// NEW FASTUPPAGE SESSION
-// *920*142#
-// ------------------------------------------------------
-if (
-  mainCode === "920" &&
-  uzoCode === "142"
-) {
-  console.log(
-    "🟪 NEW FASTUPPAGE *920*142# SESSION:",
-    {
-      uzoSessionKey,
-      msisdn,
-    }
-  );
-
-
-  const customerNumber =
-    toLocalMsisdn(msisdn);
-
-
-  if (
-    !/^0\d{9}$/.test(
-      customerNumber
-    )
-  ) {
-    return res.json({
-      message:
-        "Invalid mobile number.",
-
-      ussdServiceOp: 17,
-    });
-  }
-
-
-  // Create a special session.
-  // Notice that we DO NOT set isPlain
-  // and DO NOT send it to handleSession().
-  sessions[uzoSessionKey] = {
-    step:
-      "fastuppage_amount",
-
-    isFastuppage142: true,
-
-    ussdProvider: "uzo",
-
-    brandName: "Fastuppage",
-
-    mainCode: "920",
-
-    uzoCode: "142",
-
-    customerNumber,
-  };
-
-
-  return res.json({
-    message:
-      "Welcome to Fastuppage\n\n" +
-      "Enter amount to purchase:",
-
-    ussdServiceOp: 2,
-  });
-}
-
-
-
 // Existing session first
 if (sessions[uzoSessionKey]) {
 
@@ -1804,6 +1632,596 @@ if (mainCode !== "426" || !uzoCode) {
 });
 /////////////////////////////////////////////////////////////////////////////////////////
 
+
+//////////////////////////Me
+
+// ============================================================================
+// NALO FASTUPPAGE USSD
+//
+// USSD CODE:
+// *920*142#
+//
+// CALLBACK:
+// https://sandipay.co/api/moolre/fastuppage
+//
+// METHOD:
+// POST
+//
+// NALO FIELDS:
+// network
+// mode
+// msisdn
+// sessionid
+// userdata
+// username
+// trafficid
+// other
+// ============================================================================
+
+router.post("/fastuppage", async (req, res) => {
+  try {
+
+    console.log(
+      "📲 NALO FASTUPPAGE REQUEST:",
+      req.body
+    );
+
+
+    // ==================================================
+    // PARSE NALO REQUEST
+    //
+    // Supports:
+    // JSON
+    // text JSON
+    // x-www-form-urlencoded style text
+    // ==================================================
+
+    let data = req.body || {};
+
+
+    if (typeof data === "string") {
+
+      const raw =
+        String(data || "").trim();
+
+
+      // First try JSON
+      try {
+        data =
+          JSON.parse(raw);
+      }
+
+      catch (jsonError) {
+
+        // Try URL encoded data
+        try {
+
+          const params =
+            new URLSearchParams(raw);
+
+          data =
+            Object.fromEntries(
+              params.entries()
+            );
+
+        }
+
+        catch (formError) {
+
+          console.error(
+            "❌ Could not parse NALO body:",
+            raw
+          );
+
+          data = {};
+        }
+      }
+    }
+
+
+    // ==================================================
+    // READ NALO FIELDS
+    // ==================================================
+
+    const network =
+      String(
+        data.network ||
+        data.NETWORK ||
+        ""
+      ).trim();
+
+
+    const mode =
+      String(
+        data.mode ||
+        data.MODE ||
+        ""
+      )
+        .trim()
+        .toUpperCase();
+
+
+    const msisdn =
+      String(
+        data.msisdn ||
+        data.MSISDN ||
+        ""
+      ).trim();
+
+
+    const sessionid =
+      String(
+        data.sessionid ||
+        data.sessionId ||
+        data.SESSIONID ||
+        ""
+      ).trim();
+
+
+    const userdata =
+      String(
+        data.userdata ||
+        data.USERDATA ||
+        ""
+      ).trim();
+
+
+    const username =
+      String(
+        data.username ||
+        data.USERNAME ||
+        data.userid ||
+        data.USERID ||
+        ""
+      ).trim();
+
+
+    const trafficid =
+      String(
+        data.trafficid ||
+        data.TRAFFICID ||
+        ""
+      ).trim();
+
+
+    const other =
+      String(
+        data.other ||
+        data.OTHER ||
+        ""
+      ).trim();
+
+
+    console.log(
+      "✅ NALO FASTUPPAGE PARSED:",
+      {
+        network,
+        mode,
+        msisdn,
+        sessionid,
+        userdata,
+        username,
+        trafficid,
+        other,
+      }
+    );
+
+
+    // ==================================================
+    // NALO RESPONSE HELPER
+    //
+    // MSGTYPE:
+    // true  = continue
+    // false = end
+    // ==================================================
+
+    const sendNaloResponse = (
+      message,
+      shouldContinue
+    ) => {
+
+      console.log(
+        "📤 NALO FASTUPPAGE RESPONSE:",
+        {
+          USERID: username,
+          MSISDN: msisdn,
+          USERDATA: userdata,
+          MSG: message,
+          MSGTYPE: shouldContinue,
+        }
+      );
+
+
+      return res.status(200).json({
+        USERID:
+          username,
+
+        MSISDN:
+          msisdn,
+
+        USERDATA:
+          userdata,
+
+        MSG:
+          String(message || ""),
+
+        MSGTYPE:
+          Boolean(shouldContinue),
+      });
+    };
+
+
+    // ==================================================
+    // BASIC VALIDATION
+    // ==================================================
+
+    if (
+      !sessionid ||
+      !msisdn
+    ) {
+
+      console.error(
+        "❌ Missing NALO sessionid or msisdn"
+      );
+
+
+      return sendNaloResponse(
+        "Invalid USSD request.",
+        false
+      );
+    }
+
+
+    const naloSessionKey =
+      `NALO_FASTUP_${sessionid}`;
+
+
+    // ==================================================
+    // DETERMINE NEW SESSION
+    // ==================================================
+
+    const existingState =
+      sessions[naloSessionKey];
+
+
+    const isStart =
+      mode === "START" ||
+      !existingState;
+
+
+    // ==================================================
+    // NEW *920*142# SESSION
+    // ==================================================
+
+    if (isStart) {
+
+      const customerNumber =
+        toLocalMsisdn(msisdn);
+
+
+      if (
+        !/^0\d{9}$/.test(
+          customerNumber
+        )
+      ) {
+
+        console.error(
+          "❌ Invalid NALO Fastuppage MSISDN:",
+          {
+            received:
+              msisdn,
+
+            converted:
+              customerNumber,
+          }
+        );
+
+
+        return sendNaloResponse(
+          "Invalid mobile number.",
+          false
+        );
+      }
+
+
+      sessions[naloSessionKey] = {
+
+        step:
+          "fastuppage_amount",
+
+        isNaloFastuppage:
+          true,
+
+        customerNumber,
+
+        network,
+
+        msisdn,
+
+        createdAt:
+          Date.now(),
+      };
+
+
+      console.log(
+        "🟪 CREATED NALO FASTUPPAGE SESSION:",
+        sessions[naloSessionKey]
+      );
+
+
+      return sendNaloResponse(
+        "Welcome to Fastuppage\n\nEnter amount to purchase:",
+        true
+      );
+    }
+
+
+    // ==================================================
+    // GET EXISTING FASTUPPAGE SESSION
+    // ==================================================
+
+    const state =
+      sessions[naloSessionKey];
+
+
+    if (
+      !state ||
+      state.isNaloFastuppage !== true
+    ) {
+
+      return sendNaloResponse(
+        "Session expired. Please dial again.",
+        false
+      );
+    }
+
+
+    // ==================================================
+    // GET LATEST USER INPUT
+    //
+    // NALO may send:
+    //
+    // 20
+    //
+    // OR accumulated values such as:
+    //
+    // something*20
+    //
+    // We only need the final entered value.
+    // ==================================================
+
+    let latestInput =
+      String(
+        userdata || ""
+      ).trim();
+
+
+    if (
+      latestInput.includes("*")
+    ) {
+
+      const inputParts =
+        latestInput
+          .split("*")
+          .map(
+            (value) =>
+              value.trim()
+          )
+          .filter(Boolean);
+
+
+      latestInput =
+        inputParts.length
+          ? inputParts[
+              inputParts.length - 1
+            ]
+          : "";
+    }
+
+
+    console.log(
+      "➡️ NALO FASTUPPAGE INPUT:",
+      {
+        session:
+          naloSessionKey,
+
+        step:
+          state.step,
+
+        userdata,
+
+        latestInput,
+      }
+    );
+
+
+    // ==================================================
+    // AMOUNT STEP
+    // ==================================================
+
+    if (
+      state.step ===
+      "fastuppage_amount"
+    ) {
+
+      const cleanAmount =
+        latestInput.replace(
+          /[^0-9.]/g,
+          ""
+        );
+
+
+      const amount =
+        Number(cleanAmount);
+
+
+      // ----------------------------------------------
+      // INVALID AMOUNT
+      // ----------------------------------------------
+
+      if (
+        !Number.isFinite(amount) ||
+        amount <= 0
+      ) {
+
+        return sendNaloResponse(
+          "Invalid amount.\n\nEnter amount to purchase:",
+          true
+        );
+      }
+
+
+      const finalAmount =
+        Number(
+          amount.toFixed(2)
+        );
+
+
+      // ----------------------------------------------
+      // CREATE UNIQUE BULKCLIX TRANSACTION ID
+      // ----------------------------------------------
+
+      const transactionId =
+        `FASTUP${Date.now()}${Math.floor(
+          Math.random() * 1000
+        )}`.slice(
+          0,
+          30
+        );
+
+
+      console.log(
+        "💰 NALO FASTUPPAGE PAYMENT:",
+        {
+          transactionId,
+          amount:
+            finalAmount,
+
+          msisdn,
+
+          network:
+            state.network ||
+            network,
+        }
+      );
+
+
+      // Remove session because USSD ends here.
+      delete sessions[
+        naloSessionKey
+      ];
+
+
+      // ==================================================
+      // SEND NALO RESPONSE FIRST
+      // ==================================================
+
+      sendNaloResponse(
+        `GHS ${finalAmount.toFixed(2)} payment initiated.\nPlease wait for the MoMo prompt and enter your PIN to approve.`,
+        false
+      );
+
+
+      // ==================================================
+      // THEN TRIGGER BULKCLIX PAYMENT
+      // ==================================================
+
+      sendFastuppagePayment({
+
+        amount:
+          finalAmount,
+
+        msisdn,
+
+        transactionId,
+
+        network:
+          state.network ||
+          network,
+
+      })
+
+        .then((result) => {
+
+          console.log(
+            "✅ NALO FASTUPPAGE BULKCLIX INIT SUCCESS:",
+            {
+              transactionId,
+
+              amount:
+                finalAmount,
+
+              msisdn,
+
+              result,
+            }
+          );
+
+        })
+
+        .catch((error) => {
+
+          console.error(
+            "❌ NALO FASTUPPAGE BULKCLIX INIT FAILED:",
+            {
+              transactionId,
+
+              amount:
+                finalAmount,
+
+              msisdn,
+
+              error:
+                error.response?.data ||
+                error.message ||
+                error,
+            }
+          );
+
+        });
+
+
+      return;
+    }
+
+
+    // ==================================================
+    // UNKNOWN STEP
+    // ==================================================
+
+    delete sessions[
+      naloSessionKey
+    ];
+
+
+    return sendNaloResponse(
+      "Session ended. Please dial again.",
+      false
+    );
+
+  }
+
+  catch (error) {
+
+    console.error(
+      "❌ NALO FASTUPPAGE ROUTE ERROR:",
+      error
+    );
+
+
+    return res.status(200).json({
+      USERID: "",
+      MSISDN: "",
+      USERDATA: "",
+      MSG:
+        "Service temporarily unavailable. Please try again.",
+      MSGTYPE: false,
+    });
+  }
+});
+
+
+/////////////////////////////////////////////////////////////////////////////////////////me
 
 
 async function saveVendorCustomer(vendorId, msisdn, source = "moolre") {
