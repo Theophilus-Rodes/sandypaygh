@@ -177,7 +177,8 @@ function renderPackages(state) {
 
   if (!total) return "No packages.";
 
-  const lines = [`Packages (${(state.network || "").toUpperCase()})`];
+  // const lines = [`Packages (${(state.network || "").toUpperCase()})`];
+  const lines = [`Packages (Bundles)`];
 
   // Items in this page
   for (let i = start; i < end; i++) {
