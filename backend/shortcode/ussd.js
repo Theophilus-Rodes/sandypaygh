@@ -753,7 +753,7 @@ function handleSession(sessionId, input, msisdn, res) {
           state.selectedPkg = list[idx];
           state.step = "recipient";
           return reply(
-            "Recipient\n1) Buy for self\n2) Buy for others\n0) Back"
+            "Recipient\n1) Purchase for self\n2) Purchase for others\n0) Back"
           );
         }
 
@@ -781,7 +781,7 @@ function handleSession(sessionId, input, msisdn, res) {
           return reply(renderPackages(state));
         }
         return reply(
-          "Invalid option. Choose:\n1) Buy for self\n2) Buy for others\n0) Back"
+          "Invalid option. Choose:\n1) Purchase for self\n2) Purchase for others\n0) Back"
         );
       }
 
