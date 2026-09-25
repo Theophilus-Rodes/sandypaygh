@@ -567,7 +567,7 @@ function handleSession(sessionId, input, msisdn, res) {
         state.step = "menu";
         const brand = state.brandName || "SandyPay";
         return reply(
-          `${brand}.\n0. Cancel\n\n1. Buy Data\n2. Contact Us`
+          `${brand}.\n0. Cancel\n\n1. Buy Bundle\n2. Contact Us`
         );
       }
 
@@ -607,7 +607,7 @@ function handleSession(sessionId, input, msisdn, res) {
 
         if (choice === "0") {
           state.step = "start";
-          return reply("Cancelled.\n1. Buy Data\n2. Contact Us");
+          return reply("Cancelled.\n1. Buy Bundle\n2. Contact Us");
         }
 
         return reply("Invalid option. Choose:\n1) Buy Data\n2) Contact Us");
@@ -622,7 +622,7 @@ function handleSession(sessionId, input, msisdn, res) {
         else if (choice === "3") state.network = "telecel";
         else if (choice === "0") {
           state.step = "menu";
-          return reply("Back to menu:\n1. Buy Data\n2. Contact Us");
+          return reply("Back to menu:\n1. Buy Bundle\n2. Contact Us");
         } else {
           return reply(
             "Invalid network. Choose:\n1) MTN\n2) AirtelTigo\n3) Telecel"
@@ -886,7 +886,7 @@ axios
       // ================== DEFAULT ==================
       default: {
         state.step = "start";
-        return reply("Restarting...\n1. Buy Data\n2. Contact Us");
+        return reply("Restarting...\n1. Buy Bundle\n2. Contact Us");
       }
     }
   } catch (err) {
