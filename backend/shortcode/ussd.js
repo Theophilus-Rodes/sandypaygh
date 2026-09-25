@@ -198,7 +198,7 @@ function confirmMessage(state) {
   const [packageName, price] = String(state.selectedPkg || "").split(" @ ");
   return `Confirm Purchase
 Recipient: ${state.recipient}
-Network: ${(state.network || "").toUpperCase()}
+Network: Selected
 Package: ${packageName || ""}
 Price: ${price || ""}
 
