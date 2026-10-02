@@ -7403,31 +7403,67 @@ app.get("/api/admin/packages", (req, res) => {
 app.post("/api/get-all-packages", (req, res) => {
   const { vendor_id, network } = req.body;
 
-  const sql = `
+  const query = `
     SELECT
-      dp.id,
-      dp.data_package,
-      dp.amount,              -- SELLING PRICE (what you edit)
-      dp.status,
-      adp.amount AS cost_price -- COST PRICE from admin_data_packages
-    FROM data_packages dp
-    LEFT JOIN admin_data_packages adp
-      ON adp.network = dp.network
-     AND adp.data_package = dp.data_package
-    WHERE dp.vendor_id = ?
-      AND dp.network = ?
-    ORDER BY dp.id ASC
+      adp.id                AS admin_id,
+      adp.network,
+      adp.data_package,
+      adp.amount            AS cost_price,
+
+      dp.id                 AS vendor_id,
+      dp.amount             AS selling_price,
+      dp.status             AS status
+
+    FROM admin_data_packages adp
+
+    LEFT JOIN data_packages dp
+      ON dp.vendor_id = ?
+
+      AND LOWER(TRIM(dp.network)) =
+          LOWER(TRIM(adp.network))
+
+      AND REPLACE(
+            REPLACE(
+              LOWER(TRIM(dp.data_package)),
+              'gb',
+              ''
+            ),
+            ' ',
+            ''
+          )
+          =
+          REPLACE(
+            REPLACE(
+              LOWER(TRIM(adp.data_package)),
+              'gb',
+              ''
+            ),
+            ' ',
+            ''
+          )
+
+    WHERE LOWER(TRIM(adp.network)) =
+          LOWER(TRIM(?))
+
+    ORDER BY adp.id ASC
   `;
 
-  db.query(sql, [vendor_id, network], (err, rows) => {
+  db.query(query, [vendor_id, network], (err, results) => {
+
     if (err) {
-      console.error("get-all-packages error:", err);
-      return res.status(500).json({ error: "db error" });
+      console.error(
+        "Error fetching all packages:",
+        err
+      );
+
+      return res
+        .status(500)
+        .send("Failed to fetch packages.");
     }
-    res.json(rows);
+
+    res.json(results);
   });
 });
-
 
 app.post("/api/update-package-amount", (req, res) => {
   const { id, amount } = req.body;
