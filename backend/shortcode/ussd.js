@@ -2332,6 +2332,17 @@ router.post("/bulkclix-webhook", async (req, res) => {
     const momo_number = meta.momo_number || body.phone_number;
     const amountPaid = Number(meta.amount);
 
+    console.log("🔎 WALLET DEBUG - TEMP ORDER FOUND:", {
+  transactionId,
+  mode,
+  vendor_id,
+  data_package,
+  network,
+  recipient_number,
+  momo_number,
+  amountPaid
+});
+
     const package_id =
       body.ext_transaction_id || new Date().toISOString().slice(0, 16).replace("T", " ");
 
@@ -2358,14 +2369,42 @@ router.post("/bulkclix-webhook", async (req, res) => {
     }
 
     const [baseRows] = await dbp.query(
-      `SELECT amount FROM admin_data_packages WHERE data_package = ? LIMIT 1`,
-      [data_package]
-    );
+  `SELECT amount
+   FROM admin_data_packages
+   WHERE LOWER(TRIM(network)) = LOWER(TRIM(?))
+     AND REPLACE(
+           REPLACE(LOWER(TRIM(data_package)), 'gb', ''),
+           ' ',
+           ''
+         )
+         =
+         REPLACE(
+           REPLACE(LOWER(TRIM(?)), 'gb', ''),
+           ' ',
+           ''
+         )
+   LIMIT 1`,
+  [network, data_package]
+);
 
     if (!baseRows || !baseRows.length) {
-      console.error("❌ admin_data_packages lookup failed:", data_package);
-      return res.status(500).send("Package lookup error");
-    }
+  console.error("❌ ADMIN PACKAGE PRICE NOT FOUND:", {
+    vendor_id,
+    network,
+    data_package,
+    amountPaid
+  });
+
+  return res.status(500).send("Package lookup error");
+}
+
+console.log("✅ ADMIN PACKAGE PRICE FOUND:", {
+  vendor_id,
+  network,
+  data_package,
+  adminPrice: baseRows[0].amount,
+  customerPaid: amountPaid
+});
 
     const baseAmount = parseFloat(baseRows[0].amount);
     let revenueAmount = baseAmount;
@@ -2384,6 +2423,11 @@ router.post("/bulkclix-webhook", async (req, res) => {
 
     const targetTable =
       destination === "vendor_orders" ? "vendor_orders" : "admin_orders";
+      console.log("🔎 VENDOR ORDER DESTINATION:", {
+  vendor_id,
+  destination,
+  targetTable
+});
 
     if (targetTable === "vendor_orders") {
       revenueAmount = parseFloat((amountPaid * 0.01).toFixed(2));
@@ -2402,6 +2446,16 @@ router.post("/bulkclix-webhook", async (req, res) => {
        VALUES (?, ?, ?, NOW())`,
       [vendor_id, momo_number, vendorAmount]
     );
+
+    console.log("💰 VENDOR WALLET CREDIT SUCCESS:", {
+  vendor_id,
+  momo_number,
+  amountPaid,
+  vendorAmount,
+  revenueAmount,
+  targetTable,
+  transactionId
+});
 
     await dbp.query(
       `INSERT INTO total_revenue (vendor_id, source, amount, date_received)
