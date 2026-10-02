@@ -7416,31 +7416,24 @@ app.post("/api/get-all-packages", (req, res) => {
 
     FROM admin_data_packages adp
 
-    LEFT JOIN data_packages dp
-      ON dp.vendor_id = ?
-
-      AND LOWER(TRIM(dp.network)) =
-          LOWER(TRIM(adp.network))
-
-      AND REPLACE(
-            REPLACE(
-              LOWER(TRIM(dp.data_package)),
-              'gb',
-              ''
-            ),
-            ' ',
-            ''
-          )
-          =
-          REPLACE(
-            REPLACE(
-              LOWER(TRIM(adp.data_package)),
-              'gb',
-              ''
-            ),
-            ' ',
-            ''
-          )
+   LEFT JOIN data_packages dp
+  ON dp.vendor_id = ?
+  AND UPPER(TRIM(dp.network)) = UPPER(TRIM(adp.network))
+  AND CAST(
+        REPLACE(
+          UPPER(TRIM(dp.data_package)),
+          'GB',
+          ''
+        ) AS DECIMAL(10,2)
+      )
+      =
+      CAST(
+        REPLACE(
+          UPPER(TRIM(adp.data_package)),
+          'GB',
+          ''
+        ) AS DECIMAL(10,2)
+      )
 
     WHERE LOWER(TRIM(adp.network)) =
           LOWER(TRIM(?))
