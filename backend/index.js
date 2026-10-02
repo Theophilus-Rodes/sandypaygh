@@ -1410,30 +1410,12 @@ async function reconcilePaymentNow({ client_ref = "", transaction_id = "", sourc
           };
         }
 
-        const [exists] = await conn.query(
-          `SELECT 1
-           FROM admin_orders
-           WHERE updated_reference=?
-           LIMIT 1`,
-          [transaction_id]
-        );
-
-        if (!exists.length) {
-          await conn.query(
-            `INSERT INTO admin_orders
-            (vendor_id, recipient_number, data_package, amount, network, status, sent_at, package_id, updated_reference)
-            VALUES (?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
-            [
-              locked.vendor_id,
-              locked.recipient_number,
-              locked.package_name,
-              Number(locked.amount),
-              String(locked.network || "").toLowerCase(),
-              locked.package_batch_id,
-              transaction_id
-            ]
-          );
-        }
+      // Save order + credit vendor wallet + record admin revenue
+await finalizeBulkClixVendorPurchase(
+  conn,
+  locked,
+  transaction_id
+);
 
         await conn.query(
           `UPDATE payment_sessions
@@ -2056,18 +2038,285 @@ app.post("/api/buy-data-bulkclix", async (req, res) => {
 });
 
 
+
+// =====================================================
+// FINALIZE BULKCLIX VENDOR PURCHASE
+// Credits vendor wallet + saves order + admin revenue
+// SAFE AGAINST DOUBLE CREDIT
+// =====================================================
+async function finalizeBulkClixVendorPurchase(conn, locked, transactionId) {
+
+  const vendorId = Number(locked.vendor_id);
+  const amountPaid = Number(locked.amount);
+
+  const network = String(
+    locked.network || ""
+  ).toLowerCase();
+
+  const dataPackage = locked.package_name;
+
+  const recipientNumber =
+    locked.recipient_number;
+
+  const momoNumber =
+    locked.momo_number || "BulkClix";
+
+  const packageId =
+    locked.package_batch_id;
+
+  // ---------------------------------------------
+  // 1. Find vendor order destination
+  // ---------------------------------------------
+  const [destRows] = await conn.query(
+    `SELECT order_destination
+     FROM vendor_order_settings
+     WHERE vendor_id = ?
+     LIMIT 1`,
+    [vendorId]
+  );
+
+  const destination =
+    destRows && destRows.length
+      ? destRows[0].order_destination
+      : "admin_orders";
+
+  const targetTable =
+    destination === "vendor_orders"
+      ? "vendor_orders"
+      : "admin_orders";
+
+
+  // ---------------------------------------------
+  // 2. Calculate vendor/admin share
+  // ---------------------------------------------
+  let vendorAmount = 0;
+  let revenueAmount = 0;
+
+  if (targetTable === "vendor_orders") {
+
+    // Vendor handles own order:
+    // Admin = 1%
+    // Vendor = 99%
+
+    revenueAmount = parseFloat(
+      (amountPaid * 0.01).toFixed(2)
+    );
+
+    vendorAmount = parseFloat(
+      (amountPaid - revenueAmount).toFixed(2)
+    );
+
+  } else {
+
+    // Admin handles order:
+    // Admin gets base package price
+    // Vendor gets markup/profit
+
+    const [baseRows] = await conn.query(
+      `SELECT amount
+       FROM admin_data_packages
+       WHERE data_package = ?
+       LIMIT 1`,
+      [dataPackage]
+    );
+
+    if (!baseRows || !baseRows.length) {
+      throw new Error(
+        `Admin package price not found for ${dataPackage}`
+      );
+    }
+
+    const baseAmount =
+      Number(baseRows[0].amount);
+
+    revenueAmount =
+      parseFloat(baseAmount.toFixed(2));
+
+    vendorAmount =
+      parseFloat(
+        (amountPaid - baseAmount).toFixed(2)
+      );
+
+    // Safety
+    if (vendorAmount < 0) {
+      vendorAmount = 0;
+    }
+  }
+
+
+  // ---------------------------------------------
+  // 3. Save order
+  // ---------------------------------------------
+  // payment_sessions.finalized is the main
+  // duplicate protection. For admin_orders we can
+  // additionally use updated_reference.
+  // ---------------------------------------------
+
+  if (targetTable === "admin_orders") {
+
+    const [existingOrder] =
+      await conn.query(
+        `SELECT 1
+         FROM admin_orders
+         WHERE updated_reference = ?
+         LIMIT 1`,
+        [transactionId]
+      );
+
+    if (!existingOrder.length) {
+
+      await conn.query(
+        `INSERT INTO admin_orders
+        (
+          vendor_id,
+          recipient_number,
+          data_package,
+          amount,
+          network,
+          status,
+          sent_at,
+          package_id,
+          updated_reference
+        )
+        VALUES
+        (
+          ?, ?, ?, ?, ?,
+          'pending',
+          NOW(),
+          ?, ?
+        )`,
+        [
+          vendorId,
+          recipientNumber,
+          dataPackage,
+          amountPaid,
+          network,
+          packageId,
+          transactionId
+        ]
+      );
+    }
+
+  } else {
+
+    await conn.query(
+      `INSERT INTO vendor_orders
+      (
+        vendor_id,
+        recipient_number,
+        data_package,
+        amount,
+        network,
+        status,
+        sent_at,
+        package_id
+      )
+      VALUES
+      (
+        ?, ?, ?, ?, ?,
+        'pending',
+        NOW(),
+        ?
+      )`,
+      [
+        vendorId,
+        recipientNumber,
+        dataPackage,
+        amountPaid,
+        network,
+        packageId
+      ]
+    );
+  }
+
+
+  // ---------------------------------------------
+  // 4. CREDIT VENDOR WALLET
+  // THIS IS THE PART THAT WAS MISSING
+  // ---------------------------------------------
+  if (vendorAmount > 0) {
+
+    await conn.query(
+      `INSERT INTO wallet_loads
+      (
+        vendor_id,
+        momo,
+        amount,
+        date_loaded
+      )
+      VALUES (?, ?, ?, NOW())`,
+      [
+        vendorId,
+        momoNumber,
+        vendorAmount
+      ]
+    );
+  }
+
+
+  // ---------------------------------------------
+  // 5. Record admin revenue
+  // ---------------------------------------------
+  if (revenueAmount > 0) {
+
+    const revenueSource =
+      targetTable === "vendor_orders"
+        ? `1% commission - ${network} ${dataPackage}`
+        : `Admin base for ${network} ${dataPackage}`;
+
+    await conn.query(
+      `INSERT INTO total_revenue
+      (
+        vendor_id,
+        source,
+        amount,
+        date_received
+      )
+      VALUES (?, ?, ?, NOW())`,
+      [
+        vendorId,
+        revenueSource,
+        revenueAmount
+      ]
+    );
+  }
+
+
+  console.log("💰 BULKCLIX SPLIT:", {
+    transactionId,
+    vendorId,
+    amountPaid,
+    destination: targetTable,
+    vendorAmount,
+    adminAmount: revenueAmount
+  });
+
+  return {
+    targetTable,
+    vendorAmount,
+    revenueAmount
+  };
+}
+
+// =====================================================
+// POST /api/bulkclix-payment-callback
+// =====================================================
 // =====================================================
 // POST /api/bulkclix-payment-callback
 // =====================================================
 app.post(
   "/api/bulkclix-payment-callback",
   async (req, res) => {
+
     console.log(
       "📩 BULKCLIX PAYMENT CALLBACK:",
       req.body
     );
 
+    let conn;
+
     try {
+
       const body =
         typeof req.body === "string"
           ? JSON.parse(req.body)
@@ -2090,27 +2339,13 @@ app.post(
         .trim()
         .toLowerCase();
 
+
       if (!transactionId) {
         return res
           .status(400)
           .send("Missing transaction_id");
       }
 
-      const session =
-        await getPaymentSessionByTransactionId(
-          transactionId
-        );
-
-      if (!session) {
-        console.error(
-          "BulkClix session not found:",
-          transactionId
-        );
-
-        return res
-          .status(200)
-          .send("Session not found");
-      }
 
       const successful =
         status === "success" ||
@@ -2119,7 +2354,12 @@ app.post(
         status === "completed" ||
         status === "paid";
 
+
+      // ---------------------------------------------
+      // Payment not successful yet
+      // ---------------------------------------------
       if (!successful) {
+
         console.log(
           "BulkClix callback not yet successful:",
           {
@@ -2142,59 +2382,75 @@ app.post(
         return res.status(200).send("OK");
       }
 
-      // Prevent duplicate orders
-      const [existingOrder] =
-        await db.promise().query(
-          `SELECT 1
-           FROM admin_orders
-           WHERE updated_reference=?
-           LIMIT 1`,
-          [transactionId]
-        );
 
-      if (!existingOrder.length) {
-        await db.promise().query(
-          `INSERT INTO admin_orders
-          (
-            vendor_id,
-            recipient_number,
-            data_package,
-            amount,
-            network,
-            status,
-            sent_at,
-            package_id,
-            updated_reference
-          )
-          VALUES
-          (
-            ?, ?, ?, ?, ?,
-            'pending',
-            NOW(),
-            ?, ?
-          )`,
-          [
-            session.vendor_id,
-            session.recipient_number,
-            session.package_name,
-            Number(session.amount),
+      // ---------------------------------------------
+      // Successful payment
+      // ---------------------------------------------
+      conn = await db.getConnection();
 
-            String(
-              session.network || ""
-            ).toLowerCase(),
+      await conn.beginTransaction();
 
-            session.package_batch_id,
-            transactionId
-          ]
-        );
 
-        console.log(
-          "✅ BulkClix admin order inserted:",
-          transactionId
-        );
+      // Lock payment row
+      const [rows] = await conn.query(
+        `SELECT *
+         FROM payment_sessions
+         WHERE transaction_id=?
+         LIMIT 1
+         FOR UPDATE`,
+        [transactionId]
+      );
+
+
+      if (!rows.length) {
+
+        await conn.rollback();
+
+        return res
+          .status(200)
+          .send("Session not found");
       }
 
-      await db.promise().query(
+
+      const locked = rows[0];
+
+
+      // ---------------------------------------------
+      // VERY IMPORTANT:
+      // Prevent double wallet credit
+      // ---------------------------------------------
+      if (
+        Number(locked.finalized) === 1 ||
+        String(
+          locked.payment_status || ""
+        ).toLowerCase() === "approved"
+      ) {
+
+        await conn.commit();
+
+        console.log(
+          "ℹ️ BulkClix payment already finalized:",
+          transactionId
+        );
+
+        return res.status(200).send("OK");
+      }
+
+
+      // ---------------------------------------------
+      // Save order + credit wallet + admin revenue
+      // ---------------------------------------------
+      await finalizeBulkClixVendorPurchase(
+        conn,
+        locked,
+        transactionId
+      );
+
+
+      // ---------------------------------------------
+      // Mark payment finalized
+      // ---------------------------------------------
+      await conn.query(
         `UPDATE payment_sessions
          SET payment_status='approved',
              finalized=1,
@@ -2207,13 +2463,27 @@ app.post(
         ]
       );
 
+
+      await conn.commit();
+
+
       console.log(
-        "✅ BulkClix payment finalized:",
+        "✅ BulkClix payment finalized + vendor credited:",
         transactionId
       );
 
+
       return res.status(200).send("OK");
+
+
     } catch (err) {
+
+      if (conn) {
+        try {
+          await conn.rollback();
+        } catch (_) {}
+      }
+
       console.error(
         "❌ BulkClix callback error:",
         err
@@ -2222,6 +2492,12 @@ app.post(
       return res
         .status(500)
         .send("Server error");
+
+    } finally {
+
+      if (conn) {
+        conn.release();
+      }
     }
   }
 );
