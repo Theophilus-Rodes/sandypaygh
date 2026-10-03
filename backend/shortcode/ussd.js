@@ -565,21 +565,41 @@ function handleSession(sessionId, input, msisdn, res) {
     switch (state.step) {
       // ================== START ==================
       case "start": {
-        state.step = "menu";
-        const brand = state.brandName || "SandyPay";
-        return reply(
-          `${brand}.\n0. Cancel\n\n1. Buy Bundle\n2. Contact Us`
-        );
-      }
+  state.step = "menu";
+  const brand = state.brandName || "SandyPay";
+
+  // ADMIN SIDE ONLY
+  if (state.isPlain) {
+    return reply(
+      `${brand}.\nData is not instant. Data may take 5 to 15 minutes.\n\n0. Cancel\n\n1. Buy Bundle\n2. Contact Us`
+    );
+  }
+
+  // VENDOR SIDE
+  return reply(
+    `${brand}.\n0. Cancel\n\n1. Buy Bundle\n2. Contact Us`
+  );
+}
 
       // ================== MENU ==================
       case "menu": {
         const choice = (input || "").trim();
 
-        if (choice === "1") {
-          state.step = "network";
-          return reply("Network\n1) Common\n2) AirtelTigo\n3) Telecel\n0) Back");
-        }
+       if (choice === "1") {
+  state.step = "network";
+
+  // ADMIN SIDE ONLY
+  if (state.isPlain) {
+    return reply(
+      "Network\n1) MNT\n2) AirtelTigo\n3) Telecel\n0) Back"
+    );
+  }
+
+  // VENDOR SIDE
+  return reply(
+    "Network\n1) Common\n2) AirtelTigo\n3) Telecel\n0) Back"
+  );
+}
 
         if (choice === "2") {
           if (!state.vendorId || state.isPlain) {
@@ -625,9 +645,15 @@ function handleSession(sessionId, input, msisdn, res) {
           state.step = "menu";
           return reply("Back to menu:\n1. Buy Bundle\n2. Contact Us");
         } else {
-          return reply(
-            "Invalid network. Choose:\n1) Common\n2) AirtelTigo\n3) Telecel"
-          );
+         if (state.isPlain) {
+  return reply(
+    "Invalid network. Choose:\n1) MTN\n2) AirtelTigo\n3) Telecel"
+  );
+}
+
+return reply(
+  "Invalid network. Choose:\n1) Common\n2) AirtelTigo\n3) Telecel"
+);
         }
 
         // PLAIN MODE → AdminData
