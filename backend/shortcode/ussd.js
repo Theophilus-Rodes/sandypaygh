@@ -1475,6 +1475,60 @@ return checkAccess(msisdn, (allowed) => {
 }
 
 
+
+// ======================================================
+// UZO ADMIN ONLY CODE: *426*444#
+// ADMIN ONLY - NEVER USED AS A VENDOR CODE
+// Uses AdminData / admin USSD flow
+// ======================================================
+
+if (mainCode === "426" && uzoCode === "444") {
+
+  sessions[uzoSessionKey] = {
+    step: "start",
+
+    // Admin
+    vendorId: 1,
+
+    brandName: "SandyPay",
+
+    // Makes it use AdminData packages
+    isPlain: true,
+
+    // Makes payment use the admin BulkClix account
+    isUzoAdmin87: true,
+
+    // Identify this specific admin code
+    isUzoAdmin444: true,
+
+    network: "",
+    selectedPkg: "",
+    recipient: "",
+    packageList: [],
+    packagePage: 0,
+
+    moolreSessionId: uzoSessionKey,
+
+    uzoCode: "444",
+  };
+
+  console.log(
+    "🟦 CREATED UZO ADMIN 444 SESSION - *426*444#:",
+    {
+      uzoSessionKey,
+      msisdn,
+    }
+  );
+
+  return handleSession(
+    uzoSessionKey,
+    "",
+    String(msisdn || ""),
+    uzoRes
+  );
+}
+
+
 // ✅ UZO ADMIN CODE: *426*87#
 // Works like admin 888/plain mode
 // ✅ UZO ADMIN CODE: *426*87#
