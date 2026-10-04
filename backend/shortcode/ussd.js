@@ -1503,12 +1503,12 @@ return checkAccess(msisdn, (allowed) => {
 
 
 // ======================================================
-// UZO ADMIN ONLY CODE: *426*444#
+// UZO ADMIN ONLY CODE: *426*888#
 // ADMIN ONLY - NEVER USED AS A VENDOR CODE
 // Uses AdminData / admin USSD flow
 // ======================================================
 
-if (mainCode === "426" && uzoCode === "444") {
+if (mainCode === "426" && uzoCode === "888") {
 
   sessions[uzoSessionKey] = {
     step: "start",
@@ -1525,7 +1525,7 @@ if (mainCode === "426" && uzoCode === "444") {
     isUzoAdmin87: true,
 
     // Identify this specific admin code
-    isUzoAdmin444: true,
+    isUzoAdmin888: true,
 
     network: "",
     selectedPkg: "",
@@ -1535,11 +1535,11 @@ if (mainCode === "426" && uzoCode === "444") {
 
     moolreSessionId: uzoSessionKey,
 
-    uzoCode: "444",
+    uzoCode: "888",
   };
 
   console.log(
-    "🟦 CREATED UZO ADMIN 444 SESSION - *426*444#:",
+    "🟦 CREATED UZO ADMIN 888 SESSION - *426*888#:",
     {
       uzoSessionKey,
       msisdn,
@@ -1553,7 +1553,6 @@ if (mainCode === "426" && uzoCode === "444") {
     uzoRes
   );
 }
-
 
 // ✅ UZO ADMIN CODE: *426*87#
 // Works like admin 888/plain mode
