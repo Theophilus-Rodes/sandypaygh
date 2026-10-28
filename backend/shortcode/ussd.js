@@ -103,11 +103,13 @@ const FASTUPPAGE_BULKCLIX = {
 };
 /////////////////////////////////Me
 
+
 function getBulkClixAccount(state) {
   if (state && state.isUzoAdmin87 === true) return UZO_ADMIN_87_BULKCLIX;
   if (state && state.isPlain === true) return ADMIN_BULKCLIX;
-  return VENDOR_BULKCLIX;
+  return ADMIN_BULKCLIX;
 }
+
 
 function getBulkClixNetwork(network) {
   switch ((network || "").toLowerCase()) {
