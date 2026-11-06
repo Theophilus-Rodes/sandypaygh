@@ -2688,4 +2688,132 @@ router.post(
   }
 );
 
+
+ // ======================================================
+ // TAS FACE NOMINEE - ORCHARD USSD
+ // Provider: appsNmobile Orchard
+ // Separate from Moolre, UZO and NALO
+ // ======================================================
+
+const tasFaceSessions = new Map();
+
+router.post("/orchard-tas", (req, res) => {
+  try {
+    let data = req.body || {};
+
+    if (typeof data === "string") {
+      try {
+        data = JSON.parse(data);
+      } catch {
+        return res.status(400).json({
+          msg_type: "2",
+          ussd_body: "Invalid request."
+        });
+      }
+    }
+
+    const sessionId = String(data.session_id || "").trim();
+    const msisdn = String(data.msisdn || "").trim();
+    const msgType = String(data.msg_type ?? "").trim();
+    const ussdBody = String(data.ussd_body ?? "").trim();
+
+    const reply = (message, continueSession = true) => {
+      return res.status(200).json({
+        session_id: sessionId,
+        msisdn: msisdn,
+        msg_type: continueSession ? "1" : "2",
+        ussd_body: message
+      });
+    };
+
+    if (!sessionId || !msisdn) {
+      return reply("Invalid USSD session.", false);
+    }
+
+    const sessionKey = `ORCHARD_TAS_${sessionId}`;
+
+    // Orchard indicates a new session with msg_type 0
+    if (msgType === "0") {
+      tasFaceSessions.set(sessionKey, {
+        step: "menu",
+        msisdn,
+        createdAt: Date.now()
+      });
+
+      return reply(
+        "Welcome to TAS Face Nominee.\n" +
+        "Vote for your contestant.\n\n" +
+        "1. Proceed to Vote",
+        true
+      );
+    }
+
+    // End notification from provider
+    if (msgType === "2") {
+      tasFaceSessions.delete(sessionKey);
+      return reply("Session ended.", false);
+    }
+
+    const state = tasFaceSessions.get(sessionKey);
+
+    if (!state) {
+      return reply(
+        "Session expired. Please dial again.",
+        false
+      );
+    }
+
+    // SCREEN 1: Select 1 to proceed
+    if (state.step === "menu") {
+      if (ussdBody === "1") {
+        state.step = "contestant_code";
+
+        return reply("Type contestant code:", true);
+      }
+
+      return reply(
+        "Invalid option.\n\n1. Proceed to Vote",
+        true
+      );
+    }
+
+    // SCREEN 2: Receive contestant code and stop
+    if (state.step === "contestant_code") {
+      const contestantCode = ussdBody.trim();
+
+      if (!/^[A-Za-z0-9_-]{1,30}$/.test(contestantCode)) {
+        return reply(
+          "Invalid contestant code.\n" +
+          "Type contestant code:",
+          true
+        );
+      }
+
+      console.log("TAS contestant code received:", {
+        sessionId,
+        contestantCode
+      });
+
+      tasFaceSessions.delete(sessionKey);
+
+      return reply(
+        "Contestant code received. Thank you.",
+        false
+      );
+    }
+
+    tasFaceSessions.delete(sessionKey);
+    return reply("Session ended.", false);
+
+  } catch (error) {
+    console.error("TAS Orchard USSD error:", error);
+
+    return res.status(200).json({
+      msg_type: "2",
+      ussd_body: "Service temporarily unavailable."
+    });
+  }
+});
+
+
 module.exports = router;
