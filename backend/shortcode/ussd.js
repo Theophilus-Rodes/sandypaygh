@@ -2709,7 +2709,10 @@ router.post("/orchard-tas", (req, res) => {
   console.log("🌐 METHOD:", req.method);
   console.log("🔗 URL:", req.originalUrl);
   console.log("📦 CONTENT TYPE:", req.headers["content-type"]);
-  console.log("📥 BODY:", JSON.stringify(req.body));
+console.log("📥 BODY:", JSON.stringify({
+  ...req.body,
+  msisdn: req.body?.msisdn ? "[REDACTED]" : undefined
+}));
   console.log("======================================\n");
 
   try {
@@ -2747,27 +2750,35 @@ router.post("/orchard-tas", (req, res) => {
       service_code: data.service_code
     });
 
-    const reply = (message, continueSession = true) => {
 
-      const response = {
-        session_id: sessionId,
-        msisdn: msisdn,
-        msg_type: continueSession ? "1" : "2",
-        ussd_body: message
-      };
+const reply = (message, continueSession = true) => {
 
-      console.log("📤 ORCHARD RESPONSE:", {
-        session_id: sessionId,
-        msg_type: response.msg_type,
-        ussd_body: response.ussd_body
-      });
+  const response = {
+    session_id: sessionId,
+    msisdn: msisdn,
+    msg_type: continueSession ? "1" : "2",
+    ussd_body: message
+  };
 
-      console.log("======================================");
-      console.log("✅ TAS ORCHARD REQUEST COMPLETED");
-      console.log("======================================\n");
+  console.log("======================================");
+  console.log("📤 TAS ORCHARD RESPONSE");
+  console.log("======================================");
+  console.log("HTTP STATUS: 200");
+  console.log("CONTENT TYPE: application/json");
+  console.log("SESSION ID:", sessionId);
+  console.log("MSG TYPE:", response.msg_type);
+  console.log("USSD MESSAGE:", response.ussd_body);
+  console.log("RESPONSE JSON:", JSON.stringify({
+    ...response,
+    msisdn: "[REDACTED]"
+  }));
+  console.log("======================================");
 
-      return res.status(200).json(response);
-    };
+  return res.status(200)
+    .set("Content-Type", "application/json; charset=utf-8")
+    .json(response);
+};
+
 
     if (!sessionId || !msisdn) {
 
