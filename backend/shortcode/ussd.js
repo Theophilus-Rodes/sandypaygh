@@ -2689,22 +2689,43 @@ router.post(
 );
 
 
+
  // ======================================================
  // TAS FACE NOMINEE - ORCHARD USSD
- // Provider: appsNmobile Orchard
- // Separate from Moolre, UZO and NALO
+ // SHORTCODE: *447*6#
+ // DIAGNOSTIC LOGGING ENABLED
  // ======================================================
 
 const tasFaceSessions = new Map();
 
 router.post("/orchard-tas", (req, res) => {
+
+  const requestTime = new Date().toISOString();
+
+  console.log("\n======================================");
+  console.log("📲 TAS ORCHARD USSD REQUEST RECEIVED");
+  console.log("======================================");
+  console.log("⏰ TIME:", requestTime);
+  console.log("🌐 METHOD:", req.method);
+  console.log("🔗 URL:", req.originalUrl);
+  console.log("📦 CONTENT TYPE:", req.headers["content-type"]);
+  console.log("📥 BODY:", JSON.stringify(req.body));
+  console.log("======================================\n");
+
   try {
+
     let data = req.body || {};
 
     if (typeof data === "string") {
       try {
         data = JSON.parse(data);
-      } catch {
+      } catch (parseError) {
+
+        console.error(
+          "❌ ORCHARD JSON PARSE ERROR:",
+          parseError.message
+        );
+
         return res.status(400).json({
           msg_type: "2",
           ussd_body: "Invalid request."
@@ -2717,28 +2738,61 @@ router.post("/orchard-tas", (req, res) => {
     const msgType = String(data.msg_type ?? "").trim();
     const ussdBody = String(data.ussd_body ?? "").trim();
 
+    console.log("🔍 ORCHARD PARSED REQUEST:", {
+      sessionId,
+      msisdn: msisdn ? "[REDACTED]" : "",
+      msgType,
+      ussdBody,
+      nw_code: data.nw_code,
+      service_code: data.service_code
+    });
+
     const reply = (message, continueSession = true) => {
-      return res.status(200).json({
+
+      const response = {
         session_id: sessionId,
         msisdn: msisdn,
         msg_type: continueSession ? "1" : "2",
         ussd_body: message
+      };
+
+      console.log("📤 ORCHARD RESPONSE:", {
+        session_id: sessionId,
+        msg_type: response.msg_type,
+        ussd_body: response.ussd_body
       });
+
+      console.log("======================================");
+      console.log("✅ TAS ORCHARD REQUEST COMPLETED");
+      console.log("======================================\n");
+
+      return res.status(200).json(response);
     };
 
     if (!sessionId || !msisdn) {
+
+      console.error("❌ Missing session ID or MSISDN");
+
       return reply("Invalid USSD session.", false);
     }
 
     const sessionKey = `ORCHARD_TAS_${sessionId}`;
 
-    // Orchard indicates a new session with msg_type 0
+    // =========================================
+    // NEW SESSION
+    // =========================================
+
     if (msgType === "0") {
+
+      console.log("🟢 ORCHARD NEW SESSION STARTED");
+
       tasFaceSessions.set(sessionKey, {
         step: "menu",
         msisdn,
         createdAt: Date.now()
       });
+
+      console.log("💾 SESSION CREATED:", sessionId);
 
       return reply(
         "Welcome to TAS Face Nominee.\n" +
@@ -2748,28 +2802,56 @@ router.post("/orchard-tas", (req, res) => {
       );
     }
 
-    // End notification from provider
+    // =========================================
+    // END SESSION
+    // =========================================
+
     if (msgType === "2") {
+
+      console.log("🔴 ORCHARD SESSION END RECEIVED");
+
       tasFaceSessions.delete(sessionKey);
+
       return reply("Session ended.", false);
     }
 
     const state = tasFaceSessions.get(sessionKey);
 
     if (!state) {
+
+      console.error(
+        "⚠️ ORCHARD SESSION NOT FOUND:",
+        sessionId
+      );
+
       return reply(
         "Session expired. Please dial again.",
         false
       );
     }
 
-    // SCREEN 1: Select 1 to proceed
+    console.log("📍 CURRENT SESSION STEP:", state.step);
+
+    // =========================================
+    // SCREEN 1 - SELECT 1
+    // =========================================
+
     if (state.step === "menu") {
+
+      console.log("📲 USER SELECTED:", ussdBody);
+
       if (ussdBody === "1") {
+
         state.step = "contestant_code";
+
+        console.log(
+          "➡️ MOVING TO CONTESTANT CODE SCREEN"
+        );
 
         return reply("Type contestant code:", true);
       }
+
+      console.log("⚠️ INVALID MENU OPTION");
 
       return reply(
         "Invalid option.\n\n1. Proceed to Vote",
@@ -2777,11 +2859,23 @@ router.post("/orchard-tas", (req, res) => {
       );
     }
 
-    // SCREEN 2: Receive contestant code and stop
+    // =========================================
+    // SCREEN 2 - CONTESTANT CODE
+    // =========================================
+
     if (state.step === "contestant_code") {
+
       const contestantCode = ussdBody.trim();
 
+      console.log(
+        "🎯 CONTESTANT CODE SUBMITTED:",
+        contestantCode
+      );
+
       if (!/^[A-Za-z0-9_-]{1,30}$/.test(contestantCode)) {
+
+        console.log("❌ INVALID CONTESTANT CODE");
+
         return reply(
           "Invalid contestant code.\n" +
           "Type contestant code:",
@@ -2789,12 +2883,11 @@ router.post("/orchard-tas", (req, res) => {
         );
       }
 
-      console.log("TAS contestant code received:", {
-        sessionId,
-        contestantCode
-      });
+      console.log("✅ VALID CONTESTANT CODE FORMAT");
 
       tasFaceSessions.delete(sessionKey);
+
+      console.log("🗑️ SESSION REMOVED:", sessionId);
 
       return reply(
         "Contestant code received. Thank you.",
@@ -2802,11 +2895,18 @@ router.post("/orchard-tas", (req, res) => {
       );
     }
 
+    console.log("⚠️ UNKNOWN SESSION STEP:", state.step);
+
     tasFaceSessions.delete(sessionKey);
+
     return reply("Session ended.", false);
 
   } catch (error) {
-    console.error("TAS Orchard USSD error:", error);
+
+    console.error("❌ TAS ORCHARD USSD ERROR:", {
+      message: error.message,
+      stack: error.stack
+    });
 
     return res.status(200).json({
       msg_type: "2",
@@ -2814,6 +2914,5 @@ router.post("/orchard-tas", (req, res) => {
     });
   }
 });
-
 
 module.exports = router;
