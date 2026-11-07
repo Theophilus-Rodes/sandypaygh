@@ -2690,50 +2690,37 @@ router.post(
 
 
 
- // ======================================================
- // TAS FACE NOMINEE - ORCHARD USSD
- // SHORTCODE: *447*6#
- // DIAGNOSTIC LOGGING ENABLED
- // ======================================================
+// ======================================================
+// TAS FACE NOMINEE - ORCHARD USSD
+// SHORTCODE: *447*6#
+// ======================================================
 
 const tasFaceSessions = new Map();
+
+console.log("✅ TAS FACE NOMINEE ORCHARD ROUTE LOADED");
+
+// ======================================================
+// ORCHARD USSD ROUTE
+// ======================================================
 
 router.post("/orchard-tas", (req, res) => {
 
   const requestTime = new Date().toISOString();
 
-  console.log("\n======================================");
-  console.log("📲 TAS ORCHARD USSD REQUEST RECEIVED");
-  console.log("======================================");
-  console.log("⏰ TIME:", requestTime);
-  console.log("🌐 METHOD:", req.method);
-  console.log("🔗 URL:", req.originalUrl);
-  console.log("📦 CONTENT TYPE:", req.headers["content-type"]);
-console.log("📥 BODY:", JSON.stringify({
-  ...req.body,
-  msisdn: req.body?.msisdn ? "[REDACTED]" : undefined
-}));
-  console.log("======================================\n");
+  let data = req.body || {};
+
+  console.log("\n==================================");
+  console.log("📲 TAS ORCHARD REQUEST RECEIVED");
+  console.log("TIME:", requestTime);
+  console.log("METHOD:", req.method);
+  console.log("URL:", req.originalUrl);
+  console.log("CONTENT TYPE:", req.headers["content-type"]);
 
   try {
 
-    let data = req.body || {};
-
+    // Parse incoming JSON if necessary
     if (typeof data === "string") {
-      try {
-        data = JSON.parse(data);
-      } catch (parseError) {
-
-        console.error(
-          "❌ ORCHARD JSON PARSE ERROR:",
-          parseError.message
-        );
-
-        return res.status(400).json({
-          msg_type: "2",
-          ussd_body: "Invalid request."
-        });
-      }
+      data = JSON.parse(data);
     }
 
     const sessionId = String(data.session_id || "").trim();
@@ -2741,61 +2728,67 @@ console.log("📥 BODY:", JSON.stringify({
     const msgType = String(data.msg_type ?? "").trim();
     const ussdBody = String(data.ussd_body ?? "").trim();
 
-    console.log("🔍 ORCHARD PARSED REQUEST:", {
+    const nwCode = String(data.nw_code || "").trim();
+    const serviceCode = String(data.service_code || "").trim();
+
+    console.log("📥 PARSED REQUEST:", {
       sessionId,
       msisdn: msisdn ? "[REDACTED]" : "",
       msgType,
       ussdBody,
-      nw_code: data.nw_code,
-      service_code: data.service_code
+      nwCode,
+      serviceCode
     });
 
+    // =========================================
+    // RESPONSE FUNCTION
+    // =========================================
 
-const reply = (message, continueSession = true) => {
+    const reply = (message, continueSession = true) => {
 
-  const response = {
-    session_id: sessionId,
-    msisdn: msisdn,
-    msg_type: continueSession ? "1" : "2",
-    ussd_body: message
-  };
+      const response = {
+        session_id: sessionId,
+        msisdn: msisdn,
+        msg_type: continueSession ? "1" : "2",
+        ussd_body: String(message),
+        nw_code: nwCode,
+        service_code: serviceCode
+      };
 
-  console.log("======================================");
-  console.log("📤 TAS ORCHARD RESPONSE");
-  console.log("======================================");
-  console.log("HTTP STATUS: 200");
-  console.log("CONTENT TYPE: application/json");
-  console.log("SESSION ID:", sessionId);
-  console.log("MSG TYPE:", response.msg_type);
-  console.log("USSD MESSAGE:", response.ussd_body);
-  console.log("RESPONSE JSON:", JSON.stringify({
-    ...response,
-    msisdn: "[REDACTED]"
-  }));
-  console.log("======================================");
+      console.log("📤 SENDING ORCHARD RESPONSE:");
+      console.log(JSON.stringify({
+        ...response,
+        msisdn: "[REDACTED]"
+      }, null, 2));
 
-  return res.status(200)
-    .set("Content-Type", "application/json; charset=utf-8")
-    .json(response);
-};
+      console.log("==================================\n");
 
+      return res
+        .status(200)
+        .set("Content-Type", "application/json")
+        .json(response);
+    };
 
-    if (!sessionId || !msisdn) {
+    // =========================================
+    // VALIDATE REQUEST
+    // =========================================
 
-      console.error("❌ Missing session ID or MSISDN");
+    if (!sessionId || !msisdn || !msgType) {
+      console.error("❌ Missing mandatory session information");
 
-      return reply("Invalid USSD session.", false);
+      return reply("Invalid USSD request.", false);
     }
 
     const sessionKey = `ORCHARD_TAS_${sessionId}`;
 
     // =========================================
     // NEW SESSION
+    // msg_type = 0
     // =========================================
 
     if (msgType === "0") {
 
-      console.log("🟢 ORCHARD NEW SESSION STARTED");
+      console.log("🟢 NEW TAS SESSION STARTED");
 
       tasFaceSessions.set(sessionKey, {
         step: "menu",
@@ -2804,6 +2797,7 @@ const reply = (message, continueSession = true) => {
       });
 
       console.log("💾 SESSION CREATED:", sessionId);
+      console.log("📍 INITIAL USSD BODY:", ussdBody);
 
       return reply(
         "Welcome to TAS Face Nominee.\n" +
@@ -2814,26 +2808,28 @@ const reply = (message, continueSession = true) => {
     }
 
     // =========================================
-    // END SESSION
+    // SESSION ENDED
+    // msg_type = 2
     // =========================================
 
     if (msgType === "2") {
 
-      console.log("🔴 ORCHARD SESSION END RECEIVED");
+      console.log("🔴 TAS SESSION ENDED");
 
       tasFaceSessions.delete(sessionKey);
 
-      return reply("Session ended.", false);
+      return reply("Thank you for using TAS Face Nominee.", false);
     }
+
+    // =========================================
+    // FIND EXISTING SESSION
+    // =========================================
 
     const state = tasFaceSessions.get(sessionKey);
 
     if (!state) {
 
-      console.error(
-        "⚠️ ORCHARD SESSION NOT FOUND:",
-        sessionId
-      );
+      console.error("❌ TAS SESSION NOT FOUND:", sessionId);
 
       return reply(
         "Session expired. Please dial again.",
@@ -2841,28 +2837,24 @@ const reply = (message, continueSession = true) => {
       );
     }
 
-    console.log("📍 CURRENT SESSION STEP:", state.step);
+    console.log("📍 CURRENT STEP:", state.step);
 
     // =========================================
-    // SCREEN 1 - SELECT 1
+    // SCREEN 1: MAIN MENU
     // =========================================
 
     if (state.step === "menu") {
 
-      console.log("📲 USER SELECTED:", ussdBody);
+      console.log("📲 USER MENU INPUT:", ussdBody);
 
       if (ussdBody === "1") {
 
         state.step = "contestant_code";
 
-        console.log(
-          "➡️ MOVING TO CONTESTANT CODE SCREEN"
-        );
+        console.log("➡️ MOVING TO CONTESTANT CODE");
 
         return reply("Type contestant code:", true);
       }
-
-      console.log("⚠️ INVALID MENU OPTION");
 
       return reply(
         "Invalid option.\n\n1. Proceed to Vote",
@@ -2871,34 +2863,27 @@ const reply = (message, continueSession = true) => {
     }
 
     // =========================================
-    // SCREEN 2 - CONTESTANT CODE
+    // SCREEN 2: CONTESTANT CODE
     // =========================================
 
     if (state.step === "contestant_code") {
 
-      const contestantCode = ussdBody.trim();
+      const contestantCode = ussdBody;
 
-      console.log(
-        "🎯 CONTESTANT CODE SUBMITTED:",
-        contestantCode
-      );
+      console.log("🎯 CONTESTANT CODE SUBMITTED");
 
       if (!/^[A-Za-z0-9_-]{1,30}$/.test(contestantCode)) {
 
-        console.log("❌ INVALID CONTESTANT CODE");
-
         return reply(
-          "Invalid contestant code.\n" +
-          "Type contestant code:",
+          "Invalid contestant code.\nType contestant code:",
           true
         );
       }
 
-      console.log("✅ VALID CONTESTANT CODE FORMAT");
+      console.log("✅ CONTESTANT CODE FORMAT VALID");
 
+      // Remove session after successful submission
       tasFaceSessions.delete(sessionKey);
-
-      console.log("🗑️ SESSION REMOVED:", sessionId);
 
       return reply(
         "Contestant code received. Thank you.",
@@ -2906,7 +2891,11 @@ const reply = (message, continueSession = true) => {
       );
     }
 
-    console.log("⚠️ UNKNOWN SESSION STEP:", state.step);
+    // =========================================
+    // UNKNOWN SESSION STEP
+    // =========================================
+
+    console.error("❌ UNKNOWN TAS STEP:", state.step);
 
     tasFaceSessions.delete(sessionKey);
 
@@ -2914,16 +2903,21 @@ const reply = (message, continueSession = true) => {
 
   } catch (error) {
 
-    console.error("❌ TAS ORCHARD USSD ERROR:", {
+    console.error("❌ TAS ORCHARD ERROR:", {
       message: error.message,
       stack: error.stack
     });
 
     return res.status(200).json({
+      session_id: String(data.session_id || ""),
+      msisdn: String(data.msisdn || ""),
       msg_type: "2",
-      ussd_body: "Service temporarily unavailable."
+      ussd_body: "Service temporarily unavailable.",
+      nw_code: String(data.nw_code || ""),
+      service_code: String(data.service_code || "")
     });
   }
+
 });
 
 module.exports = router;
