@@ -182,10 +182,23 @@ function renderPackages(state) {
   // const lines = [`Packages (${(state.network || "").toUpperCase()})`];
   const lines = [`Packages (Bundles)`];
 
-  // Items in this page
-  for (let i = start; i < end; i++) {
-    lines.push(`${i + 1}) ${list[i]}`);
+// Items in this page
+for (let i = start; i < end; i++) {
+
+  let displayPackage = String(list[i]);
+
+  // ORCHARD *447*6# ONLY
+  if (state.isOrchardFredabuy === true) {
+
+    displayPackage = displayPackage.replace(
+      /^(\d+(?:\.\d+)?)(?!\s*GB\b)(\s*@)/i,
+      "$1GB$2"
+    );
+
   }
+
+  lines.push(`${i + 1}) ${displayPackage}`);
+}
 
   // ONLY show “More” — NO BACK
   if (end < total) {
@@ -198,10 +211,14 @@ function renderPackages(state) {
 
 function confirmMessage(state) {
   const [packageName, price] = String(state.selectedPkg || "").split(" @ ");
+  const displayPackageName =
+  state.isOrchardFredabuy === true
+    ? packageName.replace(/^(\d+(?:\.\d+)?)(?!\s*GB\b)$/i, "$1GB")
+    : packageName;
   return `Confirm Purchase
 Recipient: ${state.recipient}
 Network: Selected
-Package: ${packageName || ""}
+Package: ${displayPackageName || ""}
 Price: ${price || ""}
 
 1) Confirm
@@ -570,12 +587,21 @@ function handleSession(sessionId, input, msisdn, res) {
   state.step = "menu";
   const brand = state.brandName || "SandyPay";
 
-  // ADMIN SIDE ONLY
-  if (state.isPlain) {
+// ADMIN SIDE ONLY
+if (state.isPlain) {
+
+  // ORCHARD *447*6# - FREDABUY DATA ONLY
+  if (state.isOrchardFredabuy === true) {
     return reply(
-      `${brand}.\nData is not instant. Data may take 5 to 15 minutes.\n\n0. Cancel\n\n1. Buy Bundle\n2. Contact Us`
+      `${brand}.\n\n0. Cancel\n\n1. Buy Data\n2. Contact Us`
     );
   }
+
+  // OTHER ADMIN CODES REMAIN UNCHANGED
+  return reply(
+    `${brand}.\nData is not instant. Data may take 5 to 15 minutes.\n\n0. Cancel\n\n1. Buy Bundle\n2. Contact Us`
+  );
+}
 
   // VENDOR SIDE
   return reply(
@@ -640,7 +666,11 @@ if (state.isPlain) {
 
         if (choice === "0") {
           state.step = "start";
-          return reply("Cancelled.\n1. Buy Bundle\n2. Contact Us");
+          return reply(
+  state.isOrchardFredabuy === true
+    ? "Cancelled.\n1. Buy Data\n2. Contact Us"
+    : "Cancelled.\n1. Buy Bundle\n2. Contact Us"
+);
         }
 
         return reply("Invalid option. Choose:\n1) Buy Data\n2) Contact Us");
@@ -655,7 +685,11 @@ if (state.isPlain) {
         else if (choice === "3") state.network = "telecel";
         else if (choice === "0") {
           state.step = "menu";
-          return reply("Back to menu:\n1. Buy Bundle\n2. Contact Us");
+          return reply(
+  state.isOrchardFredabuy === true
+    ? "Back to menu:\n1. Buy Data\n2. Contact Us"
+    : "Back to menu:\n1. Buy Bundle\n2. Contact Us"
+);
         } else {
          if (state.isPlain) {
   return reply(
@@ -929,7 +963,11 @@ axios
       // ================== DEFAULT ==================
       default: {
         state.step = "start";
-        return reply("Restarting...\n1. Buy Bundle\n2. Contact Us");
+     return reply(
+  state.isOrchardFredabuy === true
+    ? "Restarting...\n1. Buy Data\n2. Contact Us"
+    : "Restarting...\n1. Buy Bundle\n2. Contact Us"
+);
       }
     }
   } catch (err) {
