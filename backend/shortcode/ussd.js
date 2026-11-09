@@ -591,11 +591,21 @@ function handleSession(sessionId, input, msisdn, res) {
   state.step = "network";
 
   // ADMIN SIDE ONLY
-  if (state.isPlain) {
+// ADMIN SIDE ONLY
+if (state.isPlain) {
+
+  // ORCHARD *447*6# ONLY
+  if (state.isOrchardFredabuy === true) {
     return reply(
-      "Network\n1) MNT\n2) AirtelTigo\n3) Telecel\n0) Back"
+      "Network\n1) MTN\n2) AirtelTigo\n3) Telecel\n0) Back"
     );
   }
+
+  // ALL OTHER ADMIN CODES REMAIN THE SAME
+  return reply(
+    "Network\n1) MNT\n2) AirtelTigo\n3) Telecel\n0) Back"
+  );
+}
 
   // VENDOR SIDE
   return reply(
@@ -759,7 +769,11 @@ return reply(
             // last page → back to network
             state.packagePage = 0;
             state.step = "network";
-            return reply("Choose network:\n1) Common\n2) AirtelTigo\n3) Telecel");
+      return reply(
+  state.isOrchardFredabuy === true
+    ? "Choose network:\n1) MTN\n2) AirtelTigo\n3) Telecel"
+    : "Choose network:\n1) Common\n2) AirtelTigo\n3) Telecel"
+);
           }
         }
 
@@ -2690,35 +2704,23 @@ router.post(
 
 
 
-// ======================================================
-// TAS FACE NOMINEE - ORCHARD USSD
-// SHORTCODE: *447*6#
-// ======================================================
+ // ======================================================
+ // FREDABUY DATA - ORCHARD USSD
+ // SHORTCODE: *447*6#
+ // CALLBACK: /api/moolre/orchard-tas
+ //
+ // Uses existing admin:
+ // - AdminData packages
+ // - BulkClix payment
+ // - Order recording and webhook
+ // ======================================================
 
-const tasFaceSessions = new Map();
-
-console.log("✅ TAS FACE NOMINEE ORCHARD ROUTE LOADED");
-
-// ======================================================
-// ORCHARD USSD ROUTE
-// ======================================================
+console.log("FREDABUY DATA ORCHARD ROUTE LOADED");
 
 router.post("/orchard-tas", (req, res) => {
-
-  const requestTime = new Date().toISOString();
-
   let data = req.body || {};
 
-  console.log("\n==================================");
-  console.log("📲 TAS ORCHARD REQUEST RECEIVED");
-  console.log("TIME:", requestTime);
-  console.log("METHOD:", req.method);
-  console.log("URL:", req.originalUrl);
-  console.log("CONTENT TYPE:", req.headers["content-type"]);
-
   try {
-
-    // Parse incoming JSON if necessary
     if (typeof data === "string") {
       data = JSON.parse(data);
     }
@@ -2727,186 +2729,129 @@ router.post("/orchard-tas", (req, res) => {
     const msisdn = String(data.msisdn || "").trim();
     const msgType = String(data.msg_type ?? "").trim();
     const ussdBody = String(data.ussd_body ?? "").trim();
-
     const nwCode = String(data.nw_code || "").trim();
     const serviceCode = String(data.service_code || "").trim();
 
-    console.log("📥 PARSED REQUEST:", {
+    console.log("FREDABUY ORCHARD REQUEST:", {
       sessionId,
-      msisdn: msisdn ? "[REDACTED]" : "",
       msgType,
       ussdBody,
       nwCode,
       serviceCode
     });
 
-    // =========================================
-    // RESPONSE FUNCTION
-    // =========================================
+    // Keep Orchard sessions separate from other providers.
+    const sessionKey = `ORCHARD_FREDABUY_${sessionId}`;
 
-    const reply = (message, continueSession = true) => {
-
+    // Translate the existing USSD handler response
+    // into Orchard's required response format.
+    const sendOrchard = (message, shouldContinue = true) => {
       const response = {
         session_id: sessionId,
-        msisdn: msisdn,
-        msg_type: continueSession ? "1" : "2",
-        ussd_body: String(message),
+        msisdn,
+        msg_type: shouldContinue ? "1" : "2",
+        ussd_body: String(message || ""),
         nw_code: nwCode,
         service_code: serviceCode
       };
 
-      console.log("📤 SENDING ORCHARD RESPONSE:");
-      console.log(JSON.stringify({
+      console.log("FREDABUY ORCHARD RESPONSE:", {
         ...response,
         msisdn: "[REDACTED]"
-      }, null, 2));
-
-      console.log("==================================\n");
-
-      return res
-        .status(200)
-        .set("Content-Type", "application/json")
-        .json(response);
-    };
-
-    // =========================================
-    // VALIDATE REQUEST
-    // =========================================
-
-    if (!sessionId || !msisdn || !msgType) {
-      console.error("❌ Missing mandatory session information");
-
-      return reply("Invalid USSD request.", false);
-    }
-
-    const sessionKey = `ORCHARD_TAS_${sessionId}`;
-
-    // =========================================
-    // NEW SESSION
-    // msg_type = 0
-    // =========================================
-
-    if (msgType === "0") {
-
-      console.log("🟢 NEW TAS SESSION STARTED");
-
-      tasFaceSessions.set(sessionKey, {
-        step: "menu",
-        msisdn,
-        createdAt: Date.now()
       });
 
-      console.log("💾 SESSION CREATED:", sessionId);
-      console.log("📍 INITIAL USSD BODY:", ussdBody);
+      if (!shouldContinue) {
+        delete sessions[sessionKey];
+      }
 
-      return reply(
-        "Welcome to TAS Face Nominee.\n" +
-        "Vote for your contestant.\n\n" +
-        "1. Proceed to Vote",
-        true
+      return res.status(200).json(response);
+    };
+
+    // Adapter for the existing handleSession() function.
+    const orchardRes = {
+      json: (result) => {
+        const message = String(result?.message || "")
+          .replace(/^END\s*/i, "");
+
+        const shouldContinue = result?.reply !== false;
+
+        return sendOrchard(message, shouldContinue);
+      }
+    };
+
+    if (!sessionId || !msisdn || !msgType) {
+      return sendOrchard("Invalid USSD request.", false);
+    }
+
+    // Ended by Orchard gateway.
+    if (msgType === "2") {
+      delete sessions[sessionKey];
+      return sendOrchard(
+        "Thank you for using FREDABUY DATA.",
+        false
       );
     }
 
-    // =========================================
-    // SESSION ENDED
-    // msg_type = 2
-    // =========================================
+    // New session.
+    if (msgType === "0") {
+      sessions[sessionKey] = {
+        step: "start",
+        vendorId: 1,
+        brandName: "FREDABUY DATA",
 
-    if (msgType === "2") {
+        // Reuse existing admin data and payment flow.
+        isPlain: true,
 
-      console.log("🔴 TAS SESSION ENDED");
+        // Only this shortcode gets MTN spelling.
+        isOrchardFredabuy: true,
 
-      tasFaceSessions.delete(sessionKey);
+        network: "",
+        selectedPkg: "",
+        recipient: "",
+        packageList: [],
+        packagePage: 0,
 
-      return reply("Thank you for using TAS Face Nominee.", false);
+        moolreSessionId: sessionKey,
+        ussdProvider: "orchard"
+      };
+
+      console.log("NEW FREDABUY SESSION:", sessionKey);
+
+      return handleSession(
+        sessionKey,
+        "",
+        msisdn,
+        orchardRes
+      );
     }
 
-    // =========================================
-    // FIND EXISTING SESSION
-    // =========================================
+    // Only continue an existing session.
+    const state = sessions[sessionKey];
 
-    const state = tasFaceSessions.get(sessionKey);
-
-    if (!state) {
-
-      console.error("❌ TAS SESSION NOT FOUND:", sessionId);
-
-      return reply(
+    if (!state || state.isOrchardFredabuy !== true) {
+      return sendOrchard(
         "Session expired. Please dial again.",
         false
       );
     }
 
-    console.log("📍 CURRENT STEP:", state.step);
-
-    // =========================================
-    // SCREEN 1: MAIN MENU
-    // =========================================
-
-    if (state.step === "menu") {
-
-      console.log("📲 USER MENU INPUT:", ussdBody);
-
-      if (ussdBody === "1") {
-
-        state.step = "contestant_code";
-
-        console.log("➡️ MOVING TO CONTESTANT CODE");
-
-        return reply("Type contestant code:", true);
-      }
-
-      return reply(
-        "Invalid option.\n\n1. Proceed to Vote",
-        true
-      );
-    }
-
-    // =========================================
-    // SCREEN 2: CONTESTANT CODE
-    // =========================================
-
-    if (state.step === "contestant_code") {
-
-      const contestantCode = ussdBody;
-
-      console.log("🎯 CONTESTANT CODE SUBMITTED");
-
-      if (!/^[A-Za-z0-9_-]{1,30}$/.test(contestantCode)) {
-
-        return reply(
-          "Invalid contestant code.\nType contestant code:",
-          true
-        );
-      }
-
-      console.log("✅ CONTESTANT CODE FORMAT VALID");
-
-      // Remove session after successful submission
-      tasFaceSessions.delete(sessionKey);
-
-      return reply(
-        "Contestant code received. Thank you.",
+    if (msgType !== "1") {
+      return sendOrchard(
+        "Invalid session request.",
         false
       );
     }
 
-    // =========================================
-    // UNKNOWN SESSION STEP
-    // =========================================
-
-    console.error("❌ UNKNOWN TAS STEP:", state.step);
-
-    tasFaceSessions.delete(sessionKey);
-
-    return reply("Session ended.", false);
+    // Orchard sends the latest customer input.
+    return handleSession(
+      sessionKey,
+      ussdBody,
+      msisdn,
+      orchardRes
+    );
 
   } catch (error) {
-
-    console.error("❌ TAS ORCHARD ERROR:", {
-      message: error.message,
-      stack: error.stack
-    });
+    console.error("FREDABUY ORCHARD ERROR:", error);
 
     return res.status(200).json({
       session_id: String(data.session_id || ""),
@@ -2917,7 +2862,8 @@ router.post("/orchard-tas", (req, res) => {
       service_code: String(data.service_code || "")
     });
   }
-
 });
+
+
 
 module.exports = router;
